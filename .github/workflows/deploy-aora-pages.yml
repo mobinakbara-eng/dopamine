@@ -2,9 +2,8 @@ name: Deploy AoraAI Pages
 
 on:
   push:
-    branches: [main]
-    paths:
-      - .github/workflows/deploy-aora-pages.yml
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
