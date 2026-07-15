@@ -1,1 +1,8 @@
-const logo=`<svg class="aora-logo" viewBox="0 0 291 187" xmlns="http://www.w3.org/2000/svg" aria-label="AoraAI"><path fill="currentColor" fill-rule="evenodd" d="M 176 149 L 171 154 L 168 160 L 168 171 L 171 178 L 175 182 L 183 185 L 205 185 L 207 183 L 207 161 L 204 154 L 200 150 L 193 147 L 181 147 Z M 179 154 L 191 154 L 196 157 L 199 162 L 199 174 L 196 178 L 191 180 L 181 179 L 176 175 L 175 169 L 176 160 Z M 248 148 L 248 185 L 255 185 L 255 148 Z M 217 148 L 217 185 L 224 185 L 224 148 Z M 267 148 L 267 185 L 274 185 L 274 148 Z M 125 149 L 109 185 L 117 185 L 120 178 L 140 178 L 143 185 L 151 185 L 135 149 Z M 130 157 L 137 171 L 123 171 Z M 57 149 L 42 185 L 50 185 L 53 178 L 73 178 L 76 185 L 84 185 L 68 149 Z M 63 157 L 70 171 L 56 171 Z M 92 148 L 92 185 L 99 185 L 99 148 Z M 6 149 L 6 185 L 13 185 L 13 159 L 32 185 L 39 185 L 39 149 L 32 149 L 32 174 L 14 149 Z M 140 3 L 130 8 L 125 15 L 92 80 L 100 96 L 133 32 L 139 27 L 145 27 L 151 32 L 184 96 L 192 80 L 159 15 L 154 8 L 145 3 Z M 115 103 L 123 119 L 132 103 Z M 166 103 L 157 119 L 175 119 Z"/></svg>`;
+const logo=`<svg class="aora-logo" viewBox="0 0 220 144" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AoraAI">
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M66 72 94 18c3-6 8-9 16-9s13 3 16 9l28 54" stroke-width="12"/>
+    <path d="M91 78h38" stroke-width="9"/>
+  </g>
+  <circle cx="110" cy="51" r="7" fill="currentColor"/>
+  <text x="110" y="130" fill="currentColor" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="500" letter-spacing="2">AoraAI</text>
+</svg>`;
