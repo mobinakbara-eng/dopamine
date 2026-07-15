@@ -4,7 +4,7 @@
   const css=document.createElement("link");
   css.rel="stylesheet";
   css.href=base+"styles.css";
-  css.integrity="sha384-gWdWRgwpyF963RtOVMpvZAwgnl4fVkirxEJQgNHnFrfY0Xq2x1HQRlHBOvIEB3Cs";
+  css.integrity="sha384-o7vClGos3tYbt9KiNBtZVHcUeVq7vxZH0xvjrBiS1/IHwqq3gXMmPstWyHXBilc4";
   css.crossOrigin="anonymous";
   document.head.append(css);
   const assets=[
@@ -20,7 +20,7 @@
     ["kiosk-view.js","sha384-vJ9GcYMCflOspubnH4ZIc3FR4HYSxpR/qQ45jxW0tRkHE6XZv/16qzbLlX4kBtUF"],
     ["modals.js","sha384-kPCHqTw5Yy2PbWD4JtILzP56wE6xCMi0QKfcHCRd29uWKYhYRZUkSfhC2E7QqjSi"],
     ["handlers.js","sha384-zafdslVZG1qJNu9ml6uDudGyGEcz3F5ApLc9HH5l4We6SBSpmkvvV6nvkQd14QCm"],
-    ["boot.js","sha384-xyGGgBV+Sz3gehjmjT1FbtZss63Gk3MYpYgjvKZbAO7CIeYytGileUdpfZ8RYi3N"]
+    ["boot.js","sha384-hCRrQTHrI+zy5wh8/SlKSXuhkFnqKGfpxwDfdUAuZci3VNLUxdJAp0w4UyvlsEw3"]
   ];
   let chain=Promise.resolve();
   for(const [file,integrity] of assets){
