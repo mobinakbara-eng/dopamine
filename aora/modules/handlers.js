@@ -45,6 +45,8 @@ app.addEventListener("click",async(event)=>{
       S.selected=null;
       renderKiosk();
     }catch{}
+  }else if(action==="kiosk-help"){
+    kioskHelpModal();
   }else if(action==="leave-modal"){
     leaveModal();
   }else if(action==="profile-modal"){

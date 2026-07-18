@@ -1,13 +1,15 @@
 # AoraAI Workforce Design QA
 
-Release `8.0.3-production` passed production browser verification on 2026-07-15.
+Release `8.0.4-production` passed browser verification on 2026-07-18.
 
-- Arbeitnehmer, Arbeitgeber, and Kiosk routes and logins passed.
-- Kiosk pause/resume synchronized to Arbeitnehmer.
-- All nine Arbeitgeber sections are present.
-- Mobile Arbeitgeber sidebar refresh and short-viewport scrolling passed.
-- Profile editor, German encoding, logo, and responsive overflow checks passed.
-- Production console contained no app warnings or errors.
-- Temporary QA sessions were revoked and no QA bootstrap ships in production.
+Production deployment `dpl_4nAStarcJ4UZktdmXfm7GCuYdoxJ` is `READY` at `https://aora-workforce.vercel.app`.
+
+- References: `2.jpg`, `22.jpg`, and the supplied AoraAI Brand Book.
+- Evidence: `qa/kiosk-final-1280x960.png` at `1280x960`; responsive verification at `1024x768`.
+- Kiosk count badges measure `32x32`; no horizontal overflow or clipped persistent controls.
+- Kiosk selection, Pause, Pause beenden, Help, and synchronized status updates passed.
+- Arbeitnehmer and Arbeitgeber routes and staging logins passed.
+- Browser console contained no warnings or errors on all three routes.
+- All JavaScript modules pass `node --check`.
 
 Final result: `passed`

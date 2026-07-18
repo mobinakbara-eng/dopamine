@@ -1,4 +1,4 @@
-# AoraAI Workforce Production 8.0.3
+# AoraAI Workforce Production 8.0.4
 
 This directory is the canonical deployable frontend for AoraAI Workforce.
 
@@ -21,3 +21,9 @@ window focus.
 Deploy this directory as a static Vercel project. No frontend secrets are
 required. Authentication is handled by short-lived staging sessions issued by
 the access Edge Function. Never commit staging PINs or session tokens.
+
+## Kiosk UI
+
+The kiosk uses the supplied AoraAI monochrome identity, a responsive three-status
+dashboard, profile-photo/initial cards, click actions, drag and drop, and a
+tablet-safe action bar for clock-in, pause, resume, and clock-out.
