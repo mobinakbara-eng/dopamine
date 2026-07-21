@@ -22,31 +22,28 @@ window.addEventListener("popstate",()=>{
   S.session?loadState():renderLogin();
 });
 
-function emailCallback(){
-  const hash=new URLSearchParams(location.hash.replace(/^#/,""));
-  const accessToken=hash.get("access_token");
-  const invitationId=new URLSearchParams(location.search).get("invitation");
-  return{accessToken,invitationId};
+function invitationCallback(){
+  const params=new URLSearchParams(location.search);
+  return{invitationId:params.get("invitation"),token:params.get("token")};
 }
-function clearEmailCallback(){
+function clearInvitationCallback(){
   const url=new URL(location.href);
-  url.hash="";
-  url.searchParams.delete("email_login");
   url.searchParams.delete("invitation");
-  history.replaceState({}, "", url.pathname+(url.searchParams.toString()?`?${url.searchParams}`:""));
+  url.searchParams.delete("token");
+  history.replaceState({},"",url.pathname+(url.searchParams.toString()?`?${url.searchParams}`:""));
 }
 async function boot(){
   renderLoading();
   try{
-    await loadDirectory();
-    const callback=emailCallback();
-    if(callback.accessToken){
-      await exchangeEmailSession(callback.accessToken,callback.invitationId);
-      clearEmailCallback();
-      return;
-    }
     const accessRole=accessRoleFromPath();
     setAccessRole(accessRole);
+    const callback=invitationCallback();
+    if(callback.invitationId&&callback.token){
+      const info=await inspectInvitation(callback.invitationId,callback.token);
+      renderInvitationSetup(info,callback.invitationId,callback.token);
+      return;
+    }
+    await loadDirectory();
     S.session=restore(accessRole);
     S.session?await loadState():renderLogin();
   }catch(error){
