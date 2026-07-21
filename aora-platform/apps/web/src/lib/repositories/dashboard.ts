@@ -24,14 +24,8 @@ function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
 function membershipStatus(value: unknown): MembershipStatus {
-  return ["invited", "active", "suspended", "revoked"].includes(
-    stringValue(value),
-  )
+  return ["invited", "active", "suspended"].includes(stringValue(value))
     ? (value as MembershipStatus)
     : "invited";
 }
@@ -62,7 +56,10 @@ function relationName(value: unknown): string {
     : "";
 }
 
-function mapStore(row: Record<string, unknown>): StoreSummary {
+function mapStore(
+  row: Record<string, unknown>,
+  counts: { managers?: number; employees?: number } = {},
+): StoreSummary {
   const payload =
     typeof row.payload === "object" && row.payload !== null
       ? (row.payload as Record<string, unknown>)
@@ -80,8 +77,8 @@ function mapStore(row: Record<string, unknown>): StoreSummary {
       stringValue(payload.timezone, "Europe/Berlin"),
     ),
     status: storeStatus(row.status ?? (row.active === false ? "archived" : "active")),
-    managerCount: numberValue(row.manager_count),
-    employeeCount: numberValue(row.employee_count),
+    managerCount: counts.managers ?? 0,
+    employeeCount: counts.employees ?? 0,
   };
 }
 
@@ -101,6 +98,19 @@ function mapInvitation(row: Record<string, unknown>): InvitationSummary {
   };
 }
 
+function countByLocation(
+  sourceRows: Record<string, unknown>[],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  sourceRows.forEach((row) => {
+    const locationId = stringValue(row.location_id);
+    if (locationId) {
+      result.set(locationId, (result.get(locationId) ?? 0) + 1);
+    }
+  });
+  return result;
+}
+
 export async function loadOwnerDashboard(): Promise<OwnerDashboardData> {
   if (!hasSupabaseEnvironment()) {
     return previewOwnerDashboard;
@@ -108,36 +118,50 @@ export async function loadOwnerDashboard(): Promise<OwnerDashboardData> {
 
   const membership = await requireOwner();
   const supabase = await createSupabaseServerClient();
+  const [storeResult, managerResult, invitationResult, employeeResult] =
+    await Promise.all([
+      supabase
+        .from("locations")
+        .select(
+          "id, organization_id, name, slug, city, country_code, timezone, status, active, payload",
+        )
+        .eq("organization_id", membership.organizationId)
+        .order("name"),
+      supabase
+        .from("organization_memberships")
+        .select(
+          "id, organization_id, location_id, role, status, member_email, profiles(display_name), locations(name)",
+        )
+        .eq("organization_id", membership.organizationId)
+        .eq("role", "manager")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("member_invitations")
+        .select("id, email, role, location_id, status, expires_at, locations(name)")
+        .eq("organization_id", membership.organizationId)
+        .eq("role", "manager")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("employees")
+        .select("id, location_id")
+        .eq("organization_id", membership.organizationId)
+        .eq("active", true),
+    ]);
 
-  const [storeResult, managerResult, invitationResult] = await Promise.all([
-    supabase
-      .from("locations")
-      .select(
-        "id, organization_id, name, slug, city, country_code, timezone, status, active, payload, manager_count, employee_count",
-      )
-      .eq("organization_id", membership.organizationId)
-      .order("name"),
-    supabase
-      .from("organization_memberships")
-      .select(
-        "id, organization_id, location_id, role, status, member_email, profiles(display_name), locations(name)",
-      )
-      .eq("organization_id", membership.organizationId)
-      .eq("role", "manager")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("member_invitations")
-      .select("id, email, role, location_id, status, expires_at, locations(name)")
-      .eq("organization_id", membership.organizationId)
-      .eq("role", "manager")
-      .order("created_at", { ascending: false }),
-  ]);
-
-  if (storeResult.error || managerResult.error || invitationResult.error) {
+  if (
+    storeResult.error ||
+    managerResult.error ||
+    invitationResult.error ||
+    employeeResult.error
+  ) {
     throw new Error("Owner workspace could not be loaded.");
   }
 
-  const managers: ManagerSummary[] = rows(managerResult.data).map((row) => ({
+  const managerRows = rows(managerResult.data);
+  const employeeRows = rows(employeeResult.data);
+  const managerCounts = countByLocation(managerRows);
+  const employeeCounts = countByLocation(employeeRows);
+  const managers: ManagerSummary[] = managerRows.map((row) => ({
     membershipId: stringValue(row.id),
     displayName: relationName(row.profiles) || stringValue(row.member_email),
     email: stringValue(row.member_email),
@@ -150,7 +174,13 @@ export async function loadOwnerDashboard(): Promise<OwnerDashboardData> {
     mode: "live",
     organizationId: membership.organizationId,
     organizationName: membership.organizationName,
-    stores: rows(storeResult.data).map(mapStore),
+    stores: rows(storeResult.data).map((row) => {
+      const locationId = stringValue(row.id);
+      return mapStore(row, {
+        managers: managerCounts.get(locationId),
+        employees: employeeCounts.get(locationId),
+      });
+    }),
     managers,
     invitations: rows(invitationResult.data).map(mapInvitation),
   };
@@ -164,7 +194,7 @@ export async function loadManagerDashboard(
   }
 
   const membership = await requireMembership({
-    allowedRoles: ["owner", "manager"],
+    allowedRoles: ["owner", "admin", "manager"],
   });
   const locationId = requestedLocationId ?? membership.locationId;
 
@@ -173,7 +203,7 @@ export async function loadManagerDashboard(
   }
 
   await requireMembership({
-    allowedRoles: ["owner", "manager"],
+    allowedRoles: ["owner", "admin", "manager"],
     organizationId: membership.organizationId,
     locationId,
   });
@@ -183,14 +213,14 @@ export async function loadManagerDashboard(
     supabase
       .from("locations")
       .select(
-        "id, organization_id, name, slug, city, country_code, timezone, status, active, payload, manager_count, employee_count",
+        "id, organization_id, name, slug, city, country_code, timezone, status, active, payload",
       )
       .eq("organization_id", membership.organizationId)
       .in(
         "id",
-        membership.role === "owner" || !membership.locationId
+        membership.role === "owner" || membership.role === "admin"
           ? [locationId]
-          : [membership.locationId],
+          : [membership.locationId ?? locationId],
       ),
     supabase
       .from("employees")
@@ -211,14 +241,22 @@ export async function loadManagerDashboard(
     throw new Error("Manager workspace could not be loaded.");
   }
 
-  const availableStores = rows(storeResult.data).map(mapStore);
+  const employeeRows = rows(employeeResult.data);
+  const availableStores = rows(storeResult.data).map((row) =>
+    mapStore(row, {
+      managers: 1,
+      employees: employeeRows.filter(
+        (employee) => employee.active !== false,
+      ).length,
+    }),
+  );
   const selectedStore = availableStores.find((store) => store.id === locationId);
 
   if (!selectedStore) {
     throw new Error("The requested store is outside your access scope.");
   }
 
-  const employees: EmployeeSummary[] = rows(employeeResult.data).map((row) => {
+  const employees: EmployeeSummary[] = employeeRows.map((row) => {
     const payload =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as Record<string, unknown>)
