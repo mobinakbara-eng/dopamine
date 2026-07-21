@@ -51,8 +51,13 @@ export async function createAndSendInvitation(
   const token = invitationToken();
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const redirectUrl = new URL(`/${input.locale}/invite/accept`, env.NEXT_PUBLIC_APP_URL);
-  redirectUrl.searchParams.set("token", token);
+  const acceptUrl = new URL(
+    `/${input.locale}/invite/accept`,
+    env.NEXT_PUBLIC_APP_URL,
+  );
+  acceptUrl.searchParams.set("token", token);
+  const callbackUrl = new URL("/auth/confirm", env.NEXT_PUBLIC_APP_URL);
+  callbackUrl.searchParams.set("next", `${acceptUrl.pathname}${acceptUrl.search}`);
 
   const { data: invitation, error: insertError } = await admin
     .from("member_invitations")
@@ -92,7 +97,7 @@ export async function createAndSendInvitation(
     input.email,
     {
       data: inviteMetadata,
-      redirectTo: redirectUrl.toString(),
+      redirectTo: callbackUrl.toString(),
     },
   );
 
@@ -104,7 +109,7 @@ export async function createAndSendInvitation(
       email: input.email,
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: redirectUrl.toString(),
+        emailRedirectTo: callbackUrl.toString(),
         data: inviteMetadata,
       },
     });
