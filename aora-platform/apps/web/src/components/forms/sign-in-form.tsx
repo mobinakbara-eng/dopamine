@@ -47,6 +47,7 @@ export function SignInForm({ locale, enabled }: SignInFormProps) {
       </div>
       <FormMessage state={state} />
       <SubmitButton
+        disabled={!enabled}
         idleLabel="Send secure sign-in link"
         pendingLabel="Sending link…"
       />
