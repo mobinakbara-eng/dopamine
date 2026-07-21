@@ -4,7 +4,8 @@
   "version": "8.0.5",
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "check": "node check.mjs",
+    "build": "node check.mjs && node build.mjs"
   },
   "engines": {
     "node": ">=20"
