@@ -10,15 +10,15 @@ function accessLabel(role){return({owner:"Inhaber",manager:"Arbeitgeber",employe
 function loginItems(role,directory){
   if(role==="owner")return(directory.admins||[]).filter(item=>(item.scope||"owner")==="owner");
   if(role==="manager")return(directory.admins||[]).filter(item=>item.scope==="manager"&&item.status==="active");
-  if(role==="employee")return directory.employees||[];
+  if(role==="employee")return(directory.employees||[]).filter(item=>item.status!=="pending");
   return directory.kioskDevices||[];
 }
 function renderLogin(message=""){
   const role=S.loginRole||S.accessRole;
   const directory=S.directory||{admins:[],employees:[],kioskDevices:[]};
   const items=loginItems(role,directory);
-  const emailEnabled=role==="manager"||role==="employee";
-  const pinEnabled=role==="owner"||role==="employee"||role==="kiosk";
+  const emailEnabled=role==="owner"||role==="manager"||role==="employee";
+  const pinEnabled=role==="owner"||role==="kiosk";
   const roleTabs=[["owner","Inhaber"],["manager","Arbeitgeber"],["employee","Mitarbeiter"],["kiosk","Kiosk"]];
   app.innerHTML=`<div class="access-shell">
     <section class="access-brand">
