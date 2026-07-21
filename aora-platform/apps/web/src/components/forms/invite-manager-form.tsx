@@ -74,6 +74,7 @@ export function InviteManagerForm({
       </div>
       <FormMessage state={state} />
       <SubmitButton
+        disabled={!canSubmit}
         idleLabel={messages.sendInvitation}
         pendingLabel={`${messages.sendInvitation}…`}
       />
