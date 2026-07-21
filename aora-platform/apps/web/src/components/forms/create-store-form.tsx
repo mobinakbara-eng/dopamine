@@ -139,6 +139,7 @@ export function CreateStoreForm({
       </div>
       <FormMessage state={state} />
       <SubmitButton
+        disabled={!enabled}
         idleLabel={messages.createStore}
         pendingLabel={`${messages.createStore}…`}
       />
