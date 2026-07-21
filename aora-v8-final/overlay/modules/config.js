@@ -24,7 +24,7 @@ const CFG={
   accessFunction:"aora-v8-final-access",
   workspaceFunction:"aora-v8-final-workspace",
   tz:"Europe/Berlin",
-  version:"8.0.5-final",
+  version:"8.0.6-final",
   isolated:true
 };
 const app=document.getElementById("app"),toasts=document.getElementById("toast-root");
@@ -34,5 +34,5 @@ const S={
   loginRole:initialAccessRole,
   session:null,directory:null,state:null,revision:0,
   employeeView:"home",adminView:initialAccessRole==="owner"?"owner-overview":"overview",
-  locationId:null,selected:null,busy:false,magicLinkSent:false
+  locationId:null,selected:null,busy:false
 };
