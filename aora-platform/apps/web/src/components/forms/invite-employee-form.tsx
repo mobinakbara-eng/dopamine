@@ -67,6 +67,7 @@ export function InviteEmployeeForm({
       </div>
       <FormMessage state={state} />
       <SubmitButton
+        disabled={!enabled}
         idleLabel={messages.sendInvitation}
         pendingLabel={`${messages.sendInvitation}…`}
       />
