@@ -1,0 +1,11 @@
+.access-explanation{color:#777;font-size:12px;line-height:1.7;margin-top:16px}
+.invitation-summary{background:#f3f3f3;border:1px solid #ddd;border-radius:14px;padding:15px;margin:20px 0;display:grid;gap:5px}
+.invitation-summary strong{font:700 14px var(--display)}
+.invitation-summary span{font-size:11px}.invitation-summary small{font-size:9px;color:#777}
+.password-rules{font-size:9px;line-height:1.5;color:#777;margin-top:10px}
+.delivery-card{display:flex;align-items:center;gap:12px;background:#f3f3f3;border-radius:14px;padding:14px;margin-bottom:15px}
+.delivery-card strong,.delivery-card small{display:block}.delivery-card strong{font-size:12px}.delivery-card small{font-size:9px;color:#777;margin-top:4px}
+.delivery-copy{font-size:11px;color:#666;line-height:1.65;margin-bottom:16px}
+.delivery-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}.delivery-actions .btn{min-height:42px;text-decoration:none}
+#delivery-link{font-size:9px}
+@media(max-width:560px){.delivery-actions{display:grid}.delivery-actions .btn{width:100%}}

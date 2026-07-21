@@ -1,0 +1,51 @@
+/* AoraAI Workforce V8 Final — isolated owner/manager extension */
+.role-tabs-four{grid-template-columns:repeat(4,1fr)}
+.login-success{margin:18px 0 4px;padding:13px 14px;border:1px solid #000;border-radius:12px;background:#f4f4f4;font-size:11px;line-height:1.55}
+.access-divider{display:flex;align-items:center;gap:12px;margin:21px 0 4px;color:#999;font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+.access-divider:before,.access-divider:after{content:"";height:1px;background:#ddd;flex:1}
+.owner-hero{background:#000;color:#fff;border-radius:20px;padding:31px;display:flex;align-items:flex-end;justify-content:space-between;gap:30px;margin-bottom:18px}
+.owner-hero h1{font:700 clamp(29px,3vw,48px)/1 var(--display);letter-spacing:-.05em;max-width:700px;margin-top:12px}
+.owner-hero p{color:#aaa;font-size:12px;line-height:1.7;max-width:650px;margin-top:14px}
+.owner-hero-action{background:#fff;color:#000;border-color:#fff;flex:none}
+.owner-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;margin-top:20px}
+.owner-wide-card{grid-row:span 2;min-height:540px}
+.owner-location-list{padding:8px 16px 16px}
+.owner-location-row{width:100%;min-height:82px;border:0;border-bottom:1px solid #eee;background:#fff;display:grid;grid-template-columns:44px minmax(180px,1fr) 120px minmax(140px,.8fr) 22px;align-items:center;gap:13px;text-align:left}
+.owner-location-row:last-child{border-bottom:0}
+.owner-location-row>span strong,.owner-location-row>span small{display:block}
+.owner-location-row>span strong{font-size:12px}.owner-location-row>span small{font-size:9px;color:#888;margin-top:4px}
+.owner-location-row>b{font-size:10px}.owner-location-row>em{font-size:9px;color:#777;font-style:normal}
+.location-card-grid,.manager-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.location-card,.manager-card{background:#fff;border:1px solid #e4e4e4;border-radius:17px;padding:20px;min-height:280px}
+.location-card-top,.manager-card-head{display:flex;align-items:center;justify-content:space-between}
+.location-card h2,.manager-card h2{font:700 21px var(--display);margin-top:25px}
+.location-card>p,.manager-card>p{font-size:10px;color:#888;line-height:1.6;margin-top:8px}
+.location-card dl{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:22px 0 0}
+.location-card dl div{background:#f3f3f3;border-radius:11px;padding:10px}.location-card dt{font-size:8px;color:#888}.location-card dd{font:700 14px var(--display);margin:5px 0 0}
+.card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:22px}.card-actions .btn{min-height:38px;padding:0 13px;font-size:10px}
+.manager-location-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:20px}.manager-location-chips span{background:#eee;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:700}
+.invitation-list,.employee-admin-list{display:grid;gap:10px}
+.invitation-row,.employee-admin-row{background:#fff;border:1px solid #e6e6e6;border-radius:15px;min-height:76px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+.invitation-row .row-copy,.employee-admin-row .row-copy{min-width:180px}.invite-actions{display:flex;gap:7px;margin-left:auto}.invite-actions .btn,.employee-admin-row .btn{min-height:36px;padding:0 12px;font-size:9px}
+.employee-admin-row>b{font-size:10px;white-space:nowrap}
+.section-context{background:#fff;border-radius:14px;padding:13px 16px;margin-bottom:15px;display:flex;align-items:center;gap:13px;font-size:10px}
+.section-context span{color:#888;text-transform:uppercase;letter-spacing:.08em}.section-context .link-btn{margin-left:auto}
+.settings-panel{padding:22px}.isolation-note{margin-top:20px;border:1px solid #ccc;border-radius:13px;padding:14px;display:flex;flex-direction:column;gap:6px}.isolation-note strong{font-size:11px}.isolation-note span{font-size:9px;color:#777;line-height:1.5}
+.checkbox-fieldset{border:1px solid #d7d7d7;border-radius:13px;padding:12px}.checkbox-fieldset legend{font-size:10px;font-weight:700;padding:0 7px}
+.check-row{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px}.check-row:hover{background:#f3f3f3}.check-row input{width:18px;height:18px}.check-row span strong,.check-row span small{display:block}.check-row span strong{font-size:11px}.check-row span small{font-size:9px;color:#888;margin-top:3px}
+.manager-modal-summary{display:flex;align-items:center;gap:12px;background:#f3f3f3;border-radius:13px;padding:13px}.manager-modal-summary span strong,.manager-modal-summary span small{display:block}.manager-modal-summary span small{font-size:9px;color:#777;margin-top:4px}
+@media(max-width:1100px){
+  .location-card-grid,.manager-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .owner-location-row{grid-template-columns:44px minmax(160px,1fr) 110px 22px}.owner-location-row>em{display:none}
+}
+@media(max-width:820px){
+  .owner-grid{grid-template-columns:1fr}.owner-wide-card{grid-row:auto;min-height:0}
+  .owner-hero{align-items:flex-start;flex-direction:column}.owner-hero-action{width:100%}
+}
+@media(max-width:700px){
+  .role-tabs-four{grid-template-columns:1fr 1fr}
+  .location-card-grid,.manager-card-grid{grid-template-columns:1fr}
+  .invitation-row,.employee-admin-row{align-items:flex-start;flex-wrap:wrap}.invite-actions{width:100%;margin-left:54px}
+  .owner-location-row{grid-template-columns:42px 1fr 20px}.owner-location-row>b,.owner-location-row>em{display:none}
+  .admin-top-actions .btn{display:none}
+}
