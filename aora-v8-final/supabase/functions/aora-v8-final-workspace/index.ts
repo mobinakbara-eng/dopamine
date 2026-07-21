@@ -9,7 +9,7 @@ import {
   reply,
   scopeState,
 } from "./core.ts";
-import { applyStructural, STRUCTURAL_TYPES } from "./structural.ts";
+import { applyStructural, STRUCTURAL_TYPES } from "./structural-custom.ts";
 
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin");
