@@ -43,6 +43,7 @@ export function AcceptInvitationForm({
         </div>
       ) : (
         <SubmitButton
+          disabled={!enabled}
           idleLabel={messages.acceptInvitation}
           pendingLabel={messages.acceptingInvitation}
         />
