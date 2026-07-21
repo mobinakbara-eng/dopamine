@@ -1,7 +1,7 @@
 import "server-only";
 
-import { hasSupabaseEnvironment } from "@/lib/env";
 import type { MembershipContext, MembershipRole } from "@/lib/domain/types";
+import { hasSupabaseEnvironment } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export class AccessDeniedError extends Error {
@@ -78,6 +78,7 @@ export async function requireMembership(options: {
 
     return (
       candidate.role === "owner" ||
+      candidate.role === "admin" ||
       candidate.location_id === options.locationId
     );
   });
@@ -99,7 +100,7 @@ export async function requireMembership(options: {
 
 export async function requireOwner(organizationId?: string) {
   return requireMembership({
-    allowedRoles: ["owner"],
+    allowedRoles: ["owner", "admin"],
     organizationId,
   });
 }
@@ -109,7 +110,7 @@ export async function requireStoreManager(
   locationId: string,
 ) {
   return requireMembership({
-    allowedRoles: ["owner", "manager"],
+    allowedRoles: ["owner", "admin", "manager"],
     organizationId,
     locationId,
   });
