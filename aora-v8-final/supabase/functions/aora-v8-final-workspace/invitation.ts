@@ -1,8 +1,8 @@
 import {
-  allowedOrigin,
   now,
   service,
 } from "./core.ts";
+import { allowedOrigin } from "./origin.ts";
 
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
