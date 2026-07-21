@@ -1,0 +1,449 @@
+{
+  "name": "Dopamine Berlin Job Outreach",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": [
+          {
+            "mode": "everyX",
+            "value": 1,
+            "unit": "day"
+          }
+        ]
+      },
+      "id": "1",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const keywords = [\n  'performance marketing',\n  'marketing automation',\n  'crm marketing',\n  'marketing technology',\n  'email marketing',\n  'growth marketing',\n  'martech',\n  'demand generation',\n  'marketing operations'\n];\nconst query = keywords.map(k => `\"${k}\"`).join(' OR ');\nreturn [{ json: {\n  query,\n  location: 'Berlin, Germany',\n  services: keywords\n}}];"
+      },
+      "id": "2",
+      "name": "Build Search Query",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://jsearch.p.rapidapi.com/search",
+        "allowUnauthorizedCerts": false,
+        "jsonParameters": false,
+        "responseFormat": "json",
+        "sendQuery": true,
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "value": "={{$json.query}} in {{$json.location}}"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            },
+            {
+              "name": "num_pages",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "X-RapidAPI-Key",
+              "value": "={{$env.RAPIDAPI_KEY}}"
+            },
+            {
+              "name": "X-RapidAPI-Host",
+              "value": "jsearch.p.rapidapi.com"
+            }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Search Berlin Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = items[0]?.json ?? {};\nconst results = response.data ?? [];\nreturn results.map(job => ({ json: job }));"
+      },
+      "id": "4",
+      "name": "Flatten Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.filter(item => {\n  const city = (item.json.job_city || item.json.job_location || '').toString().toLowerCase();\n  return city.includes('berlin');\n});"
+      },
+      "id": "5",
+      "name": "Filter Berlin",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const serviceCatalog = [\n  { keyword: 'marketing automation', label: 'Marketing Automation Implementation' },\n  { keyword: 'crm', label: 'CRM Architecture & Integrations' },\n  { keyword: 'performance', label: 'Performance Marketing Campaigns' },\n  { keyword: 'email', label: 'Lifecycle & Email Marketing' },\n  { keyword: 'martech', label: 'MarTech Stack Advisory' },\n  { keyword: 'growth', label: 'Growth Marketing' }\n];\nreturn items.map(item => {\n  const job = item.json;\n  const description = (job.job_description || '').toLowerCase();\n  const matches = serviceCatalog\n    .filter(entry => description.includes(entry.keyword))\n    .map(entry => entry.label);\n  let domain = job.employer_website || job.job_apply_link || '';\n  if (domain) {\n    try {\n      const parsed = new URL(domain.startsWith('http') ? domain : `https://${domain}`);\n      domain = parsed.hostname.replace(/^www\\./, '');\n    } catch (error) {\n      domain = domain.replace(/^https?:\\/\\//, '').split('/')[0].replace(/^www\\./, '');\n    }\n  }\n  return {\n    json: {\n      jobId: job.job_id,\n      jobTitle: job.job_title,\n      companyName: job.employer_name || job.job_publisher || 'Unknown Company',\n      jobCity: job.job_city || job.job_location,\n      jobCountry: job.job_country,\n      jobApplyLink: job.job_apply_link,\n      jobDescription: job.job_description,\n      jobPostedAt: job.job_posted_at_datetime_utc,\n      salaryMin: job.job_min_salary,\n      salaryMax: job.job_max_salary,\n      salaryCurrency: job.job_salary_currency,\n      serviceMatches: matches,\n      companyDomain: domain,\n      source: job.job_publisher,\n      raw: job\n    }\n  };\n});"
+      },
+      "id": "6",
+      "name": "Enrich Job Profile",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const staticData = this.getWorkflowStaticData('global');\nif (!staticData.seenJobIds) {\n  staticData.seenJobIds = [];\n}\nconst seen = new Set(staticData.seenJobIds);\nconst fresh = [];\nfor (const item of items) {\n  const jobId = item.json.jobId;\n  if (!jobId || seen.has(jobId)) {\n    continue;\n  }\n  fresh.push(item);\n  seen.add(jobId);\n}\nstaticData.seenJobIds = Array.from(seen).slice(-200);\nreturn fresh;"
+      },
+      "id": "7",
+      "name": "Filter New Jobs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.filter(item => item.json.companyDomain);"
+      },
+      "id": "8",
+      "name": "Require Domain",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.hunter.io/v2/domain-search",
+        "responseFormat": "json",
+        "sendQuery": true,
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "domain",
+              "value": "={{$json.companyDomain}}"
+            },
+            {
+              "name": "api_key",
+              "value": "={{$env.HUNTER_API_KEY}}"
+            }
+          ]
+        }
+      },
+      "id": "9",
+      "name": "Hunter Domain Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1860,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  const response = item.json || {};\n  const emails = response.data?.emails || [];\n  const prioritized = emails.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));\n  const chosen = prioritized.find(email => email.type === 'personal') || prioritized[0] || null;\n  return {\n    json: {\n      contactEmail: chosen ? chosen.value : null,\n      contactName: chosen ? `${chosen.first_name || ''} ${chosen.last_name || ''}`.trim() : null,\n      contactPosition: chosen ? chosen.position : null,\n      confidence: chosen ? chosen.confidence : null,\n      sources: chosen ? chosen.sources : [],\n      hunterRaw: response.data || {}\n    }\n  };\n});"
+      },
+      "id": "10",
+      "name": "Select Contact",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2060,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "wait"
+      },
+      "id": "11",
+      "name": "Merge Job & Contact",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.filter(item => item.json.contactEmail);"
+      },
+      "id": "12",
+      "name": "Filter Missing Email",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2260,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  const salary = item.json.salaryMin || item.json.salaryMax\n    ? [item.json.salaryMin, item.json.salaryMax].filter(Boolean).join(' - ') + (item.json.salaryCurrency ? ` ${item.json.salaryCurrency}` : '')\n    : 'N/A';\n  const matchList = (item.json.serviceMatches || []).map(match => `- ${match}`).join('\\n');\n  const contactName = item.json.contactName || 'سلام';\n  const source = item.json.source || 'JSearch';\n  const jobTitle = item.json.jobTitle || 'Opportunity';\n  const companyName = item.json.companyName || 'there';\n  const template = `{{greeting}} ${contactName},\\n\\nمن {{senderName}} از تیم Dopamine Marketic هستم. ما به شرکت‌های برلینی کمک می‌کنیم تا با راهکارهای داده‌محور رشد سریعی داشته باشند. فرصت ${jobTitle} شما در ${companyName} را دیدیم (${source}) و فکر کردیم شاید بتوانیم در اجرای استراتژی‌های بازاریابی‌تان همراهتان باشیم.\\n\\nخلاصه چیزهایی که از شرح شغل برداشتیم:\\n${matchList || '- تمرکز روی بازاریابی داده محور'}\\n\\nما می‌توانیم ظرف چند روز:\\n- پیاده‌سازی Journey های اتوماسیون بازاریابی را انجام دهیم.\\n- داشبوردهای RealMetrics را برای تیم فروش و مارکتینگ‌تان فعال کنیم.\\n- با تیم شما برای جذب لیدهای باکیفیت کمپین مشترک اجرا کنیم.\\n\\nاگر ۲۰ دقیقه وقت داشته باشید خوشحال می‌شویم چند نمونه کار مرتبط (مثل RealMetrics برای استارتاپ‌های برلینی) را نشان دهیم. مناسبت‌ترین زمان برای شما کی است؟\\n\\nبا احترام،\\n{{senderName}}\\nDopamine Marketic\\n{{senderEmail}}`;\n  return {\n    json: {\n      jobId: item.json.jobId,\n      toEmail: item.json.contactEmail,\n      contactName,\n      jobTitle,\n      companyName,\n      subject: `پیشنهاد همکاری برای ${companyName} - ${jobTitle}`,\n      emailBody: template,\n      jobApplyLink: item.json.jobApplyLink,\n      salary,\n      matchList,\n      source,\n      serviceMatches: item.json.serviceMatches,\n      hunterConfidence: item.json.confidence\n    }\n  };\n});"
+      },
+      "id": "13",
+      "name": "Personalize Email",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2460,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SENDER_EMAIL || 'team@dopamine.de'}}",
+        "toEmail": "={{$json.toEmail}}",
+        "subject": "={{$json.subject}}",
+        "text": "={{$json.emailBody.replace(/{{senderName}}/g, $env.SENDER_NAME || 'تیم Dopamine').replace(/{{senderEmail}}/g, $env.SENDER_EMAIL || 'team@dopamine.de').replace(/{{greeting}}/g, $env.GREETING || 'سلام')}}"
+      },
+      "id": "14",
+      "name": "Send Outreach Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        360
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "Dopamine SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sheetId": "={{$env.GOOGLE_SHEET_ID}}",
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        },
+        "columns": [
+          "Sent At",
+          "Recipient",
+          "Company",
+          "Role",
+          "Source",
+          "Matches",
+          "Hunter Confidence",
+          "Apply Link"
+        ],
+        "addAllFields": false,
+        "useFirstRowAsHeader": true,
+        "value": "={{[$now.toISO(), $json.toEmail, $json.companyName, $json.jobTitle, $json.source, ($json.serviceMatches || []).join(', '), $json.hunterConfidence || '', $json.jobApplyLink]}}",
+        "operation": "append",
+        "range": "OutreachLog!A:H"
+      },
+      "id": "15",
+      "name": "Log to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2860,
+        460
+      ],
+      "credentials": {
+        "googleApi": {
+          "name": "Dopamine Google"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Search Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Query": {
+      "main": [
+        [
+          {
+            "node": "Search Berlin Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Berlin Jobs": {
+      "main": [
+        [
+          {
+            "node": "Flatten Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Results": {
+      "main": [
+        [
+          {
+            "node": "Filter Berlin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Berlin": {
+      "main": [
+        [
+          {
+            "node": "Enrich Job Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Job Profile": {
+      "main": [
+        [
+          {
+            "node": "Filter New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Jobs": {
+      "main": [
+        [
+          {
+            "node": "Require Domain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Require Domain": {
+      "main": [
+        [
+          {
+            "node": "Hunter Domain Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Job & Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hunter Domain Search": {
+      "main": [
+        [
+          {
+            "node": "Select Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Contact": {
+      "main": [
+        [
+          {
+            "node": "Merge Job & Contact",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Job & Contact": {
+      "main": [
+        [
+          {
+            "node": "Filter Missing Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Missing Email": {
+      "main": [
+        [
+          {
+            "node": "Personalize Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Personalize Email": {
+      "main": [
+        [
+          {
+            "node": "Send Outreach Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Europe/Berlin"
+  },
+  "pinData": {},
+  "versionId": "00000000000000000000000000000000",
+  "meta": {
+    "templateCredsSetup": true
+  }
+}
