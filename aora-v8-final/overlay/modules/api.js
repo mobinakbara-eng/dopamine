@@ -29,34 +29,36 @@ function restore(accessRole=S.accessRole){
 function clearSessions(){
   for(const role of ["owner","manager","employee","kiosk"])sessionStorage.removeItem(key(role));
 }
+function activateSession(session,fallbackRole){
+  S.session=session;
+  S.role=session.role;
+  S.accessRole=session.accessRole||fallbackRole||session.role;
+  S.loginRole=S.accessRole;
+  save();
+  history.replaceState({},"",accessPath(S.accessRole));
+}
 
 async function loadDirectory(){S.directory=await access({action:"directory",workspaceSlug:CFG.slug})}
 
 async function login(loginRole,subjectId,pin){
   const session=await access({action:"login",workspaceSlug:CFG.slug,role:loginRole,subjectId,pin});
-  S.session=session;
-  S.role=session.role;
-  S.accessRole=session.accessRole||loginRole;
-  S.loginRole=S.accessRole;
-  save();
-  history.replaceState({},"",accessPath(S.accessRole));
+  activateSession(session,loginRole);
   await loadState();
 }
 
-async function sendMagicLink(email){
-  const result=await access({action:"sendMagicLink",email});
-  S.magicLinkSent=true;
-  renderLogin(result.message||"Anmeldelink wurde versendet.");
+async function passwordLogin(accessRole,email,password){
+  const session=await access({action:"passwordLogin",accessRole,email,password});
+  activateSession(session,accessRole);
+  await loadState();
 }
 
-async function exchangeEmailSession(accessToken,invitationId){
-  const session=await access({action:"exchange",accessToken,invitationId});
-  S.session=session;
-  S.role=session.role;
-  S.accessRole=session.accessRole||session.role;
-  S.loginRole=S.accessRole;
-  save();
-  history.replaceState({},"",accessPath(S.accessRole));
+async function inspectInvitation(invitationId,token){
+  return access({action:"inspectInvitation",invitationId,token});
+}
+
+async function acceptInvitation(invitationId,token,email,password){
+  const session=await access({action:"acceptInvitation",invitationId,token,email,password});
+  activateSession(session,session.accessRole);
   await loadState();
 }
 
@@ -108,8 +110,6 @@ async function apply(event){
     const data=await workspace({action:"apply",event,expectedRevision:S.revision});
     S.state=data.state;
     S.revision=data.revision;
-    if(data.email&&!data.email.sent)toast(`Gespeichert, E-Mail konnte aber nicht gesendet werden: ${data.email.error}`,"error");
-    else if(data.email?.sent)toast("Einladung wurde per E-Mail versendet.");
     render();
     return data;
   }catch(error){
