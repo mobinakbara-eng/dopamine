@@ -1,14 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {
   allowedLocations,
-  allowedOrigin,
   callLegacy,
   context,
-  cors,
   guardLegacyEvent,
-  reply,
   scopeState,
 } from "./core.ts";
+import { allowedOrigin, cors, reply } from "./origin.ts";
 import { applyStructural, STRUCTURAL_TYPES } from "./structural-custom.ts";
 
 Deno.serve(async (request) => {
