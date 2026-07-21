@@ -1,7 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "installCommand": "cd aora-platform/apps/web && npm install --no-audit --no-fund",
-  "buildCommand": "cd aora-platform/apps/web && npm run build",
-  "outputDirectory": "aora-platform/apps/web/.next"
+  "version": 2,
+  "builds": [
+    {
+      "src": "aora-platform/apps/web/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/aora-platform/apps/web/$1"
+    }
+  ]
 }
