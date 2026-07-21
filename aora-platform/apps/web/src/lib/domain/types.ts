@@ -1,7 +1,12 @@
-export const membershipRoles = ["owner", "manager", "employee"] as const;
+export const membershipRoles = [
+  "owner",
+  "admin",
+  "manager",
+  "employee",
+] as const;
 
 export type MembershipRole = (typeof membershipRoles)[number];
-export type MembershipStatus = "invited" | "active" | "suspended" | "revoked";
+export type MembershipStatus = "invited" | "active" | "suspended";
 export type StoreStatus = "active" | "archived";
 export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
 
