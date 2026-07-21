@@ -5,13 +5,16 @@ import { ZodError } from "zod";
 import type { ActionState } from "@/lib/domain/action-state";
 
 export function fieldErrors(error: ZodError): Record<string, string[]> {
-  const flattened = error.flatten().fieldErrors;
   const result: Record<string, string[]> = {};
 
-  Object.entries(flattened).forEach(([field, messages]) => {
-    if (messages?.length) {
-      result[field] = messages;
+  error.issues.forEach((issue) => {
+    const field = issue.path[0];
+
+    if (typeof field !== "string") {
+      return;
     }
+
+    result[field] = [...(result[field] ?? []), issue.message];
   });
 
   return result;
