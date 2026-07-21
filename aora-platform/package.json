@@ -1,0 +1,20 @@
+{
+  "name": "@aora/platform",
+  "version": "0.0.0-private",
+  "private": true,
+  "description": "Safe modernization workspace for the Aora workforce platform",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {},
+  "license": "UNLICENSED"
+}
