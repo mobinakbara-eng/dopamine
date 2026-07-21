@@ -1,0 +1,53 @@
+name: Aora Platform CI
+
+on:
+  pull_request:
+    paths:
+      - "aora-platform/**"
+      - ".github/workflows/aora-platform-ci.yml"
+  push:
+    branches:
+      - "agent/aora-international-foundation"
+    paths:
+      - "aora-platform/**"
+      - ".github/workflows/aora-platform-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aora-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-quality:
+    name: Web lint, typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: aora-platform/apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: aora-platform/apps/web/package.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
