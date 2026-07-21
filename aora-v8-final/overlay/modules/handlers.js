@@ -10,8 +10,11 @@ app.addEventListener("click",async event=>{
     setAccessRole(accessRole);
     S.session=null;
     S.state=null;
-    S.magicLinkSent=false;
     history.replaceState({},"",accessPath(accessRole));
+    renderLogin();
+  }else if(action==="invitation-back"){
+    clearInvitationCallback();
+    await loadDirectory();
     renderLogin();
   }else if(action==="logout"){
     await logout();
@@ -47,7 +50,10 @@ app.addEventListener("click",async event=>{
   }else if(action==="employee-account-modal"){
     employeeAccountModal();
   }else if(action==="resend-invitation"){
-    try{await apply({type:"RESEND_INVITATION",id:button.dataset.id})}catch{}
+    try{
+      const result=await apply({type:"RESEND_INVITATION",id:button.dataset.id});
+      invitationDeliveryModal(result.delivery);
+    }catch{}
   }else if(action==="revoke-invitation"){
     if(confirm("Diese Einladung wirklich widerrufen?")){
       try{await apply({type:"REVOKE_INVITATION",id:button.dataset.id})}catch{}
