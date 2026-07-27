@@ -1,7 +1,7 @@
 {
   "name": "aora-v8-final",
   "private": true,
-  "version": "8.0.5",
+  "version": "8.0.6-final",
   "type": "module",
   "scripts": {
     "check": "node check.mjs",
