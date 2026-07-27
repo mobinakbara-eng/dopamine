@@ -23,6 +23,7 @@ const CFG={
   slug:"aora-v8-hardening-demo",
   accessFunction:"aora-v8-hardening-access",
   workspaceFunction:"aora-v8-hardening-workspace",
+  kioskWorkspaceFunction:"aora-v8-hardening-kiosk",
   tz:"Europe/Berlin",
   version:"8.0.7-hardening",
   isolated:true
