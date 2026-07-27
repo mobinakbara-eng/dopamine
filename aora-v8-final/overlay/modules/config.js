@@ -22,10 +22,10 @@ const CFG={
   url:"https://xqgkawskftzurbujrpex.supabase.co",
   slug:"aora-v8-hardening-demo",
   accessFunction:"aora-v8-hardening-access",
-  workspaceFunction:"aora-v8-hardening-workspace",
+  workspaceFunction:"aora-v8-pilot-workspace",
   kioskWorkspaceFunction:"aora-v8-hardening-kiosk",
   tz:"Europe/Berlin",
-  version:"8.0.9-hardening",
+  version:"8.1.0-pilot",
   isolated:true
 };
 const app=document.getElementById("app"),toasts=document.getElementById("toast-root");
