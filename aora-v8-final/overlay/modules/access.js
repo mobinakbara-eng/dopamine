@@ -7,10 +7,7 @@ function renderError(message){
   app.innerHTML=`<div class="access-shell"><section class="access-brand"><div>${logo}</div><div><h1>Verbindung nicht möglich.</h1><p>${esc(message)}</p></div><span></span></section><section class="access-panel"><div class="access-card"><button class="btn" data-a="retry">Erneut versuchen</button></div></section></div>`;
 }
 function accessLabel(role){return({owner:"Inhaber",manager:"Arbeitgeber",employee:"Mitarbeiter",kiosk:"Kiosk"})[role]||role}
-function loginItems(role,directory){
-  if(role==="owner")return(directory.admins||[]).filter(item=>(item.scope||"owner")==="owner");
-  return directory.kioskDevices||[];
-}
+function loginItems(role,directory){return role==="kiosk"?(directory.kioskDevices||[]):[]}
 function accessShell(card){
   return`<div class="access-shell">
     <section class="access-brand">
@@ -27,10 +24,10 @@ function accessShell(card){
 }
 function renderLogin(message=""){
   const role=S.loginRole||S.accessRole;
-  const directory=S.directory||{admins:[],kioskDevices:[]};
+  const directory=S.directory||{kioskDevices:[]};
   const items=loginItems(role,directory);
   const passwordEnabled=role==="owner"||role==="manager"||role==="employee";
-  const pinEnabled=role==="owner"||role==="kiosk";
+  const pinEnabled=role==="kiosk";
   const roleTabs=[["owner","Inhaber"],["manager","Arbeitgeber"],["employee","Mitarbeiter"],["kiosk","Kiosk"]];
   app.innerHTML=accessShell(`
     <div class="caps muted">AoraAI Workforce</div>
@@ -43,18 +40,17 @@ function renderLogin(message=""){
       <div class="field"><label>E-Mail-Adresse</label><input class="input" name="email" type="email" autocomplete="email" required placeholder="name@firma.de"></div>
       <div class="field"><label>Passwort</label><input class="input" name="password" type="password" autocomplete="current-password" required minlength="10"></div>
       <button class="btn access-submit" type="submit">Anmelden ${I.arrow}</button>
-      <p class="access-note">Neue Konten legen ihr Passwort über den einmaligen Einladungslink fest.</p>
+      <p class="access-note">Inhaber, Arbeitgeber und Mitarbeiter melden sich ausschließlich mit ihrem persönlichen E-Mail-Konto an.</p>
     </form>`:""}
-    ${passwordEnabled&&pinEnabled?`<div class="access-divider"><span>oder Bestandszugang</span></div>`:""}
     ${pinEnabled?`<form id="pin-login">
-      <div class="field"><label>${role==="kiosk"?"Gerät":"Zugang"}</label>
+      <div class="field"><label>Gerät</label>
         <select class="select" name="subject" required>
           ${items.map(item=>`<option value="${esc(item.id)}">${esc(item.name||item.display_name||item.id)}</option>`).join("")}
         </select>
       </div>
-      <div class="field"><label>${role==="kiosk"?"Aktivierungscode":"PIN"}</label><input class="input" name="pin" type="password" required autocomplete="current-password"></div>
-      <button class="btn ${passwordEnabled?"outline":""} access-submit" type="submit">Weiter ${I.arrow}</button>
-      <p class="access-note">PIN-Zugang bleibt nur für Inhaber und lokale Kiosk-Geräte erhalten.</p>
+      <div class="field"><label>Aktivierungscode</label><input class="input" name="pin" type="password" required autocomplete="current-password"></div>
+      <button class="btn access-submit" type="submit">Kiosk aktivieren ${I.arrow}</button>
+      <p class="access-note">Der Aktivierungscode gilt nur für das lokale Kiosk-Gerät und ersetzt keine Mitarbeiterbestätigung.</p>
     </form>`:""}`);
   document.getElementById("password-login")?.addEventListener("submit",async event=>{
     event.preventDefault();
