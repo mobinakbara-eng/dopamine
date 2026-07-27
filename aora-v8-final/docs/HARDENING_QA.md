@@ -135,16 +135,18 @@ No redesign or brand-system replacement was introduced.
 
 ## Vercel build verification
 
-Latest ready preview:
+Latest ready branch alias:
 
 - branch: `agent/aora-v8-hardening`
-- commit: `f7f88b29057a4c09d189ff57af11161f3d97b21f`
-- deployment: `dpl_4zJRgJZvyc7RFkvrHw3cZgJC8bEt`
+- alias: `dopamine-git-agent-aora-v8-hardening-mobins-projects-4f428afa.vercel.app`
 - state: `READY`
 - target: Preview only
 - production alias: unchanged
 
-The latest code-changing build was verified with:
+Latest verified code-changing build:
+
+- commit: `38bd9437608bba9a85ab6d279aaf1f74d1ace0ed`
+- deployment: `dpl_9rrxnYd8LvfLJPo3Xoxb8BVizjQC`
 
 ```text
 > aora-v8-final@8.0.8-hardening build
