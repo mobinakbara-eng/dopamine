@@ -66,18 +66,36 @@ app.addEventListener("click",async event=>{
       try{await apply({type:"DEACTIVATE_ACCOUNT",kind:"employee",id:button.dataset.id})}catch{}
     }
   }else if(action==="open-kiosk"){
+    const previousRole=["owner","manager"].includes(S.accessRole)?S.accessRole:null;
+    if(previousRole)sessionStorage.setItem(`aora:${CFG.slug}:return-admin-role`,previousRole);
+    const previousToken=S.session?.token;
+    if(previousToken){
+      try{await access({action:"logout",token:previousToken})}catch{}
+    }
+    if(S.accessRole)sessionStorage.removeItem(key(S.accessRole));
+    sessionStorage.removeItem(key("owner"));
+    sessionStorage.removeItem(key("manager"));
     setAccessRole("kiosk");
     S.session=null;
     S.state=null;
+    S.directory=null;
     sessionStorage.removeItem(key("kiosk"));
     history.pushState({},"",accessPath("kiosk"));
     try{await ensureDirectory("kiosk");renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="switch-admin"){
-    const role=S.session?.accessRole||"manager";
-    setAccessRole(role);
-    S.session=restore(role);
-    history.pushState({},"",accessPath(role));
-    S.session?loadState():renderLogin();
+    const kioskToken=S.session?.token;
+    if(kioskToken){
+      try{await access({action:"logout",token:kioskToken})}catch{}
+    }
+    sessionStorage.removeItem(key("kiosk"));
+    const returnRole=sessionStorage.getItem(`aora:${CFG.slug}:return-admin-role`)||"manager";
+    sessionStorage.removeItem(`aora:${CFG.slug}:return-admin-role`);
+    setAccessRole(returnRole==="owner"?"owner":"manager");
+    S.session=null;
+    S.state=null;
+    S.directory=null;
+    history.pushState({},"",accessPath(S.accessRole));
+    renderLogin("Bitte erneut anmelden, um den Verwaltungsbereich zu öffnen.");
   }else if(action==="select-person"){
     S.selected=button.dataset.id;
     renderKiosk();
