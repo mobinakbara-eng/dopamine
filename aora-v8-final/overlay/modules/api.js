@@ -40,7 +40,10 @@ async function request(functionName,body){
   }
 }
 async function access(body){return request(CFG.accessFunction,body)}
-async function workspace(body){return request(CFG.workspaceFunction,{...body,token:S.session?.token})}
+async function workspace(body){
+  const functionName=S.accessRole==="kiosk"?CFG.kioskWorkspaceFunction:CFG.workspaceFunction;
+  return request(functionName,{...body,token:S.session?.token});
+}
 
 function key(accessRole=S.accessRole){return`aora:${CFG.slug}:${accessRole}`}
 function save(){if(S.session)sessionStorage.setItem(key(S.accessRole),JSON.stringify(S.session))}
