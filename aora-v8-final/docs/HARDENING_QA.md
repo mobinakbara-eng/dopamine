@@ -135,16 +135,16 @@ No redesign or brand-system replacement was introduced.
 
 ## Vercel build verification
 
-Latest verified deployment:
+Latest ready preview:
 
 - branch: `agent/aora-v8-hardening`
-- commit: `38bd9437608bba9a85ab6d279aaf1f74d1ace0ed`
-- deployment: `dpl_9rrxnYd8LvfLJPo3Xoxb8BVizjQC`
+- commit: `f7f88b29057a4c09d189ff57af11161f3d97b21f`
+- deployment: `dpl_4zJRgJZvyc7RFkvrHw3cZgJC8bEt`
 - state: `READY`
 - target: Preview only
 - production alias: unchanged
 
-Verified build log:
+The latest code-changing build was verified with:
 
 ```text
 > aora-v8-final@8.0.8-hardening build
