@@ -20,11 +20,11 @@ function setAccessRole(accessRole){
 const initialAccessRole=accessRoleFromPath();
 const CFG={
   url:"https://xqgkawskftzurbujrpex.supabase.co",
-  slug:"aora-v8-final-demo",
-  accessFunction:"aora-v8-final-access",
-  workspaceFunction:"aora-v8-final-workspace",
+  slug:"aora-v8-hardening-demo",
+  accessFunction:"aora-v8-hardening-access",
+  workspaceFunction:"aora-v8-hardening-workspace",
   tz:"Europe/Berlin",
-  version:"8.0.6-final",
+  version:"8.0.7-hardening",
   isolated:true
 };
 const app=document.getElementById("app"),toasts=document.getElementById("toast-root");
