@@ -18,6 +18,7 @@ JSON.parse(await readFile(resolve(root, "vercel.json"), "utf8"));
 const requiredPaths = [
   "supabase/functions/aora-v8-hardening-access/index.ts",
   "supabase/functions/aora-v8-hardening-workspace/index.ts",
+  "supabase/functions/aora-v8-hardening-kiosk/index.ts",
   "supabase/migrations/202607270001_aora_hardening_atomic_rate_limit.sql",
   "supabase/migrations/202607270002_aora_hardening_atomic_invitation_accept.sql",
   "supabase/migrations/202607270003_aora_hardening_atomic_projection_trigger.sql",
@@ -35,6 +36,7 @@ for (const module of [
   "access.js",
   "admin.js",
   "owner-routing.js",
+  "kiosk-hardening.js",
   "modals.js",
   "invitation-delivery.js",
   "handlers.js",
@@ -45,13 +47,17 @@ for (const module of [
   }
 }
 if (!index.includes("invitation.css")) throw new Error("Missing invitation stylesheet.");
+for (const marker of ["styles.css?v=808", "config.js?v=808", "kiosk-hardening.js?v=808"]) {
+  if (!index.includes(marker)) throw new Error(`Missing 8.0.8 cache marker: ${marker}`);
+}
 
 const config = await readFile(resolve(modules, "config.js"), "utf8");
 for (const expected of [
   "aora-v8-hardening-demo",
   "aora-v8-hardening-access",
   "aora-v8-hardening-workspace",
-  "8.0.7-hardening",
+  "aora-v8-hardening-kiosk",
+  "8.0.8-hardening",
 ]) {
   if (!config.includes(expected)) throw new Error(`Missing isolated config marker: ${expected}`);
 }
@@ -67,12 +73,18 @@ const apiSource = await readFile(resolve(modules, "api.js"), "utf8");
 const bootSource = await readFile(resolve(modules, "boot.js"), "utf8");
 const handlersSource = await readFile(resolve(modules, "handlers.js"), "utf8");
 const invitationSource = await readFile(resolve(modules, "invitation-delivery.js"), "utf8");
+const kioskOverlay = await readFile(resolve(modules, "kiosk-hardening.js"), "utf8");
+const canonicalKiosk = await readFile(resolve(root, "../aora/modules/kiosk-view.js"), "utf8");
 const accessFunction = await readFile(
   resolve(root, "supabase/functions/aora-v8-hardening-access/index.ts"),
   "utf8",
 );
 const workspaceFunction = await readFile(
   resolve(root, "supabase/functions/aora-v8-hardening-workspace/index.ts"),
+  "utf8",
+);
+const kioskFunction = await readFile(
+  resolve(root, "supabase/functions/aora-v8-hardening-kiosk/index.ts"),
   "utf8",
 );
 const projectionMigration = await readFile(
@@ -88,16 +100,14 @@ for (const marker of [
   "AbortController",
   "Eine Aktion wird bereits verarbeitet",
   "S.directory=null",
+  'S.accessRole==="kiosk"?CFG.kioskWorkspaceFunction:CFG.workspaceFunction',
 ]) {
   if (!apiSource.includes(marker)) throw new Error(`Missing frontend hardening marker: ${marker}`);
 }
 if (!bootSource.includes("await ensureDirectory(accessRole)")) {
   throw new Error("Boot must lazy-load the public PIN directory only when required.");
 }
-for (const marker of [
-  "managerInvitationModal()",
-  "employeeInvitationModal()",
-]) {
+for (const marker of ["managerInvitationModal()", "employeeInvitationModal()"]) {
   if (!handlersSource.includes(marker)) throw new Error(`Missing explicit invitation handler: ${marker}`);
 }
 for (const marker of [
@@ -108,13 +118,20 @@ for (const marker of [
 ]) {
   if (!invitationSource.includes(marker)) throw new Error(`Missing invitation lifecycle marker: ${marker}`);
 }
-for (const forbidden of [
-  "function managerModal()",
-  "function employeeAccountModal()",
-]) {
+for (const forbidden of ["function managerModal()", "function employeeAccountModal()"]) {
   if (invitationSource.includes(forbidden)) {
     throw new Error(`Invitation module must not override base modal function: ${forbidden}`);
   }
+}
+for (const marker of [
+  'employee.status!=="pending"',
+  'employee.status!=="revoked"',
+  "function renderKiosk()",
+]) {
+  if (!kioskOverlay.includes(marker)) throw new Error(`Missing kiosk overlay marker: ${marker}`);
+}
+if (canonicalKiosk.includes('status!=="pending"') || canonicalKiosk.includes("aora-v8-hardening")) {
+  throw new Error("Canonical aora kiosk source was modified by the hardening overlay.");
 }
 for (const marker of [
   "aora_hardening_project_snapshot_trigger",
@@ -147,6 +164,18 @@ for (const marker of [
   "TEAM_PREVIEW_SUFFIX",
 ]) {
   if (!workspaceFunction.includes(marker)) throw new Error(`Missing workspace hardening marker: ${marker}`);
+}
+for (const marker of [
+  'session.role !== "kiosk"',
+  'device.locked === true',
+  'item.status !== "pending"',
+  'item.status !== "revoked"',
+  "new TextEncoder().encode(text).byteLength",
+  "KIOSK_TARGETS",
+  "Dieser Statuswechsel ist aktuell nicht möglich",
+  "UPSTREAM_TIMEOUT_MS",
+]) {
+  if (!kioskFunction.includes(marker)) throw new Error(`Missing kiosk guard marker: ${marker}`);
 }
 
 const baseCss = await readFile(resolve(root, "../aora/styles.css"), "utf8");
