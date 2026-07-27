@@ -25,7 +25,7 @@ const CFG={
   workspaceFunction:"aora-v8-hardening-workspace",
   kioskWorkspaceFunction:"aora-v8-hardening-kiosk",
   tz:"Europe/Berlin",
-  version:"8.0.8-hardening",
+  version:"8.0.9-hardening",
   isolated:true
 };
 const app=document.getElementById("app"),toasts=document.getElementById("toast-root");
