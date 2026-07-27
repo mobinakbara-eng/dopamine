@@ -1,6 +1,6 @@
 "use strict";
 function renderKiosk(){
-  const now=berlin(),weekday=new Intl.DateTimeFormat("de-DE",{timeZone:CFG.tz,weekday:"long"}).format(new Date(`${berlin().date}T12:00:00`)),es=S.state.employees.filter(x=>x.active&&x.status!=="pending"&&x.status!=="revoked"&&(!S.session.locationId||x.locationId===S.session.locationId));
+  const now=berlin(),weekday=new Intl.DateTimeFormat("de-DE",{timeZone:CFG.tz,weekday:"long"}).format(new Date(`${berlin().date}T12:00:00`)),es=S.state.employees.filter(x=>x.active&&(!S.session.locationId||x.locationId===S.session.locationId));
   const out=es.filter(x=>!live(x.id)),on=es.filter(x=>live(x.id)?.status==="live"),pause=es.filter(x=>live(x.id)?.status==="paused");
   app.innerHTML=`<div class="kiosk-app"><div class="kiosk-surface">
     <header class="kiosk-header">
