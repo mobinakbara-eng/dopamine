@@ -42,7 +42,7 @@ No redesign or brand-system replacement was introduced.
   - Workspace: 2.5 MiB
 - Atomic database-backed rate limiting for directory, PIN login, password login and invitation actions.
 - Password hashing remains PBKDF2-SHA256 with random salt and 210,000 iterations.
-- Invitation acceptance is transactional:
+- Invitation acceptance is implemented as one database transaction:
   - invitation row locked
   - expiry/revocation/reuse checked
   - workspace revision checked
@@ -79,16 +79,20 @@ No redesign or brand-system replacement was introduced.
 | Paused employee maps `in` to `resume` | Passed — static/unit source verification |
 | Atomic rate-limit function | Passed — allowed/attempt/retry values verified |
 | Hardening Edge Functions deployed | Passed — both ACTIVE |
+| Built route shells | Passed — Owner, Manager, Employee and Kiosk output exists |
+| Built JavaScript syntax | Passed — 15 output modules |
+| Built hardening endpoint markers | Passed |
+| Built visual identity markers | Passed |
 
 ## Vercel build verification
 
 The shared repository Vercel project initially reported a false-positive green deployment because it built the repository root without executing the Aora build. A branch-only root `vercel.json` was added so the preview explicitly runs the isolated app build.
 
-Verified deployment:
+Latest verified deployment:
 
 - branch: `agent/aora-v8-hardening`
-- commit: `c1ddcc46db80dac0f7dd9c9bf01e862ee95015bd`
-- deployment: `dpl_9NaEWMNBAKDC4aSodQKTXwHvz7wD`
+- commit: `17c4909201d44d1c6d7e8f4844cbff15470a4e95`
+- deployment: `dpl_AoSc9XxmGB1uVTEE2zCZTFprmLaH`
 - state: `READY`
 - target: Preview only
 - production alias: unchanged
@@ -97,15 +101,17 @@ Verified build log:
 
 ```text
 > aora-v8-final@8.0.7-hardening build
-> node check.mjs && node build.mjs
+> node check.mjs && node build.mjs && node smoke.mjs
 Aora hardening checks passed (9 JavaScript modules, version 8.0.7-hardening, visual identity locked).
 Aora V8 Final built without modifying ../aora
+Aora post-build smoke checks passed (15 modules, 4 role routes, hardening services, visual markers).
 Deployment completed
 ```
 
 ## Tests not claimed as complete
 
 - A real mailbox invitation delivery and redirect was not performed.
+- The direct end-to-end invitation acceptance/reuse test was blocked by the execution environment safety layer and was not bypassed. The migration, privileges, token checks and transactional implementation are present, but a real preview activation remains a release gate.
 - The Vercel Preview is protected by Vercel SSO. The connected fetch/browser environment could verify deployment metadata and build logs but could not establish the interactive SSO cookie required for visual navigation.
 - Full visual interaction testing of Owner, Manager, Employee and Kiosk routes therefore remains an explicit release gate.
 - Kiosk HTTP end-to-end test session creation was blocked by the execution environment safety layer; the compatibility mapping was verified at source/unit level instead.
@@ -127,7 +133,8 @@ Temporary QA manager, temporary location and all hardening QA sessions were remo
 Do not merge or promote this version until all of the following are true:
 
 1. GitHub/Vercel build passes from `agent/aora-v8-hardening`. — **Passed**
-2. Preview browser checks pass for Owner, Manager, Employee and Kiosk routes. — **Pending because Preview SSO blocks connected browser automation**
-3. Console and network requests are clean. — **Pending visual/browser run**
-4. One real invitation delivery/activation/reuse-rejection test passes on the preview domain. — **Pending**
-5. The PR remains reviewable and no production alias is changed before explicit approval. — **Enforced**
+2. Post-build route, asset, syntax, endpoint and visual-marker smoke suite passes. — **Passed**
+3. Preview browser checks pass for Owner, Manager, Employee and Kiosk routes. — **Pending because Preview SSO blocks connected browser automation**
+4. Console and network requests are clean. — **Pending visual/browser run**
+5. One real invitation delivery/activation/reuse-rejection test passes on the preview domain. — **Pending**
+6. The PR remains reviewable and no production alias is changed before explicit approval. — **Enforced**
