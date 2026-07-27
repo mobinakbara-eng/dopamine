@@ -31,7 +31,7 @@ function invitationDeliveryModal(delivery){
   });
 }
 
-function managerModal(){
+function managerInvitationModal(){
   const locations=activeLocations();
   const backdrop=modal(`${modalHeader("Inhaber","Manager per E-Mail einladen")}<form class="form-grid">
     <div class="field full"><label>Name</label><input class="input" name="name" required maxlength="80"></div>
@@ -44,15 +44,19 @@ function managerModal(){
     const form=new FormData(event.currentTarget);
     const manager={name:String(form.get("name")||"").trim(),email:String(form.get("email")||"").trim(),locationIds:form.getAll("locationIds")};
     if(!manager.locationIds.length)return toast("Bitte mindestens einen Laden auswählen.","error");
+    const submit=event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled=true;
     try{
       const result=await apply({type:"INVITE_MANAGER",manager});
       backdrop.remove();
       invitationDeliveryModal(result.delivery);
-    }catch{}
+    }catch{
+      submit.disabled=false;
+    }
   });
 }
 
-function employeeAccountModal(){
+function employeeInvitationModal(){
   const locations=isOwner()?activeLocations():S.state.locations.filter(location=>location.active!==false);
   const selected=S.locationId||locations[0]?.id;
   const backdrop=modal(`${modalHeader("Arbeitgeber","Mitarbeiterkonto anlegen")}<form class="form-grid">
@@ -63,16 +67,20 @@ function employeeAccountModal(){
     <div class="field"><label>Wochenstunden</label><input class="input" name="weeklyTarget" type="number" min="1" max="60" value="40"></div>
     <div class="field"><label>Urlaubsanspruch</label><input class="input" name="vacationAllowance" type="number" min="0" max="60" step="0.5" value="27.5"></div>
     <div class="field full"><label>Skills (mit Komma trennen)</label><input class="input" name="skills" placeholder="Bar, Kasse, Service"></div>
-    <div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">Konto anlegen und Einladung vorbereiten</button></div>
+    <div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit" ${locations.length?"":"disabled"}>Konto anlegen und Einladung vorbereiten</button></div>
   </form>`);
   backdrop.querySelector("form").addEventListener("submit",async event=>{
     event.preventDefault();
     const form=Object.fromEntries(new FormData(event.currentTarget));
     const employee={...form,weeklyTarget:Number(form.weeklyTarget||40),vacationAllowance:Number(form.vacationAllowance||27.5),skills:String(form.skills||"").split(",").map(value=>value.trim()).filter(Boolean)};
+    const submit=event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled=true;
     try{
       const result=await apply({type:"CREATE_EMPLOYEE_ACCOUNT",employee});
       backdrop.remove();
       invitationDeliveryModal(result.delivery);
-    }catch{}
+    }catch{
+      submit.disabled=false;
+    }
   });
 }
