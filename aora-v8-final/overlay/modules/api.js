@@ -21,7 +21,7 @@ async function request(functionName,body){
 async function access(body){return request(CFG.accessFunction,body)}
 async function workspace(body){return request(CFG.workspaceFunction,{...body,token:S.session?.token})}
 
-function key(accessRole=S.accessRole){return`aora-v8-final:${accessRole}`}
+function key(accessRole=S.accessRole){return`aora:${CFG.slug}:${accessRole}`}
 function save(){if(S.session)sessionStorage.setItem(key(S.accessRole),JSON.stringify(S.session))}
 function restore(accessRole=S.accessRole){
   try{return JSON.parse(sessionStorage.getItem(key(accessRole))||"null")}catch{return null}
@@ -39,6 +39,11 @@ function activateSession(session,fallbackRole){
 }
 
 async function loadDirectory(){S.directory=await access({action:"directory",workspaceSlug:CFG.slug})}
+async function ensureDirectory(accessRole=S.loginRole){
+  if(accessRole!=="owner"&&accessRole!=="kiosk")return;
+  if(S.directory)return;
+  await loadDirectory();
+}
 
 async function login(loginRole,subjectId,pin){
   const session=await access({action:"login",workspaceSlug:CFG.slug,role:loginRole,subjectId,pin});
