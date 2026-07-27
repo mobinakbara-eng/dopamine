@@ -42,12 +42,12 @@ app.addEventListener("click",async event=>{
       try{await apply({type:"ARCHIVE_LOCATION",id:location.id})}catch{}
     }
   }else if(action==="manager-modal"){
-    managerModal();
+    managerInvitationModal();
   }else if(action==="manager-access-modal"){
     const manager=S.state.admins.find(item=>item.id===button.dataset.id);
     if(manager)managerAccessModal(manager);
   }else if(action==="employee-account-modal"){
-    employeeAccountModal();
+    employeeInvitationModal();
   }else if(action==="resend-invitation"){
     try{
       const result=await apply({type:"RESEND_INVITATION",id:button.dataset.id});
