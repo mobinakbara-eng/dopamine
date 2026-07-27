@@ -54,6 +54,35 @@ function employeeStats(employee){
   return{shifts,entries,planned,worked,balance:worked-planned,remaining};
 }
 
+function clockTargetLabel(target){
+  return({in:"Arbeitszeit starten",pause:"Pause starten",resume:"Pause beenden",out:"Arbeitszeit beenden"})[target]||"Zeiterfassung bestätigen";
+}
+
+function pendingClockRequest(employee){
+  const current=Date.now();
+  return(S.state.clockRequests||[])
+    .filter(item=>item.employeeId===employee.id&&item.status==="pending"&&new Date(item.expiresAt).getTime()>current)
+    .sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime())[0]||null;
+}
+
+function clockApprovalPanel(employee){
+  const request=pendingClockRequest(employee);
+  if(!request)return"";
+  const expiresIn=Math.max(0,Math.ceil((new Date(request.expiresAt).getTime()-Date.now())/1000));
+  const warnings=(request.policyWarnings||[]).map(item=>`<li>${esc(item)}</li>`).join("");
+  return`<section class="panel" style="margin:0 0 18px;padding:18px;border:2px solid #000">
+    <div class="caps muted">Sichere Kiosk-Bestätigung</div>
+    <h2 style="margin-top:8px">${esc(clockTargetLabel(request.target))}</h2>
+    <p class="small muted" style="margin-top:8px">Kiosk ${esc(loc(request.locationId)?.name||request.locationId||"")} · ${esc(request.time||"")} · noch ${expiresIn} Sekunden gültig</p>
+    ${warnings?`<ul class="small" style="margin:12px 0 0 18px">${warnings}</ul>`:""}
+    <div class="actions" style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" data-a="clock-approve" data-id="${esc(request.id)}">Mit Standort bestätigen ${I.check}</button>
+      <button class="btn outline" data-a="clock-deny" data-id="${esc(request.id)}">Ablehnen</button>
+    </div>
+    <p class="access-note">Die Arbeitszeit wird erst nach Bestätigung mit deinem persönlichen Konto gespeichert.</p>
+  </section>`;
+}
+
 function renderEmployee(){
   const employeeId=S.session?.subjectId||S.session?.employeeId;
   const employee=(S.state?.employees||[]).find(item=>item.id===employeeId);
@@ -78,7 +107,7 @@ function renderEmployee(){
           <button class="circle-btn" data-a="logout" aria-label="Abmelden">${I.logout}</button>
         </div>
       </header>
-      <main class="employee-main">${employeeView(employee,view)}</main>
+      <main class="employee-main">${clockApprovalPanel(employee)}${employeeView(employee,view)}</main>
       <nav class="employee-bottom" aria-label="Mitarbeiter Navigation">
         ${[["home","Start",I.home],["calendar","Kalender",I.cal],["time","Zeiten",I.clock],["leave","Urlaub",I.umbrella],["more","Mehr",I.menu]].map(([id,label,icon])=>`<button class="${view===id?"active":""}" data-a="employee-view" data-view="${id}">${icon}<span>${label}</span>${id==="more"&&unread?`<b class="badge-count" style="right:16px;top:8px">${unread}</b>`:""}</button>`).join("")}
       </nav>
