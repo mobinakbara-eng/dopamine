@@ -1,5 +1,19 @@
 "use strict";
 
+function secureCurrentPosition(){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation){
+      reject(new Error("Standortfreigabe wird für die sichere Kiosk-Bestätigung benötigt."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position=>resolve({lat:position.coords.latitude,lng:position.coords.longitude,accuracy:position.coords.accuracy,capturedAt:new Date(position.timestamp).toISOString()}),
+      ()=>reject(new Error("Standort konnte nicht bestätigt werden. Bitte Standortzugriff erlauben und erneut versuchen.")),
+      {enableHighAccuracy:true,timeout:12000,maximumAge:0}
+    );
+  });
+}
+
 app.addEventListener("click",async event=>{
   const button=event.target.closest("[data-a]");
   if(!button)return;
@@ -107,7 +121,26 @@ app.addEventListener("click",async event=>{
       await apply({type:"KIOSK_TRANSITION",employeeId:S.selected,target:button.dataset.target});
       S.selected=null;
       renderKiosk();
+      toast("Anfrage wurde an das persönliche Mitarbeiterkonto gesendet.");
     }catch{}
+  }else if(action==="clock-approve"){
+    button.disabled=true;
+    try{
+      const position=await secureCurrentPosition();
+      await apply({type:"APPROVE_CLOCK_REQUEST",id:button.dataset.id,position});
+      toast("Zeiterfassung wurde bestätigt.");
+    }catch(error){
+      toast(error.message,"error");
+      button.disabled=false;
+    }
+  }else if(action==="clock-deny"){
+    button.disabled=true;
+    try{
+      await apply({type:"DENY_CLOCK_REQUEST",id:button.dataset.id,reason:"Vom Mitarbeiter abgelehnt"});
+      toast("Kiosk-Anfrage wurde abgelehnt.");
+    }catch{
+      button.disabled=false;
+    }
   }else if(action==="kiosk-help"){
     kioskHelpModal();
   }else if(action==="leave-modal"){
