@@ -18,7 +18,7 @@ for(const relativePath of [
 
 const rootIndex=await readFile(resolve(dist,"index.html"),"utf8");
 requireMarkers("index",rootIndex,[
-  "AoraAI Workforce","styles.css?v=809","invitation.css?v=809","modules/config.js?v=809",
+  "AoraAI Workforce","styles.css?v=809","invitation.css?v=809","modules/config.js?v=810",
   "modules/api.js?v=809","modules/access.js?v=809","modules/employee-hardening.js?v=809",
   "modules/identity-hardening.js?v=809","modules/profile-hardening.js?v=809","modules/handlers.js?v=809",
 ]);
@@ -30,8 +30,8 @@ for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
 requireMarkers("config",config,[
   'slug:"aora-v8-hardening-demo"','accessFunction:"aora-v8-hardening-access"',
-  'workspaceFunction:"aora-v8-hardening-workspace"','kioskWorkspaceFunction:"aora-v8-hardening-kiosk"',
-  'version:"8.0.9-hardening"',
+  'workspaceFunction:"aora-v8-pilot-workspace"','kioskWorkspaceFunction:"aora-v8-hardening-kiosk"',
+  'version:"8.1.0-pilot"',
 ]);
 for(const forbidden of ['slug:"aora-v8-final-demo"','accessFunction:"aora-v8-final-access"','workspaceFunction:"aora-v8-final-workspace"']){
   if(config.includes(forbidden))throw new Error(`Built output points to old service: ${forbidden}`);
@@ -77,4 +77,4 @@ const modules=(await readdir(modulesDirectory)).filter(file=>file.endsWith(".js"
 if(modules.length<21)throw new Error(`Unexpected built module count: ${modules.length}`);
 for(const module of modules)execFileSync(process.execPath,["--check",resolve(modulesDirectory,module)],{stdio:"inherit"});
 
-console.log(`Aora post-build smoke checks passed (${modules.length} modules, 4 role routes, exact identities, personal punch approval, kiosk re-auth, active hours and visual markers).`);
+console.log(`Aora post-build smoke checks passed (${modules.length} modules, 4 role routes, tenant guard, exact identities, personal punch approval, kiosk re-auth, active hours and visual markers).`);
