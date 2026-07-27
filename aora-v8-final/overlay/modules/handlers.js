@@ -11,11 +11,10 @@ app.addEventListener("click",async event=>{
     S.session=null;
     S.state=null;
     history.replaceState({},"",accessPath(accessRole));
-    renderLogin();
+    try{await ensureDirectory(accessRole);renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="invitation-back"){
     clearInvitationCallback();
-    await loadDirectory();
-    renderLogin();
+    try{await ensureDirectory(S.accessRole);renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="logout"){
     await logout();
   }else if(action==="retry"){
@@ -72,7 +71,7 @@ app.addEventListener("click",async event=>{
     S.state=null;
     sessionStorage.removeItem(key("kiosk"));
     history.pushState({},"",accessPath("kiosk"));
-    renderLogin();
+    try{await ensureDirectory("kiosk");renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="switch-admin"){
     const role=S.session?.accessRole||"manager";
     setAccessRole(role);
