@@ -20,6 +20,7 @@ const requiredPaths = [
   "supabase/functions/aora-v8-hardening-workspace/index.ts",
   "supabase/migrations/202607270001_aora_hardening_atomic_rate_limit.sql",
   "supabase/migrations/202607270002_aora_hardening_atomic_invitation_accept.sql",
+  "supabase/migrations/202607270003_aora_hardening_atomic_projection_trigger.sql",
 ];
 for (const relativePath of requiredPaths) {
   await access(resolve(root, relativePath)).catch(() => {
@@ -64,6 +65,8 @@ if (!configuredVersion || packageJson.version !== configuredVersion) {
 
 const apiSource = await readFile(resolve(modules, "api.js"), "utf8");
 const bootSource = await readFile(resolve(modules, "boot.js"), "utf8");
+const handlersSource = await readFile(resolve(modules, "handlers.js"), "utf8");
+const invitationSource = await readFile(resolve(modules, "invitation-delivery.js"), "utf8");
 const accessFunction = await readFile(
   resolve(root, "supabase/functions/aora-v8-hardening-access/index.ts"),
   "utf8",
@@ -72,16 +75,58 @@ const workspaceFunction = await readFile(
   resolve(root, "supabase/functions/aora-v8-hardening-workspace/index.ts"),
   "utf8",
 );
+const projectionMigration = await readFile(
+  resolve(root, "supabase/migrations/202607270003_aora_hardening_atomic_projection_trigger.sql"),
+  "utf8",
+);
 
 for (const marker of [
   "`aora:${CFG.slug}:${accessRole}`",
   "cache:\"no-store\"",
   "ensureDirectory",
+  "REQUEST_TIMEOUT_MS",
+  "AbortController",
+  "Eine Aktion wird bereits verarbeitet",
+  "S.directory=null",
 ]) {
   if (!apiSource.includes(marker)) throw new Error(`Missing frontend hardening marker: ${marker}`);
 }
 if (!bootSource.includes("await ensureDirectory(accessRole)")) {
   throw new Error("Boot must lazy-load the public PIN directory only when required.");
+}
+for (const marker of [
+  "managerInvitationModal()",
+  "employeeInvitationModal()",
+]) {
+  if (!handlersSource.includes(marker)) throw new Error(`Missing explicit invitation handler: ${marker}`);
+}
+for (const marker of [
+  "function managerInvitationModal()",
+  "function employeeInvitationModal()",
+  "submit.disabled=true",
+  "invitationDeliveryModal(result.delivery)",
+]) {
+  if (!invitationSource.includes(marker)) throw new Error(`Missing invitation lifecycle marker: ${marker}`);
+}
+for (const forbidden of [
+  "function managerModal()",
+  "function employeeAccountModal()",
+]) {
+  if (invitationSource.includes(forbidden)) {
+    throw new Error(`Invitation module must not override base modal function: ${forbidden}`);
+  }
+}
+for (const marker of [
+  "aora_hardening_project_snapshot_trigger",
+  "aora-v8-hardening-demo",
+  "after update of state",
+  "project_workspace_state",
+  "revoke all",
+  "service_role",
+]) {
+  if (!projectionMigration.toLowerCase().includes(marker.toLowerCase())) {
+    throw new Error(`Missing atomic projection migration marker: ${marker}`);
+  }
 }
 for (const marker of [
   "aora_consume_rate_limit",
