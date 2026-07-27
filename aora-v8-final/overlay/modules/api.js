@@ -64,12 +64,13 @@ function activateSession(session,fallbackRole){
 
 async function loadDirectory(){S.directory=await access({action:"directory",workspaceSlug:CFG.slug})}
 async function ensureDirectory(accessRole=S.loginRole){
-  if(accessRole!=="owner"&&accessRole!=="kiosk")return;
+  if(accessRole!=="kiosk")return;
   if(S.directory)return;
   await loadDirectory();
 }
 
 async function login(loginRole,subjectId,pin){
+  if(loginRole!=="kiosk")throw Object.assign(new Error("PIN-Anmeldung ist nur für lokale Kiosk-Geräte verfügbar."),{status:403});
   const session=await access({action:"login",workspaceSlug:CFG.slug,role:loginRole,subjectId,pin});
   activateSession(session,loginRole);
   await loadState();
