@@ -1,22 +1,43 @@
 "use strict";
 
+const REQUEST_TIMEOUT_MS=15000;
+
 async function request(functionName,body){
-  const response=await fetch(`${CFG.url}/functions/v1/${functionName}`,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(body),
-    cache:"no-store"
-  });
-  const text=await response.text();
-  let data;
-  try{data=text?JSON.parse(text):{}}catch{data={error:text}}
-  if(!response.ok){
-    const error=new Error(data.error||data.message||`HTTP ${response.status}`);
-    error.status=response.status;
-    error.data=data;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+  try{
+    const response=await fetch(`${CFG.url}/functions/v1/${functionName}`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body),
+      cache:"no-store",
+      signal:controller.signal
+    });
+    const text=await response.text();
+    let data;
+    try{data=text?JSON.parse(text):{}}catch{data={error:text}}
+    if(!response.ok){
+      const error=new Error(data.error||data.message||`HTTP ${response.status}`);
+      error.status=response.status;
+      error.data=data;
+      throw error;
+    }
+    return data;
+  }catch(error){
+    if(error?.name==="AbortError"){
+      const timeoutError=new Error("Die Verbindung dauert zu lange. Bitte erneut versuchen.");
+      timeoutError.status=408;
+      throw timeoutError;
+    }
+    if(error instanceof TypeError){
+      const networkError=new Error("Aora konnte den Server nicht erreichen. Bitte Verbindung prüfen.");
+      networkError.status=503;
+      throw networkError;
+    }
     throw error;
+  }finally{
+    clearTimeout(timeout);
   }
-  return data;
 }
 async function access(body){return request(CFG.accessFunction,body)}
 async function workspace(body){return request(CFG.workspaceFunction,{...body,token:S.session?.token})}
@@ -72,8 +93,9 @@ async function logout(){
   clearSessions();
   S.session=null;
   S.state=null;
+  S.directory=null;
   history.replaceState({},"",accessPath(S.accessRole));
-  renderLogin();
+  try{await ensureDirectory(S.accessRole);renderLogin()}catch(error){renderError(error.message)}
 }
 
 async function loadState(quiet=false){
@@ -99,7 +121,8 @@ async function loadState(quiet=false){
       clearSessions();
       S.session=null;
       S.state=null;
-      renderLogin();
+      S.directory=null;
+      try{await ensureDirectory(S.accessRole);renderLogin()}catch(directoryError){renderError(directoryError.message)}
       toast(error.message||"Sitzung abgelaufen.","error");
     }else{
       toast(error.message,"error");
@@ -109,7 +132,11 @@ async function loadState(quiet=false){
 }
 
 async function apply(event){
-  if(S.busy)return;
+  if(S.busy){
+    const busyError=new Error("Eine Aktion wird bereits verarbeitet.");
+    busyError.status=409;
+    throw busyError;
+  }
   S.busy=true;
   try{
     const data=await workspace({action:"apply",event,expectedRevision:S.revision});
