@@ -80,10 +80,34 @@ No redesign or brand-system replacement was introduced.
 | Atomic rate-limit function | Passed — allowed/attempt/retry values verified |
 | Hardening Edge Functions deployed | Passed — both ACTIVE |
 
+## Vercel build verification
+
+The shared repository Vercel project initially reported a false-positive green deployment because it built the repository root without executing the Aora build. A branch-only root `vercel.json` was added so the preview explicitly runs the isolated app build.
+
+Verified deployment:
+
+- branch: `agent/aora-v8-hardening`
+- commit: `c1ddcc46db80dac0f7dd9c9bf01e862ee95015bd`
+- deployment: `dpl_9NaEWMNBAKDC4aSodQKTXwHvz7wD`
+- state: `READY`
+- target: Preview only
+- production alias: unchanged
+
+Verified build log:
+
+```text
+> aora-v8-final@8.0.7-hardening build
+> node check.mjs && node build.mjs
+Aora hardening checks passed (9 JavaScript modules, version 8.0.7-hardening, visual identity locked).
+Aora V8 Final built without modifying ../aora
+Deployment completed
+```
+
 ## Tests not claimed as complete
 
 - A real mailbox invitation delivery and redirect was not performed.
-- Full browser interaction testing of every Owner, Manager, Employee and Kiosk screen still requires the final Vercel preview URL.
+- The Vercel Preview is protected by Vercel SSO. The connected fetch/browser environment could verify deployment metadata and build logs but could not establish the interactive SSO cookie required for visual navigation.
+- Full visual interaction testing of Owner, Manager, Employee and Kiosk routes therefore remains an explicit release gate.
 - Kiosk HTTP end-to-end test session creation was blocked by the execution environment safety layer; the compatibility mapping was verified at source/unit level instead.
 - No production cutover, alias promotion or merge has been performed.
 
@@ -102,8 +126,8 @@ Temporary QA manager, temporary location and all hardening QA sessions were remo
 
 Do not merge or promote this version until all of the following are true:
 
-1. GitHub/Vercel build passes from `agent/aora-v8-hardening`.
-2. Preview browser checks pass for Owner, Manager, Employee and Kiosk routes.
-3. Console and network requests are clean.
-4. One real invitation delivery/activation/reuse-rejection test passes on the preview domain.
-5. The PR remains reviewable and no production alias is changed before explicit approval.
+1. GitHub/Vercel build passes from `agent/aora-v8-hardening`. — **Passed**
+2. Preview browser checks pass for Owner, Manager, Employee and Kiosk routes. — **Pending because Preview SSO blocks connected browser automation**
+3. Console and network requests are clean. — **Pending visual/browser run**
+4. One real invitation delivery/activation/reuse-rejection test passes on the preview domain. — **Pending**
+5. The PR remains reviewable and no production alias is changed before explicit approval. — **Enforced**
