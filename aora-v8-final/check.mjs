@@ -60,7 +60,7 @@ function requireMarkers(name,source,markers){for(const marker of markers)if(!sou
 function forbidMarkers(name,source,markers){for(const marker of markers)if(source.includes(marker))throw new Error(`Forbidden ${name} marker: ${marker}`)}
 
 requireMarkers("index",sources.index,[
-  "styles.css?v=809","invitation.css?v=809","modules/config.js?v=809","modules/api.js?v=809","modules/access.js?v=809",
+  "styles.css?v=809","invitation.css?v=809","modules/config.js?v=810","modules/api.js?v=809","modules/access.js?v=809",
   "modules/employee-hardening.js?v=809","modules/identity-hardening.js?v=809","modules/profile-hardening.js?v=809",
   "modules/handlers.js?v=809","modules/admin-metrics-hardening.js?v=808","modules/kiosk-hardening.js?v=808",
 ]);
@@ -122,7 +122,7 @@ requireMarkers("kiosk function",sources.kioskFunction,[
   "new TextEncoder().encode(text).byteLength","KIOSK_TARGETS","Dieser Statuswechsel ist aktuell nicht möglich.","UPSTREAM_TIMEOUT_MS",
 ]);
 requireMarkers("pilot workspace",sources.pilotWorkspaceFunction,[
-  'tenantSource: "session"','aora-v8-pilot-workspace'.replace('aora-v8-pilot-workspace','manager_location_access'),
+  'tenantSource: "session"',"manager_location_access",
   '.eq("id", session.organization_id)','organizationSlug: ctx.organization.slug','Kein Zugriff auf diesen Standort.',
 ]);
 forbidMarkers("pilot tenant context",sources.pilotWorkspaceFunction,['.eq("slug", PRIMARY_PILOT_SLUG)']);
