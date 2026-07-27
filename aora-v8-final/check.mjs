@@ -15,12 +15,14 @@ const requiredPaths=[
   "supabase/functions/aora-v8-hardening-access/index.ts",
   "supabase/functions/aora-v8-hardening-workspace/index.ts",
   "supabase/functions/aora-v8-hardening-kiosk/index.ts",
+  "supabase/functions/aora-v8-pilot-workspace/index.ts",
   "supabase/migrations/202607270001_aora_hardening_atomic_rate_limit.sql",
   "supabase/migrations/202607270002_aora_hardening_atomic_invitation_accept.sql",
   "supabase/migrations/202607270003_aora_hardening_atomic_projection_trigger.sql",
   "supabase/migrations/202607270004_reject_locked_kiosk_login.sql",
   "supabase/migrations/202607270005_disable_hardening_owner_pin.sql",
   "supabase/migrations/202607270006_one_open_time_entry_per_employee.sql",
+  "supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql",
 ];
 for(const relativePath of requiredPaths){
   await access(resolve(root,relativePath)).catch(()=>{throw new Error(`Missing hardening source: ${relativePath}`)});
@@ -43,6 +45,8 @@ const sources={
   accessFunction:await readFile(resolve(root,"supabase/functions/aora-v8-hardening-access/index.ts"),"utf8"),
   workspaceFunction:await readFile(resolve(root,"supabase/functions/aora-v8-hardening-workspace/index.ts"),"utf8"),
   kioskFunction:await readFile(resolve(root,"supabase/functions/aora-v8-hardening-kiosk/index.ts"),"utf8"),
+  pilotWorkspaceFunction:await readFile(resolve(root,"supabase/functions/aora-v8-pilot-workspace/index.ts"),"utf8"),
+  tenantMigration:await readFile(resolve(root,"supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql"),"utf8"),
   projectionMigration:await readFile(resolve(root,"supabase/migrations/202607270003_aora_hardening_atomic_projection_trigger.sql"),"utf8"),
   kioskLoginMigration:await readFile(resolve(root,"supabase/migrations/202607270004_reject_locked_kiosk_login.sql"),"utf8"),
   ownerPinMigration:await readFile(resolve(root,"supabase/migrations/202607270005_disable_hardening_owner_pin.sql"),"utf8"),
@@ -62,8 +66,8 @@ requireMarkers("index",sources.index,[
 ]);
 requireMarkers("config",sources.config,[
   'slug:"aora-v8-hardening-demo"','accessFunction:"aora-v8-hardening-access"',
-  'workspaceFunction:"aora-v8-hardening-workspace"','kioskWorkspaceFunction:"aora-v8-hardening-kiosk"',
-  'version:"8.0.9-hardening"',
+  'workspaceFunction:"aora-v8-pilot-workspace"','kioskWorkspaceFunction:"aora-v8-hardening-kiosk"',
+  'version:"8.1.0-pilot"',
 ]);
 const configuredVersion=sources.config.match(/version:\s*"([^"]+)"/)?.[1];
 if(configuredVersion!==packageJson.version)throw new Error(`Version mismatch: package.json=${packageJson.version}, config.js=${configuredVersion||"missing"}`);
@@ -117,6 +121,15 @@ requireMarkers("kiosk function",sources.kioskFunction,[
   'session.role !== "kiosk"','device.locked === true','item.status !== "pending"','item.status !== "revoked"',
   "new TextEncoder().encode(text).byteLength","KIOSK_TARGETS","Dieser Statuswechsel ist aktuell nicht möglich.","UPSTREAM_TIMEOUT_MS",
 ]);
+requireMarkers("pilot workspace",sources.pilotWorkspaceFunction,[
+  'tenantSource: "session"','aora-v8-pilot-workspace'.replace('aora-v8-pilot-workspace','manager_location_access'),
+  '.eq("id", session.organization_id)','organizationSlug: ctx.organization.slug','Kein Zugriff auf diesen Standort.',
+]);
+forbidMarkers("pilot tenant context",sources.pilotWorkspaceFunction,['.eq("slug", PRIMARY_PILOT_SLUG)']);
+requireMarkers("tenant migration",sources.tenantMigration.toLowerCase(),[
+  "manager_location_access","members read scoped locations","members read scoped employees","members read scoped time entries",
+  "manager_can_access_location","m.role::text in ('owner', 'admin')",
+]);
 requireMarkers("projection migration",sources.projectionMigration.toLowerCase(),[
   "aora_hardening_project_snapshot_trigger","aora-v8-hardening-demo","after update of state","project_workspace_state","revoke all","service_role",
 ]);
@@ -138,4 +151,4 @@ for(const forbidden of [/(^|})\s*:root\s*{/m,/(^|})\s*html\s*[{,]/m,/(^|})\s*bod
 }
 if(!sources.build.includes('`${originalCss}\\n\\n${extensionCss}\\n`'))throw new Error("Build must preserve canonical CSS first and append the isolated overlay second.");
 
-console.log(`Aora hardening checks passed (${moduleFiles.length} overlay modules, version ${configuredVersion}, cross-account, kiosk re-auth and open-entry invariants locked).`);
+console.log(`Aora pilot checks passed (${moduleFiles.length} overlay modules, version ${configuredVersion}, session-derived tenant, manager location scope, cross-account, kiosk re-auth and open-entry invariants locked).`);
