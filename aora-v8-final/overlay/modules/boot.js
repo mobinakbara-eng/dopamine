@@ -15,11 +15,12 @@ setInterval(refreshWorkspace,5000);
 window.addEventListener("focus",refreshWorkspace);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshWorkspace()});
 
-window.addEventListener("popstate",()=>{
+window.addEventListener("popstate",async()=>{
   const accessRole=accessRoleFromPath();
   setAccessRole(accessRole);
   S.session=restore(accessRole);
-  S.session?loadState():renderLogin();
+  if(S.session)return loadState();
+  try{await ensureDirectory(accessRole);renderLogin()}catch(error){renderError(error.message)}
 });
 
 function invitationCallback(){
@@ -43,9 +44,10 @@ async function boot(){
       renderInvitationSetup(info,callback.invitationId,callback.token);
       return;
     }
-    await loadDirectory();
     S.session=restore(accessRole);
-    S.session?await loadState():renderLogin();
+    if(S.session){await loadState();return}
+    await ensureDirectory(accessRole);
+    renderLogin();
   }catch(error){
     renderError(error.message);
   }
