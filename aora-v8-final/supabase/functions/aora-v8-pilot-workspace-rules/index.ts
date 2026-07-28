@@ -57,10 +57,38 @@ async function callUpstream(body: unknown) {
   try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
   return { ok: response.ok, status: response.status, data };
 }
+async function sessionFor(token: string) {
+  const { data, error } = await service.rpc("validate_demo_session", { p_token: token });
+  if (error || !data?.length) throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
+  return data[0];
+}
+async function repairEmployeeLeaveDefaults(token: string) {
+  const session = await sessionFor(token);
+  if (session.role !== "employee") throw Object.assign(new Error("Nur Mitarbeiter dürfen eigene Abwesenheiten beantragen."), { status: 403 });
+  const { data: snapshot, error } = await service.from("workspace_snapshots").select("state,revision").eq("organization_id", session.organization_id).single();
+  if (error || !snapshot) throw Object.assign(new Error("Arbeitsbereich konnte nicht geladen werden."), { status: 404 });
+  const state: any = snapshot.state && typeof snapshot.state === "object" ? structuredClone(snapshot.state) : {};
+  const employees = Array.isArray(state.employees) ? state.employees : [];
+  const index = employees.findIndex((item: any) => String(item.id) === String(session.subject_id));
+  if (index < 0) throw Object.assign(new Error("Mitarbeiter wurde nicht gefunden."), { status: 404 });
+  const employee = employees[index];
+  const rawAllowance = Number(employee.vacationAllowance);
+  const rawUsed = Number(employee.vacationUsed);
+  const allowance = Number.isFinite(rawAllowance) && rawAllowance >= 0 ? rawAllowance : 27.5;
+  const used = Number.isFinite(rawUsed) && rawUsed >= 0 ? rawUsed : 0;
+  if (employee.vacationAllowance === allowance && employee.vacationUsed === used) return;
+  employees[index] = { ...employee, vacationAllowance: allowance, vacationUsed: used };
+  state.employees = employees;
+  const { data: updated, error: updateError } = await service.from("workspace_snapshots")
+    .update({ state, updated_at: new Date().toISOString() })
+    .eq("organization_id", session.organization_id)
+    .eq("revision", snapshot.revision)
+    .select("revision")
+    .maybeSingle();
+  if (updateError || !updated) throw Object.assign(new Error("Mitarbeiterdaten wurden parallel geändert. Bitte erneut versuchen."), { status: 409 });
+}
 async function loadContext(token: string) {
-  const { data: sessions, error: sessionError } = await service.rpc("validate_demo_session", { p_token: token });
-  if (sessionError || !sessions?.length) throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
-  const session = sessions[0];
+  const session = await sessionFor(token);
   const { data: organization, error: orgError } = await service.from("organizations").select("id,slug,status").eq("id", session.organization_id).eq("status", "active").single();
   if (orgError || !organization) throw Object.assign(new Error("Organisation ist nicht aktiv."), { status: 403 });
   const { data: snapshot, error: snapshotError } = await service.from("workspace_snapshots").select("state,revision").eq("organization_id", organization.id).single();
@@ -140,6 +168,10 @@ Deno.serve(async (request: Request) => {
       const ctx = await loadContext(token);
       const { evaluation } = await evaluate(ctx, body.shift, body.ruleOverride);
       return reply({ ruleEvaluation: evaluation }, 200, origin);
+    }
+
+    if (body.action === "apply" && body.event?.type === "REQUEST_LEAVE") {
+      await repairEmployeeLeaveDefaults(token);
     }
 
     if (body.action === "apply" && SHIFT_EVENTS.has(body.event?.type)) {
