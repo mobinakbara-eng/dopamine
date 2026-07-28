@@ -90,7 +90,7 @@ forbidAll("origin-safe onboarding",source.pilotOnboarding,['const URL=Deno.env.g
 requireAll("scoped CI ledger cleanup",source.cleanupMigration,["aora.cleanup_organization_id","tenantSource","github-oidc-ci","aora_cleanup_ci_tenant"]);
 requireAll("manager projection and session lifecycle",source.unifiedMigration,["aora_sync_manager_location_access","aora_project_snapshot_trigger","aora_trim_subject_sessions","aora_cleanup_expired_sessions","manager-session-projection-cleanup"]);
 requireAll("production foreign-key indexes",source.productionIndexes,["billing_events_organization_id_idx","compliance_exports_organization_id_idx","data_export_requests_organization_id_idx","deletion_requests_organization_id_idx","pilot_backups_organization_id_idx","subprocessors_organization_id_idx","work_rules_organization_id_idx"]);
-requireAll("structural account routing",source.pilotWorkspace,["STRUCTURAL_TYPES.has(body.event?.type)","HARDENING_WORKSPACE","CREATE_EMPLOYEE_ACCOUNT","INVITE_MANAGER"]);
+requireAll("structural action routing",source.pilotWorkspace,["STRUCTURAL_TYPES.has(body.event?.type)","HARDENING_WORKSPACE","CREATE_EMPLOYEE_ACCOUNT","INVITE_MANAGER","TOGGLE_KIOSK_LOCK"]);
 requireAll("strict manager projection",source.hardeningWorkspace,["manager_location_access","managerLocationIds","kein expliziter Standortzugriff"]);
 forbidAll("strict manager projection",source.hardeningWorkspace,['.eq("slug", WORKSPACE_SLUG)',"ctx.admin.locationIds"]);
 forbidAll("pilot manager fallback",source.pilotWorkspace,["admin?.locationIds"]);
