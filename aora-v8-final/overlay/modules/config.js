@@ -21,7 +21,7 @@ const initialAccessRole=accessRoleFromPath();
 const CFG={
   url:"https://xqgkawskftzurbujrpex.supabase.co",
   slug:"aora-v8-hardening-demo",
-  accessFunction:"aora-v8-hardening-access",
+  accessFunction:"aora-v8-pilot-access",
   workspaceFunction:"aora-v8-pilot-workspace-rules",
   kioskWorkspaceFunction:"aora-v8-pilot-kiosk",
   tz:"Europe/Berlin",
