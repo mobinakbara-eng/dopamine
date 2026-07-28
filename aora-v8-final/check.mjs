@@ -24,11 +24,13 @@ const paths=[
   "overlay/modules/realtime.js","overlay/modules/runtime-hardening.js","overlay/modules/monitoring.js","overlay/modules/compliance.js",
   "supabase/functions/aora-v8-hardening-access/index.ts","supabase/functions/aora-v8-hardening-workspace/index.ts","supabase/functions/aora-v8-hardening-kiosk/index.ts",
   "supabase/functions/aora-v8-pilot-workspace/index.ts","supabase/functions/aora-v8-pilot-kiosk/index.ts","supabase/functions/aora-v8-pilot-workspace-rules/index.ts",
+  "supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts",
   "supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql",
   "supabase/migrations/202607280012_aora_pilot_punch_idempotency.sql",
   "supabase/migrations/202607280013_aora_pilot_work_rule_engine.sql",
   "supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql",
-  "tests/offline-crypto.mjs","tests/aora-four-role.spec.mjs","playwright.config.mjs"
+  "supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql",
+  "tests/offline-crypto.mjs","tests/aora-four-role.spec.mjs","playwright.config.mjs","../.github/workflows/aora-v8-pilot-ci.yml"
 ];
 for(const path of paths)await access(resolve(root,path)).catch(()=>{throw new Error(`Missing pilot source: ${path}`)});
 const read=path=>readFile(resolve(root,path),"utf8");
@@ -40,6 +42,10 @@ const source={
   punch:await read("supabase/migrations/202607280012_aora_pilot_punch_idempotency.sql"),
   rules:await read("supabase/migrations/202607280013_aora_pilot_work_rule_engine.sql"),
   security:await read("supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql"),
+  ciMigration:await read("supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql"),
+  ciBootstrap:await read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),
+  ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),
+  e2e:await read("tests/aora-four-role.spec.mjs"),
   pilotWorkspace:await read("supabase/functions/aora-v8-pilot-workspace/index.ts"),
   pilotKiosk:await read("supabase/functions/aora-v8-pilot-kiosk/index.ts"),
   ruleGate:await read("supabase/functions/aora-v8-pilot-workspace-rules/index.ts"),
@@ -72,6 +78,11 @@ requireAll("monitoring",source.monitoring,["AORA_SECRET_PATTERN","[REDACTED]","u
 requireAll("compliance UI",source.compliance,["Compliance & Korrekturen","requestCorrection","decideCorrection","downloadCompliance","Verifiziertes Snapshot"]);
 forbidAll("legacy polling",source.boot,["setInterval(refreshWorkspace,5000)"]);
 requireAll("security migration",source.security,["revoke all on function public.aora_activate_invitation_atomic","aora_redact_pilot_qa_evidence","[REDACTED]","grant execute on function public.aora_verify_time_entry_chain"]);
+requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercontent.com","aora-staging-ci",'REPOSITORY_ID="1044549733"','ALLOWED_HEAD="agent/aora-v8-hardening"','ALLOWED_BASE="agent/aora-v8-final"',"aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant"]);
+requireAll("OIDC CI migration",source.ciMigration,["aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant","github-oidc-ci","grant execute on function public.aora_bootstrap_ci_tenant"]);
+requireAll("OIDC workflow",source.ciWorkflow,["id-token: write","ACTIONS_ID_TOKEN_REQUEST_URL","audience=aora-staging-ci","::add-mask::","Cleanup isolated staging tenant","AORA_INVITATION_URL"]);
+forbidAll("stored CI secrets",source.ciWorkflow,["secrets.AORA_OWNER","secrets.AORA_MANAGER","secrets.AORA_EMPLOYEE","secrets.AORA_KIOSK","secrets.AORA_ONBOARDING"]);
+requireAll("four-role E2E",source.e2e,["Owner: login","Manager: scoped login","Employee: personal login","Kiosk: encrypted offline queue","Invitation: activate","AORA_INVITATION_URL"]);
 forbidAll("employee identity",source.employee,["S.state.employees?.[0]","S.state.employees[0]"]);
 forbidAll("admin identity",source.identity,["admins?.[0]","admins[0]"]);
 forbidAll("profile identity",source.profile,["employees?.[0]","employees[0]"]);
@@ -80,4 +91,4 @@ requireAll("canonical style",source.baseCss,["--black:#000","--white:#fff","--ra
 for(const selector of [/(^|})\s*:root\s*{/m,/(^|})\s*body\s*[{,]/m,/(^|})\s*\.aora-logo\s*{/m])if(selector.test(source.overlayCss))throw new Error(`Overlay replaces canonical selector: ${selector}`);
 if(!source.build.includes('`${originalCss}\\n\\n${extensionCss}\\n`'))throw new Error("Canonical CSS append order changed");
 
-console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): tenant isolation, realtime fallback, compliance UI, durable punch integrity, encrypted offline queue and versioned work rules.`);
+console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): tenant isolation, OIDC-isolated CI, realtime fallback, compliance UI, durable punch integrity, encrypted offline queue and versioned work rules.`);
