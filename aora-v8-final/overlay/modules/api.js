@@ -200,6 +200,7 @@ async function apply(event){
     if(data.revision!==undefined)S.revision=data.revision;
     if(prepared.storageKey&&typeof resolveOfflinePunch==="function")await resolveOfflinePunch(prepared.event.eventId);
     clearPendingPunch(prepared.storageKey);
+    S.busy=false;
     render();
     if(data.idempotentReplay)toast("Diese Aktion wurde bereits gespeichert.","success");
     return data;
