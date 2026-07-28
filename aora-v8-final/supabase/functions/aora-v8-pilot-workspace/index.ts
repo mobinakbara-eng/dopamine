@@ -277,9 +277,15 @@ Deno.serve(async (request: Request) => {
     const legacy = await callFunction(LEGACY_WORKSPACE, body);
     if (!legacy.ok) return reply(legacy.data, legacy.status, origin);
     if (body.action === "apply" && legacy.data?.state) {
+      const { data: canonicalSnapshot, error: canonicalSnapshotError } = await service
+        .from("workspace_snapshots")
+        .select("state")
+        .eq("organization_id", ctx.organization.id)
+        .single();
+      if (canonicalSnapshotError || !canonicalSnapshot) throw canonicalSnapshotError || new Error("Arbeitsbereich konnte nach der Änderung nicht geladen werden.");
       const { error: managerProjectionError } = await service.rpc("aora_sync_manager_location_access", {
         p_organization_id: ctx.organization.id,
-        p_state: legacy.data.state,
+        p_state: canonicalSnapshot.state,
       });
       if (managerProjectionError) throw managerProjectionError;
     }
