@@ -101,6 +101,8 @@ requireAll("reduced motion and focus",source.overlayCss,["*:focus-visible","pref
 requireAll("compliance UI",source.compliance,["Compliance & Korrekturen","requestCorrection","decideCorrection","downloadCompliance","Verifiziertes Snapshot"]);
 requireAll("mobile correction action",source.complianceCss,["employee-correction-fab","bottom:calc(81px + env(safe-area-inset-bottom,0px))","z-index:60"]);
 requireAll("kiosk manager feedback",source.handlers,["TOGGLE_KIOSK_LOCK","Kiosk-Gerät wurde gesperrt.","Kiosk-Gerät konnte nicht aktualisiert werden."]);
+requireAll("deterministic kiosk lock",source.handlers,["locked:locking","const locking=!Boolean(device.locked)"]);
+requireAll("atomic kiosk lock",source.hardeningWorkspace,['case "TOGGLE_KIOSK_LOCK"','typeof event.locked !== "boolean"',"kiosk.locked","kiosk.unlocked"]);
 forbidAll("legacy polling",source.boot,["setInterval(refreshWorkspace,5000)"]);
 requireAll("security migration",source.security,["revoke all on function public.aora_activate_invitation_atomic","aora_redact_pilot_qa_evidence","[REDACTED]","grant execute on function public.aora_verify_time_entry_chain"]);
 requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercontent.com","aora-staging-ci",'REPOSITORY_ID="1044549733"','ALLOWED_HEAD="agent/aora-v8-hardening"','ALLOWED_BASE="agent/aora-v8-final"',"aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant"]);

@@ -23,12 +23,12 @@ const ARRAY_KEYS = [
 const STRUCTURAL_TYPES = new Set([
   "ADD_LOCATION", "UPDATE_LOCATION", "ARCHIVE_LOCATION", "INVITE_MANAGER",
   "CREATE_EMPLOYEE_ACCOUNT", "RESEND_INVITATION", "REVOKE_INVITATION",
-  "UPDATE_MANAGER_ACCESS", "DEACTIVATE_ACCOUNT",
+  "UPDATE_MANAGER_ACCESS", "DEACTIVATE_ACCOUNT", "TOGGLE_KIOSK_LOCK",
 ]);
 const MANAGER_LEGACY_TYPES = new Set([
   "ADD_SHIFT", "UPDATE_SHIFT", "DELETE_SHIFT", "COPY_WEEK", "PUBLISH_WEEK",
   "DECIDE_LEAVE", "UPDATE_TIME", "DECIDE_CORRECTION", "ADD_ANNOUNCEMENT",
-  "UPDATE_EMPLOYEE", "RENEW_KIOSK", "TOGGLE_KIOSK_LOCK", "DECIDE_SHIFT_REQUEST",
+  "UPDATE_EMPLOYEE", "RENEW_KIOSK", "DECIDE_SHIFT_REQUEST",
   "RUN_PLAN_ASSISTANT", "SET_STAFFING_REQUIREMENT", "CREATE_CHECKLIST_TEMPLATE",
   "ASSIGN_CHECKLIST", "DELETE_CHECKLIST_ASSIGNMENT", "ARCHIVE_CHECKLIST_TEMPLATE",
   "ADD_DAILY_LOG", "CREATE_SHIFT_TEMPLATE", "ACK_CLOCK_ALERT",
@@ -616,6 +616,36 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
           .eq("organization_id", ctx.organization.id).eq("subject_role", subjectRole).eq("subject_id", account.id);
       });
       addAudit(state, ctx, `${kind}.deactivated`, subjectRole, account.id, account.name, account.locationId ? { locationId: account.locationId } : null);
+      break;
+    }
+    case "TOGGLE_KIOSK_LOCK": {
+      if (typeof event.locked !== "boolean") {
+        throw Object.assign(new Error("Der gewünschte Sperrstatus fehlt."), { status: 400 });
+      }
+      const device = state.kioskDevices.find((item: any) => item.id === event.id);
+      if (!device) throw Object.assign(new Error("Kiosk-Gerät wurde nicht gefunden."), { status: 404 });
+      if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(device.locationId)) {
+        throw Object.assign(new Error("Kein Zugriff auf dieses Kiosk-Gerät."), { status: 403 });
+      }
+      state.kioskDevices = state.kioskDevices.map((item: any) => item.id === device.id
+        ? {
+          ...item,
+          locked: event.locked,
+          lockedAt: event.locked ? now() : null,
+          lockedBy: event.locked ? ctx.admin.id : null,
+          updatedAt: now(),
+          updatedBy: ctx.admin.id,
+        }
+        : item);
+      addAudit(
+        state,
+        ctx,
+        event.locked ? "kiosk.locked" : "kiosk.unlocked",
+        "kiosk",
+        device.id,
+        device.name || device.id,
+        { locationId: device.locationId },
+      );
       break;
     }
     default:

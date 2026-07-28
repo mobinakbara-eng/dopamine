@@ -154,10 +154,15 @@ app.addEventListener("click",async event=>{
   }else if(action==="leave-decision"){
     try{await apply({type:"DECIDE_LEAVE",id:button.dataset.id,decision:button.dataset.decision})}catch{}
   }else if(action==="toggle-kiosk"){
-    const locking=String(button.textContent||"").includes("Sperren");
+    const device=S.state.kioskDevices.find(item=>item.id===button.dataset.id);
+    if(!device){
+      toast("Kiosk-Gerät wurde nicht gefunden.","error");
+      return;
+    }
+    const locking=!Boolean(device.locked);
     button.disabled=true;
     try{
-      await apply({type:"TOGGLE_KIOSK_LOCK",id:button.dataset.id});
+      await apply({type:"TOGGLE_KIOSK_LOCK",id:device.id,locked:locking});
       toast(locking?"Kiosk-Gerät wurde gesperrt.":"Kiosk-Gerät wurde entsperrt.");
     }catch(error){
       toast(error.message||"Kiosk-Gerät konnte nicht aktualisiert werden.","error");
@@ -165,3 +170,4 @@ app.addEventListener("click",async event=>{
     }
   }
 });
+
