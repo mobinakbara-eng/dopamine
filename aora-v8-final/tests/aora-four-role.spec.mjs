@@ -100,7 +100,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const localInvite=new URL(`${invitation.pathname}${invitation.search}`,baseURL).toString();
     const invitedEmail=env("AORA_INVITATION_EMAIL"),invitedPassword=env("AORA_INVITATION_PASSWORD");
     await page.goto(localInvite);
-    await expect(page.getByText("Konto aktivieren")).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible();
     await page.locator('input[name="email"]').fill(invitedEmail);
     await page.locator('input[name="password"]').fill(invitedPassword);
     await page.locator('input[name="confirm"]').fill(invitedPassword);
