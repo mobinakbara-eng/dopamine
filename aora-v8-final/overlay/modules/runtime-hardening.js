@@ -1,5 +1,7 @@
 "use strict";
 
+const AORA_COMPLIANCE_FUNCTION="aora-v8-pilot-compliance-proxy";
+
 request=async function(functionName,body){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
@@ -53,7 +55,7 @@ function scheduleWorkspaceBroadcast(eventType,keys,revision){
 }
 
 async function compliance(body){
-  const result=await request(CFG.complianceFunction,{...body,token:S.session?.token});
+  const result=await request(AORA_COMPLIANCE_FUNCTION,{...body,token:S.session?.token});
   const eventByAction={requestCorrection:"CORRECTION_REQUESTED",decideCorrection:"CORRECTION_DECIDED",anonymizeEmployee:"EMPLOYEE_ANONYMIZED",backup:"COMPLIANCE_BACKUP"};
   const eventType=eventByAction[body?.action];
   if(eventType)scheduleWorkspaceBroadcast(eventType,AORA_REALTIME_KEYS[eventType]||["compliance"],result?.result?.next_revision??result?.nextRevision??S.revision);
@@ -64,7 +66,7 @@ async function downloadCompliance(format,filters={}){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
   try{
-    const response=await fetch(`${CFG.url}/functions/v1/${CFG.complianceFunction}`,{
+    const response=await fetch(`${CFG.url}/functions/v1/${AORA_COMPLIANCE_FUNCTION}`,{
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=UTF-8"},
       body:JSON.stringify({action:"export",format,...filters,token:S.session?.token}),
