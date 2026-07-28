@@ -32,7 +32,7 @@ async function request(functionName,body){
       throw timeoutError;
     }
     if(error instanceof TypeError){
-      const networkError=new Error("Aora konnte den Server nicht erreichen. Die Buchung wird mit derselben event_id erneut gesendet.");
+      const networkError=new Error("Aora konnte den Server nicht erreichen. Die Buchung wird verschlüsselt gespeichert und mit derselben event_id erneut gesendet.");
       networkError.status=503;
       networkError.retryable=true;
       throw networkError;
@@ -62,6 +62,7 @@ function activateSession(session,fallbackRole){
   S.accessRole=session.accessRole||fallbackRole||session.role;
   S.loginRole=S.accessRole;
   save();
+  if(S.accessRole==="kiosk"&&typeof bindOfflinePunchSession==="function")bindOfflinePunchSession(S.session).catch(error=>console.warn("Offline session binding failed",error));
   history.replaceState({},"",accessPath(S.accessRole));
 }
 
@@ -126,9 +127,7 @@ async function passwordLogin(accessRole,email,password){
   await loadState();
 }
 
-async function inspectInvitation(invitationId,token){
-  return access({action:"inspectInvitation",invitationId,token});
-}
+async function inspectInvitation(invitationId,token){return access({action:"inspectInvitation",invitationId,token})}
 
 async function acceptInvitation(invitationId,token,email,password){
   const session=await access({action:"acceptInvitation",invitationId,token,email,password});
@@ -137,7 +136,9 @@ async function acceptInvitation(invitationId,token,email,password){
 }
 
 async function logout(){
-  try{S.session?.token&&await access({action:"logout",token:S.session.token})}catch{}
+  const previousSession=S.session;
+  try{previousSession?.token&&await access({action:"logout",token:previousSession.token})}catch{}
+  if(previousSession?.role==="kiosk"&&typeof unbindOfflinePunchSession==="function")await unbindOfflinePunchSession(previousSession).catch(()=>{});
   clearSessions();
   S.session=null;
   S.state=null;
@@ -161,9 +162,11 @@ async function loadState(quiet=false){
       ?S.locationId
       :(S.session.locationId||permitted[0]||S.state.locations?.find(location=>location.active!==false)?.id||null);
     save();
+    if(S.accessRole==="kiosk"&&typeof bindOfflinePunchSession==="function")await bindOfflinePunchSession(S.session).catch(()=>{});
     const menuWasOpen=quiet&&document.getElementById("aside")?.classList.contains("open");
     render();
     if(menuWasOpen)document.getElementById("aside")?.classList.add("open");
+    if(S.accessRole==="kiosk"&&typeof syncOfflinePunchQueue==="function")syncOfflinePunchQueue().catch(()=>{});
   }catch(error){
     if(error.status===401||error.status===403){
       clearSessions();
@@ -188,6 +191,7 @@ async function apply(event){
   const prepared=preparePunchEvent(event);
   S.busy=true;
   try{
+    if(prepared.storageKey&&typeof enqueueOfflinePunch==="function")await enqueueOfflinePunch(prepared.event);
     const data=await workspace({action:"apply",event:prepared.event,expectedRevision:S.revision});
     if(data.pending){
       toast(data.message||"Die Buchung wird bereits verarbeitet.","warning");
@@ -195,12 +199,17 @@ async function apply(event){
     }
     if(data.state)S.state=data.state;
     if(data.revision!==undefined)S.revision=data.revision;
+    if(prepared.storageKey&&typeof resolveOfflinePunch==="function")await resolveOfflinePunch(prepared.event.eventId);
     clearPendingPunch(prepared.storageKey);
     render();
     if(data.idempotentReplay)toast("Diese Aktion wurde bereits gespeichert.","success");
     return data;
   }catch(error){
-    if(prepared.storageKey&&!retryablePunchError(error))clearPendingPunch(prepared.storageKey);
+    if(prepared.storageKey){
+      if(retryablePunchError(error)&&typeof markOfflinePunchPending==="function")await markOfflinePunchPending(prepared.event.eventId,error).catch(()=>{});
+      else if(typeof resolveOfflinePunch==="function")await resolveOfflinePunch(prepared.event.eventId).catch(()=>{});
+      if(!retryablePunchError(error))clearPendingPunch(prepared.storageKey);
+    }
     if(error.status===409){
       toast(error.message||"Daten wurden aktualisiert. Bitte erneut versuchen.","error");
       await loadState(true);
