@@ -134,12 +134,14 @@ jobs:
         run: npm run build
       - name: Run four-role, invitation replay and offline-resync tests
         run: npm run test:e2e
-      - name: Upload failure screenshots
+      - name: Upload Playwright failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: aora-playwright-failure-screenshots
-          path: aora-v8-final/test-results/**/*.png
+          name: aora-playwright-failure-evidence
+          path: |
+            aora-v8-final/playwright-report.json
+            aora-v8-final/test-results/**/*.png
           if-no-files-found: ignore
           retention-days: 7
       - name: Cleanup isolated staging tenant
