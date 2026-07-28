@@ -18,14 +18,14 @@ const required=[
 ];
 for(const path of required)await exists(path);
 const index=await readFile(resolve(dist,"index.html"),"utf8");
-requireAll("index",index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=815","modules/accessibility-hardening.js?v=817","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
+requireAll("index",index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=818","modules/accessibility-hardening.js?v=817","modules/monitoring.js?v=813","modules/compliance.js?v=813","modules/offline-punch.js?v=818","modules/api.js?v=818","modules/boot.js?v=818"]);
 for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){const shell=await readFile(resolve(dist,route,"index.html"),"utf8");if(shell!==index)throw new Error(`Route shell differs: ${route}`)}
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
 requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','workspaceFunction:"aora-v8-pilot-workspace-rules"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','complianceFunction:"aora-v8-pilot-compliance"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
 const api=await readFile(resolve(dist,"modules/api.js"),"utf8");
 requireAll("API",api,["preparePunchEvent","enqueueOfflinePunch","resolveOfflinePunch","idempotentReplay","text/plain;charset=UTF-8"]);
 const offline=await readFile(resolve(dist,"modules/offline-punch.js"),"utf8");
-requireAll("offline",offline,["indexedDB.open","offline_punch_queue",'name:"AES-GCM"',"extractable:false","serviceWorker.register"]);
+requireAll("offline",offline,["indexedDB.open","offline_punch_queue",'name:"AES-GCM"',"extractable:false","serviceWorker.register","restoreOfflineKioskSession"]);
 forbidAll("offline",offline,["localStorage.setItem","payload:event"]);
 const rules=await readFile(resolve(dist,"modules/rule-engine.js"),"utf8");
 requireAll("rule UI",rules,["Backend-Prüfung aktiv","evaluateShift","shiftRuleDialog","Ausnahme mit Begründung","Arbeitszeitregeln","Regelset Version"]);
@@ -41,6 +41,10 @@ const complianceCss=await readFile(resolve(dist,"compliance.css"),"utf8");
 requireAll("mobile compliance CSS",complianceCss,["employee-correction-fab","bottom:calc(81px + env(safe-area-inset-bottom,0px))","z-index:60"]);
 const handlers=await readFile(resolve(dist,"modules/handlers.js"),"utf8");
 requireAll("kiosk feedback",handlers,["TOGGLE_KIOSK_LOCK","Kiosk-Gerät wurde gesperrt.","Kiosk-Gerät konnte nicht aktualisiert werden."]);
+const admin=await readFile(resolve(dist,"modules/admin.js"),"utf8");
+const modals=await readFile(resolve(dist,"modules/modals.js"),"utf8");
+requireAll("manager kiosk creation",admin,['data-a="kiosk-create-modal"','data-a="rotate-kiosk"']);
+requireAll("kiosk activation result",modals,["kioskActivationResultModal","Zugangsdaten kopieren"]);
 const employee=await readFile(resolve(dist,"modules/employee-hardening.js"),"utf8");
 forbidAll("employee",employee,["employees?.[0]","employees[0]"]);
 const identity=await readFile(resolve(dist,"modules/identity-hardening.js"),"utf8");

@@ -153,6 +153,21 @@ app.addEventListener("click",async event=>{
     newsModal();
   }else if(action==="leave-decision"){
     try{await apply({type:"DECIDE_LEAVE",id:button.dataset.id,decision:button.dataset.decision})}catch{}
+  }else if(action==="kiosk-create-modal"){
+    kioskCreateModal();
+  }else if(action==="rotate-kiosk"){
+    const device=S.state.kioskDevices.find(item=>item.id===button.dataset.id);
+    if(!device)return toast("Kiosk-Gerät wurde nicht gefunden.","error");
+    if(confirm(`Neuen Aktivierungscode für „${device.name}“ erzeugen? Laufende Kiosk-Sitzungen werden beendet.`)){
+      button.disabled=true;
+      try{
+        const result=await apply({type:"ROTATE_KIOSK_ACTIVATION",id:device.id,locationId:device.locationId});
+        kioskActivationResultModal(result.kioskActivation);
+      }catch(error){
+        button.disabled=false;
+        toast(error.message||"Aktivierungscode konnte nicht erneuert werden.","error");
+      }
+    }
   }else if(action==="toggle-kiosk"){
     const device=S.state.kioskDevices.find(item=>item.id===button.dataset.id);
     if(!device){

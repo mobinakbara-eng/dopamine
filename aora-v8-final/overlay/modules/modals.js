@@ -60,6 +60,55 @@ function newsModal(){
 function kioskHelpModal(){
   modal(`${modalHeader("AoraAI Workforce","Kiosk-Hilfe")}<div class="kiosk-help-copy"><p>Wählen Sie Ihren Namen aus. Starten Sie danach die Arbeitszeit, beginnen oder beenden Sie eine Pause oder stempeln Sie sich zum Feierabend aus.</p><p>Alternativ können Sie Ihre Karte direkt in den gewünschten Status ziehen.</p><button class="btn" data-a="close">Verstanden</button></div>`);
 }
+
+function kioskActivationResultModal(result){
+  if(!result)return;
+  const credentials=`Geräte-ID: ${result.deviceId}\nAktivierungscode: ${result.activationCode}\nKiosk: ${result.kioskUrl}`;
+  const dialog=modal(`${modalHeader("Kiosk-Gerät","Zugangsdaten bereit")}
+    <div class="activation-result">
+      <p class="delivery-copy">Diese Zugangsdaten werden nur jetzt vollständig angezeigt. Bewahre den Aktivierungscode sicher am vorgesehenen Kiosk-Gerät auf.</p>
+      <div><span>Geräte-ID</span><code>${esc(result.deviceId)}</code></div>
+      <div><span>Aktivierungscode</span><code>${esc(result.activationCode)}</code></div>
+      <div class="delivery-actions">
+        <button class="btn outline" id="copy-kiosk-credentials">Zugangsdaten kopieren</button>
+        <a class="btn" href="${esc(result.kioskUrl)}" target="_blank" rel="noopener">Kiosk öffnen ${I.arrow}</a>
+        <button class="btn light" data-a="close">Fertig</button>
+      </div>
+      <p class="access-note">Ein neuer Aktivierungscode widerruft laufende Sitzungen dieses Geräts. Mitarbeiter melden sich weiterhin mit ihrem persönlichen Konto an.</p>
+    </div>`);
+  dialog.querySelector("#copy-kiosk-credentials")?.addEventListener("click",async()=>{
+    try{
+      await navigator.clipboard.writeText(credentials);
+      toast("Kiosk-Zugangsdaten wurden kopiert.");
+    }catch{
+      toast("Kopieren nicht möglich. Bitte Geräte-ID und Code manuell sichern.","error");
+    }
+  });
+}
+
+function kioskCreateModal(){
+  const location=loc(S.locationId);
+  if(!location)return toast("Bitte zuerst einen Laden auswählen.","error");
+  const dialog=modal(`${modalHeader("Kiosk","Gerät für ${esc(location.name)} einrichten")}<form class="form-grid">
+    <div class="field full"><label>Gerätename</label><input class="input" name="name" value="Kiosk ${esc(location.name)}" required minlength="2" maxlength="80"></div>
+    <div class="field full exception-summary"><strong>Sicherer lokaler Zugang</strong><p>Aora erzeugt eine Geräte-ID und einen achtstelligen Aktivierungscode. Der Code wird nur einmal angezeigt und nicht im Klartext gespeichert.</p></div>
+    <div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">Gerät erstellen</button></div>
+  </form>`);
+  dialog.querySelector("form").addEventListener("submit",async event=>{
+    event.preventDefault();
+    const submit=event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled=true;
+    try{
+      const name=String(new FormData(event.currentTarget).get("name")||"").trim();
+      const result=await apply({type:"CREATE_KIOSK_DEVICE",name,locationId:S.locationId});
+      dialog.remove();
+      kioskActivationResultModal(result.kioskActivation);
+    }catch(error){
+      submit.disabled=false;
+      toast(error.message||"Kiosk-Gerät konnte nicht erstellt werden.","error");
+    }
+  });
+}
 async function compressProfilePhoto(file){
   if(!file.type.startsWith("image/"))throw new Error("Bitte eine Bilddatei auswählen.");
   if(file.size>3*1024*1024)throw new Error("Das Profilbild darf höchstens 3 MB groß sein.");
