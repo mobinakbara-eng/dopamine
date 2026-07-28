@@ -11,11 +11,29 @@ function diagnostics(page,{allowOffline=false}={}){
   page.on("requestfailed",request=>{if(!allowOffline)errors.push(`network:${request.failure()?.errorText||"failed"}:${safeUrl(request.url())}`)});
   return()=>errors;
 }
+function isAccessAction(request,action){
+  return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes(`"action":"${action}"`);
+}
+async function triggerAccessAction(page,action,trigger){
+  const responsePromise=page.waitForResponse(response=>isAccessAction(response.request(),action),{timeout:15000}).then(response=>({kind:"response",response}));
+  const failurePromise=page.waitForEvent("requestfailed",{predicate:request=>isAccessAction(request,action),timeout:15000}).then(request=>({kind:"failure",request}));
+  const timeoutPromise=new Promise(resolve=>setTimeout(()=>resolve({kind:"timeout"}),15000));
+  await trigger();
+  const outcome=await Promise.race([responsePromise,failurePromise,timeoutPromise]);
+  if(outcome.kind==="failure")throw new Error(`Access ${action} request failed: ${outcome.request.failure()?.errorText||"unknown network error"}`);
+  if(outcome.kind==="timeout"){
+    const visible=String(await page.locator("body").innerText()).replace(/\s+/g," ").slice(0,500);
+    throw new Error(`Access ${action} POST was not observed. Visible UI: ${visible}`);
+  }
+  const body=await outcome.response.json().catch(()=>({}));
+  if(outcome.response.status()!==200)throw new Error(`Access ${action} HTTP ${outcome.response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return body;
+}
 async function passwordLogin(page,role,email,password){
   await page.goto(`${paths[role]}?workspace=${encodeURIComponent(workspace)}`);
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
-  await page.locator('#password-login button[type="submit"]').click();
+  await triggerAccessAction(page,"passwordLogin",()=>page.locator('#password-login button[type="submit"]').click());
   await page.waitForFunction(({workspace,role})=>Boolean(sessionStorage.getItem(`aora:${workspace}:${role}`)),{workspace,role});
   await expect(page).toHaveURL(new RegExp(`workspace=${workspace}`));
   await expect(page.locator("body")).not.toContainText("Verbindung nicht möglich");
@@ -24,7 +42,7 @@ async function kioskLogin(page){
   await page.goto(`${paths.kiosk}?workspace=${encodeURIComponent(workspace)}`);
   await page.locator('select[name="subject"]').selectOption(env("AORA_KIOSK_DEVICE_ID"));
   await page.locator('input[name="pin"]').fill(env("AORA_KIOSK_PIN"));
-  await page.locator('#pin-login button[type="submit"]').click();
+  await triggerAccessAction(page,"login",()=>page.locator('#pin-login button[type="submit"]').click());
   await page.waitForFunction(value=>Boolean(sessionStorage.getItem(`aora:${value}:kiosk`)),workspace);
 }
 
@@ -86,13 +104,13 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await page.locator('input[name="email"]').fill(invitedEmail);
     await page.locator('input[name="password"]').fill(invitedPassword);
     await page.locator('input[name="confirm"]').fill(invitedPassword);
-    await page.locator('#invitation-accept button[type="submit"]').click();
+    await triggerAccessAction(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click());
     await page.waitForFunction(slug=>Boolean(sessionStorage.getItem(`aora:${slug}:manager`)),workspace);
     await expect(page.locator("#loc-select option")).toHaveCount(1);
     await page.locator('[data-a="logout"]').click();
     await page.locator('input[name="email"]').fill(invitedEmail);
     await page.locator('input[name="password"]').fill(invitedPassword);
-    await page.locator('#password-login button[type="submit"]').click();
+    await triggerAccessAction(page,"passwordLogin",()=>page.locator('#password-login button[type="submit"]').click());
     await page.waitForFunction(slug=>Boolean(sessionStorage.getItem(`aora:${slug}:manager`)),workspace);
     const replayContext=await browser.newContext();
     const replay=await replayContext.newPage();
