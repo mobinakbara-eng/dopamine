@@ -19,7 +19,7 @@ JSON.parse(await readFile(resolve(root,"vercel.json"),"utf8"));
 const paths=[
   "overlay/index.html","overlay/offline.css","overlay/rule-engine.css","overlay/compliance.css","overlay/sw.js",
   "overlay/modules/config.js","overlay/modules/api.js","overlay/modules/offline-punch.js","overlay/modules/rule-engine.js",
-  "overlay/modules/realtime.js","overlay/modules/runtime-hardening.js","overlay/modules/monitoring.js","overlay/modules/compliance.js",
+  "overlay/modules/realtime.js","overlay/modules/runtime-hardening.js","overlay/modules/monitoring.js","overlay/modules/compliance.js","overlay/modules/handlers.js",
   "supabase/functions/aora-v8-hardening-access/index.ts","supabase/functions/aora-v8-hardening-workspace/index.ts","supabase/functions/aora-v8-hardening-kiosk/index.ts",
   "supabase/functions/aora-v8-pilot-access/index.ts","supabase/functions/aora-v8-pilot-workspace/index.ts","supabase/functions/aora-v8-pilot-kiosk/index.ts","supabase/functions/aora-v8-pilot-workspace-rules/index.ts",
   "supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts","supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts",
@@ -38,7 +38,7 @@ const read=path=>readFile(resolve(root,path),"utf8");
 const source={
   index:await read("overlay/index.html"),config:await read("overlay/modules/config.js"),api:await read("overlay/modules/api.js"),
   offline:await read("overlay/modules/offline-punch.js"),ruleUi:await read("overlay/modules/rule-engine.js"),sw:await read("overlay/sw.js"),
-  realtime:await read("overlay/modules/realtime.js"),runtime:await read("overlay/modules/runtime-hardening.js"),monitoring:await read("overlay/modules/monitoring.js"),compliance:await read("overlay/modules/compliance.js"),boot:await read("overlay/modules/boot.js"),
+  realtime:await read("overlay/modules/realtime.js"),runtime:await read("overlay/modules/runtime-hardening.js"),monitoring:await read("overlay/modules/monitoring.js"),compliance:await read("overlay/modules/compliance.js"),handlers:await read("overlay/modules/handlers.js"),complianceCss:await read("overlay/compliance.css"),boot:await read("overlay/modules/boot.js"),
   tenant:await read("supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql"),punch:await read("supabase/migrations/202607280012_aora_pilot_punch_idempotency.sql"),rules:await read("supabase/migrations/202607280013_aora_pilot_work_rule_engine.sql"),
   security:await read("supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql"),ciMigration:await read("supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql"),
   realtimeMigration:await read("supabase/migrations/202607280900_aora_realtime_rest_bridge.sql"),cleanupMigration:await read("supabase/migrations/202607280910_aora_ci_ledger_cleanup_exception.sql"),
@@ -52,7 +52,7 @@ const source={
 const requireAll=(name,text,markers)=>{for(const marker of markers)if(!text.includes(marker))throw new Error(`Missing ${name} marker: ${marker}`)};
 const forbidAll=(name,text,markers)=>{for(const marker of markers)if(text.includes(marker))throw new Error(`Forbidden ${name} marker: ${marker}`)};
 
-requireAll("index",source.index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=813","@supabase/supabase-js@2.57.4","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=815","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
+requireAll("index",source.index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","@supabase/supabase-js@2.57.4","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=815","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
 requireAll("config",source.config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','publishableKey:"sb_publishable_','complianceFunction:"aora-v8-pilot-compliance"','monitorFunction:"aora-v8-pilot-monitor"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
 const configured=source.config.match(/version:\s*"([^"]+)"/)?.[1];
 if(configured!==pkg.version)throw new Error(`Version mismatch: ${configured} vs ${pkg.version}`);
@@ -60,7 +60,7 @@ requireAll("tenant isolation",source.tenant,["manager_location_access","members 
 requireAll("dynamic access",source.pilotAccess,["workspaceSlug(body","new globalThis.URL(origin)","aora_activate_invitation_atomic","passwordLogin","inspectInvitation","organizationSlug"]);
 requireAll("breached-password protection",source.pilotAccess,["assertPasswordNotPwned","api.pwnedpasswords.com/range",'"Add-Padding": "true"','"SHA-1"',"hash.slice(0, 5)","hash.slice(5)","await assertPasswordNotPwned(password)"]);
 forbidAll("dynamic access",source.pilotAccess,['const WORKSPACE="aora-v8-hardening-demo"','const URL = Deno.env.get("SUPABASE_URL")','new URL(origin)','`${PWNED_PASSWORDS_RANGE_URL}/${hash}`']);
-requireAll("tenant workspace",source.pilotWorkspace,['tenantSource: "session"','eq("id", session.organization_id)',"Kein Zugriff auf diesen Standort."]);
+requireAll("tenant workspace",source.pilotWorkspace,['tenantSource: "session"','eq("id", session.organization_id)',"Kein Zugriff auf diesen Standort.","state.kioskDevices.find"]);
 forbidAll("tenant workspace",source.pilotWorkspace,['.eq("slug", PRIMARY_PILOT_SLUG)']);
 requireAll("punch receipts",source.punch,["public.punch_events","primary key (organization_id, event_id)","aora_begin_punch","aora_claim_punch_approval","approval_response_payload"]);
 requireAll("pilot kiosk",source.pilotKiosk,["aora_begin_punch","clientEventId","clock_${eventId}","x-aora-punch-replay","idempotentReplay"]);
@@ -74,7 +74,8 @@ requireAll("rule UI",source.ruleUi,["Backend-Prüfung aktiv","evaluateShift","sh
 requireAll("realtime client",source.realtime,["workspace-change","aoraSha256Hex","realtimeFallbackMs","SUBSCRIBED","connectWorkspaceRealtime","disconnectWorkspaceRealtime","__aoraLastRealtimeEvent"]);
 requireAll("runtime tenant and broadcast routing",source.runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime","disconnectWorkspaceRealtime","notifyWorkspaceRealtime","realtimeBroadcastFunction","text/plain;charset=UTF-8",'AORA_COMPLIANCE_FUNCTION="aora-v8-pilot-compliance-proxy"']);
 requireAll("Realtime REST bridge",source.realtimeMigration,["drop trigger if exists aora_workspace_revision_broadcast","aora_active_session_topics"].filter(marker=>source.realtimeMigration.includes(marker)));
-requireAll("Realtime broadcaster",source.realtimeBroadcast,["validate_demo_session","aora_active_session_topics","/realtime/v1/api/broadcast","workspace-change","deliveredTopics"]);
+requireAll("origin-safe Realtime broadcaster",source.realtimeBroadcast,["validate_demo_session","aora_active_session_topics","/realtime/v1/api/broadcast","workspace-change","deliveredTopics","new globalThis.URL(origin)","SUPABASE_URL"]);
+forbidAll("origin-safe Realtime broadcaster",source.realtimeBroadcast,['const URL=Deno.env.get("SUPABASE_URL")','new URL(origin)']);
 requireAll("origin-safe monitor",source.pilotMonitor,["new globalThis.URL(origin)","aora_consume_rate_limit","pilot_error_events","Access-Control-Allow-Private-Network"]);
 forbidAll("origin-safe monitor",source.pilotMonitor,['const URL=Deno.env.get("SUPABASE_URL")','new URL(origin)']);
 requireAll("compliance proxy",source.complianceProxy,["aora-v8-pilot-compliance","new globalThis.URL(origin)","content-disposition","x-aora-export-checksum","SERVICE_KEY"]);
@@ -84,6 +85,8 @@ forbidAll("origin-safe onboarding",source.pilotOnboarding,['const URL=Deno.env.g
 requireAll("scoped CI ledger cleanup",source.cleanupMigration,["aora.cleanup_organization_id","tenantSource","github-oidc-ci","aora_cleanup_ci_tenant"]);
 requireAll("monitoring",source.monitoring,["AORA_SECRET_PATTERN","[REDACTED]","unhandledrejection","reportClientDiagnostic"]);
 requireAll("compliance UI",source.compliance,["Compliance & Korrekturen","requestCorrection","decideCorrection","downloadCompliance","Verifiziertes Snapshot"]);
+requireAll("mobile correction action",source.complianceCss,["employee-correction-fab","bottom:calc(81px + env(safe-area-inset-bottom,0px))","z-index:60"]);
+requireAll("kiosk manager feedback",source.handlers,["TOGGLE_KIOSK_LOCK","Kiosk-Gerät wurde gesperrt.","Kiosk-Gerät konnte nicht aktualisiert werden."]);
 forbidAll("legacy polling",source.boot,["setInterval(refreshWorkspace,5000)"]);
 requireAll("security migration",source.security,["revoke all on function public.aora_activate_invitation_atomic","aora_redact_pilot_qa_evidence","[REDACTED]","grant execute on function public.aora_verify_time_entry_chain"]);
 requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercontent.com","aora-staging-ci",'REPOSITORY_ID="1044549733"','ALLOWED_HEAD="agent/aora-v8-hardening"','ALLOWED_BASE="agent/aora-v8-final"',"aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant"]);
@@ -98,4 +101,4 @@ if(source.canonicalKiosk.includes("aora-v8-hardening"))throw new Error("Canonica
 requireAll("canonical style",source.baseCss,["--black:#000","--white:#fff","--radius:16px",".aora-logo"]);
 for(const selector of [/(^|})\s*:root\s*{/m,/(^|})\s*body\s*[{,]/m,/(^|})\s*\.aora-logo\s*{/m])if(selector.test(source.overlayCss))throw new Error(`Overlay replaces canonical selector: ${selector}`);
 if(!source.build.includes('`${originalCss}\\n\\n${extensionCss}\\n`'))throw new Error("Canonical CSS append order changed");
-console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): dynamic access and breached-password protection, tenant isolation, OIDC-isolated CI, Realtime REST broadcast, origin-safe monitoring, compliance bridge and onboarding, durable punch integrity, encrypted offline queue and versioned work rules.`);
+console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): dynamic access and breached-password protection, tenant isolation, OIDC-isolated CI, origin-safe Realtime REST broadcast, mobile correction action, compliance bridge and onboarding, durable punch integrity, encrypted offline queue and versioned work rules.`);
