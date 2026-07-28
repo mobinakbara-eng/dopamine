@@ -42,7 +42,7 @@ const AORA_REALTIME_KEYS={
   ADD_SHIFT:["shifts","audit"],UPDATE_SHIFT:["shifts","audit"],REQUEST_LEAVE:["leaveRequests","notifications","audit"],DECIDE_LEAVE:["leaveRequests","notifications","audit"],
   APPROVE_CLOCK_REQUEST:["clockRequests","timeEntries","notifications","audit"],DENY_CLOCK_REQUEST:["clockRequests","notifications","audit"],
   INVITE_MANAGER:["admins","invitations","audit"],CREATE_EMPLOYEE_ACCOUNT:["employees","invitations","audit"],RESEND_INVITATION:["invitations","audit"],REVOKE_INVITATION:["invitations","admins","employees","audit"],
-  DEACTIVATE_ACCOUNT:["admins","employees","audit"],ADD_ANNOUNCEMENT:["announcements","audit"],UPDATE_PROFILE:["employees","audit"],TOGGLE_KIOSK_LOCK:["kioskDevices","audit"],ARCHIVE_LOCATION:["locations","admins","employees","audit"],
+  DEACTIVATE_ACCOUNT:["admins","employees","audit"],ADD_ANNOUNCEMENT:["announcements","audit"],UPDATE_PROFILE:["employees","audit"],CREATE_KIOSK_DEVICE:["kioskDevices","audit"],ROTATE_KIOSK_ACTIVATION:["kioskDevices","audit"],TOGGLE_KIOSK_LOCK:["kioskDevices","audit"],ARCHIVE_LOCATION:["locations","admins","employees","audit"],
   KIOSK_TRANSITION:["clockRequests","notifications","audit"],CORRECTION_REQUESTED:["correctionRequests","compliance"],CORRECTION_DECIDED:["timeEntries","correctionRequests","audit","compliance"],
   EMPLOYEE_ANONYMIZED:["employees","timeEntries","audit","compliance"],INVITATION_ACTIVATED:["admins","invitations","audit"]
 };

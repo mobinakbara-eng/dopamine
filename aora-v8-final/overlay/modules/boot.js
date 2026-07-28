@@ -47,6 +47,15 @@ async function boot(){
     }
     S.session=restore(accessRole);
     if(S.session){await loadState();return}
+    if(accessRole==="kiosk"&&typeof restoreOfflineKioskSession==="function"){
+      await ensureDirectory(accessRole);
+      const restored=await restoreOfflineKioskSession(S.directory);
+      if(restored){
+        activateSession(restored,"kiosk");
+        await loadState();
+        return;
+      }
+    }
     await ensureDirectory(accessRole);
     renderLogin();
   }catch(error){

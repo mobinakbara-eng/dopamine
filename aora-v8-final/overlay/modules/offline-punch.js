@@ -84,6 +84,35 @@ async function bindOfflinePunchSession(session=S.session){
     iv:encrypted.iv,ciphertext:encrypted.ciphertext,updatedAt:Date.now()
   }));
 }
+async function restoreOfflineKioskSession(directory=S.directory){
+  const allowedIds=new Set((directory?.kioskDevices||[]).map(device=>String(device.id)));
+  if(!allowedIds.size)return null;
+  const sessions=await withStore(OFFLINE_SESSION_STORE,"readonly",store=>idbRequest(store.getAll()));
+  const ordered=(sessions||[]).filter(record=>allowedIds.has(String(record.deviceId))).sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0));
+  for(const record of ordered){
+    const context={keyId:record.keyId,organizationId:String(record.organizationId),deviceId:String(record.deviceId)};
+    try{
+      const keyRecord=await withStore(OFFLINE_KEY_STORE,"readonly",store=>idbRequest(store.get(record.keyId)));
+      if(!keyRecord?.key)continue;
+      const stored=await decryptJson(keyRecord.key,record,aad(context,"session"));
+      if(!stored?.token||String(stored.token).length!==64)continue;
+      if(stored.expiresAt&&new Date(stored.expiresAt)<=new Date()){
+        await withStore(OFFLINE_SESSION_STORE,"readwrite",store=>store.delete(record.keyId));
+        continue;
+      }
+      return{
+        token:stored.token,
+        expiresAt:stored.expiresAt||null,
+        organizationId:context.organizationId,
+        role:"kiosk",
+        accessRole:"kiosk",
+        subjectId:context.deviceId,
+        deviceId:context.deviceId
+      };
+    }catch{}
+  }
+  return null;
+}
 async function unbindOfflinePunchSession(session=S.session){
   if(!session||session.role!=="kiosk"||!session.organizationId||!session.deviceId)return;
   const context=offlineContext(session);

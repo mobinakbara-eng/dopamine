@@ -168,6 +168,10 @@ async function loadState(quiet=false){
     if(S.accessRole==="kiosk"&&typeof syncOfflinePunchQueue==="function")syncOfflinePunchQueue().catch(()=>{});
   }catch(error){
     if(error.status===401||error.status===403){
+      const rejectedSession=S.session;
+      if(rejectedSession?.role==="kiosk"&&typeof unbindOfflinePunchSession==="function"){
+        await unbindOfflinePunchSession(rejectedSession).catch(()=>{});
+      }
       clearSessions();
       S.session=null;
       S.state=null;
