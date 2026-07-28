@@ -14,7 +14,7 @@ function diagnostics(page,{allowOffline=false}={}){
 function isAccessAction(request,action){
   return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes(`"action":"${action}"`);
 }
-async function triggerAccessAction(page,action,trigger){
+async function observeAccessAction(page,action,trigger){
   const responsePromise=page.waitForResponse(response=>isAccessAction(response.request(),action),{timeout:15000}).then(response=>({kind:"response",response}));
   const failurePromise=page.waitForEvent("requestfailed",{predicate:request=>isAccessAction(request,action),timeout:15000}).then(request=>({kind:"failure",request}));
   const timeoutPromise=new Promise(resolve=>setTimeout(()=>resolve({kind:"timeout"}),15000));
@@ -25,8 +25,16 @@ async function triggerAccessAction(page,action,trigger){
     const visible=String(await page.locator("body").innerText()).replace(/\s+/g," ").slice(0,500);
     throw new Error(`Access ${action} POST was not observed. Visible UI: ${visible}`);
   }
-  const body=await outcome.response.json().catch(()=>({}));
-  if(outcome.response.status()!==200)throw new Error(`Access ${action} HTTP ${outcome.response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return{response:outcome.response,body:await outcome.response.json().catch(()=>({}))};
+}
+async function triggerAccessAction(page,action,trigger){
+  const {response,body}=await observeAccessAction(page,action,trigger);
+  if(response.status()!==200)throw new Error(`Access ${action} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return body;
+}
+async function triggerAccessRejection(page,action,expectedStatus,trigger){
+  const {response,body}=await observeAccessAction(page,action,trigger);
+  if(response.status()!==expectedStatus)throw new Error(`Access ${action} expected HTTP ${expectedStatus}, received ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
   return body;
 }
 async function passwordLogin(page,role,email,password){
@@ -95,13 +103,22 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     expect(getErrors().filter(item=>!item.includes("ERR_INTERNET_DISCONNECTED"))).toEqual([]);
   });
 
-  test("Invitation: activate, login, tenant scope and replay rejection",async({page,browser,baseURL})=>{
+  test("Invitation: reject breached password, activate, login, scope and replay",async({page,browser,baseURL})=>{
     const invitation=new URL(env("AORA_INVITATION_URL"));
     const localInvite=new URL(`${invitation.pathname}${invitation.search}`,baseURL).toString();
     const invitedEmail=env("AORA_INVITATION_EMAIL"),invitedPassword=env("AORA_INVITATION_PASSWORD");
     await page.goto(localInvite);
     await expect(page.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible();
     await page.locator('input[name="email"]').fill(invitedEmail);
+
+    const breachedPassword="Password123!";
+    await page.locator('input[name="password"]').fill(breachedPassword);
+    await page.locator('input[name="confirm"]').fill(breachedPassword);
+    const rejection=await triggerAccessRejection(page,"acceptInvitation",400,()=>page.locator('#invitation-accept button[type="submit"]').click());
+    expect(String(rejection.error||"")).toContain("Datenlecks");
+    await expect(page.getByText(/bekannten Datenlecks/)).toBeVisible();
+    await expect.poll(()=>page.evaluate(slug=>sessionStorage.getItem(`aora:${slug}:manager`),workspace)).toBeNull();
+
     await page.locator('input[name="password"]').fill(invitedPassword);
     await page.locator('input[name="confirm"]').fill(invitedPassword);
     await triggerAccessAction(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click());
