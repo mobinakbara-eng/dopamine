@@ -16,10 +16,15 @@ function setWorkspaceSyncStatus(status){
   document.documentElement.dataset.aoraSync=status;
   document.dispatchEvent(new CustomEvent("aora:sync-status",{detail:{status}}));
 }
-function scheduleRealtimeRefresh(){
+function scheduleRealtimeRefresh(message=null){
+  globalThis.__aoraLastRealtimeEvent={receivedAt:Date.now(),message};
+  document.dispatchEvent(new CustomEvent("aora:workspace-change",{detail:message||{}}));
   clearTimeout(aoraRealtimeRefreshTimer);
-  aoraRealtimeRefreshTimer=setTimeout(()=>{
-    if(typeof refreshWorkspace==="function")refreshWorkspace().catch(()=>{});
+  aoraRealtimeRefreshTimer=setTimeout(async()=>{
+    const tasks=[];
+    if(typeof refreshWorkspace==="function")tasks.push(refreshWorkspace().catch(()=>{}));
+    if(S.adminView==="compliance"&&typeof ensureComplianceData==="function")tasks.push(ensureComplianceData(true).catch(()=>{}));
+    await Promise.all(tasks);
   },250);
 }
 function startWorkspaceFallback(){
