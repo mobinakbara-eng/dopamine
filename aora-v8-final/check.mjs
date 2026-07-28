@@ -23,6 +23,7 @@ const paths=[
   "supabase/functions/aora-v8-hardening-access/index.ts","supabase/functions/aora-v8-hardening-workspace/index.ts","supabase/functions/aora-v8-hardening-kiosk/index.ts",
   "supabase/functions/aora-v8-pilot-access/index.ts","supabase/functions/aora-v8-pilot-workspace/index.ts","supabase/functions/aora-v8-pilot-kiosk/index.ts","supabase/functions/aora-v8-pilot-workspace-rules/index.ts",
   "supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts","supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts",
+  "supabase/functions/aora-v8-pilot-monitor/index.ts","supabase/functions/aora-v8-pilot-compliance-proxy/index.ts",
   "supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql",
   "supabase/migrations/202607280012_aora_pilot_punch_idempotency.sql",
   "supabase/migrations/202607280013_aora_pilot_work_rule_engine.sql",
@@ -42,6 +43,7 @@ const source={
   security:await read("supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql"),ciMigration:await read("supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql"),
   realtimeMigration:await read("supabase/migrations/202607280900_aora_realtime_rest_bridge.sql"),cleanupMigration:await read("supabase/migrations/202607280910_aora_ci_ledger_cleanup_exception.sql"),
   ciBootstrap:await read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),realtimeBroadcast:await read("supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts"),
+  pilotMonitor:await read("supabase/functions/aora-v8-pilot-monitor/index.ts"),complianceProxy:await read("supabase/functions/aora-v8-pilot-compliance-proxy/index.ts"),
   ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),e2e:await read("tests/aora-four-role.spec.mjs"),
   pilotAccess:await read("supabase/functions/aora-v8-pilot-access/index.ts"),pilotWorkspace:await read("supabase/functions/aora-v8-pilot-workspace/index.ts"),pilotKiosk:await read("supabase/functions/aora-v8-pilot-kiosk/index.ts"),ruleGate:await read("supabase/functions/aora-v8-pilot-workspace-rules/index.ts"),
   employee:await read("overlay/modules/employee-hardening.js"),identity:await read("overlay/modules/identity-hardening.js"),profile:await read("overlay/modules/profile-hardening.js"),
@@ -50,7 +52,7 @@ const source={
 const requireAll=(name,text,markers)=>{for(const marker of markers)if(!text.includes(marker))throw new Error(`Missing ${name} marker: ${marker}`)};
 const forbidAll=(name,text,markers)=>{for(const marker of markers)if(text.includes(marker))throw new Error(`Forbidden ${name} marker: ${marker}`)};
 
-requireAll("index",source.index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=813","@supabase/supabase-js@2.57.4","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=814","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
+requireAll("index",source.index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=813","@supabase/supabase-js@2.57.4","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=815","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
 requireAll("config",source.config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','publishableKey:"sb_publishable_','complianceFunction:"aora-v8-pilot-compliance"','monitorFunction:"aora-v8-pilot-monitor"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
 const configured=source.config.match(/version:\s*"([^"]+)"/)?.[1];
 if(configured!==pkg.version)throw new Error(`Version mismatch: ${configured} vs ${pkg.version}`);
@@ -69,9 +71,13 @@ requireAll("rule schema",source.rules,["work_rule_sets","work_rules","work_rule_
 requireAll("rule gate",source.ruleGate,["SHIFT_EVENTS","evaluateShift","aora_evaluate_shift_rules","Bestätigung und Begründung erforderlich.","ruleSetVersion","ruleEvaluationId"]);
 requireAll("rule UI",source.ruleUi,["Backend-Prüfung aktiv","evaluateShift","shiftRuleDialog","Ausnahme mit Begründung","Arbeitszeitregeln","Regelset Version"]);
 requireAll("realtime client",source.realtime,["workspace-change","aoraSha256Hex","realtimeFallbackMs","SUBSCRIBED","connectWorkspaceRealtime","disconnectWorkspaceRealtime","__aoraLastRealtimeEvent"]);
-requireAll("runtime tenant and broadcast routing",source.runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime","disconnectWorkspaceRealtime","notifyWorkspaceRealtime","realtimeBroadcastFunction","text/plain;charset=UTF-8"]);
-requireAll("Realtime REST bridge",source.realtimeMigration,["drop trigger if exists aora_workspace_revision_broadcast","aora_active_session_topics","aora.maintenance_cleanup"].filter(marker=>source.realtimeMigration.includes(marker)));
+requireAll("runtime tenant and broadcast routing",source.runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime","disconnectWorkspaceRealtime","notifyWorkspaceRealtime","realtimeBroadcastFunction","text/plain;charset=UTF-8",'AORA_COMPLIANCE_FUNCTION="aora-v8-pilot-compliance-proxy"']);
+requireAll("Realtime REST bridge",source.realtimeMigration,["drop trigger if exists aora_workspace_revision_broadcast","aora_active_session_topics"].filter(marker=>source.realtimeMigration.includes(marker)));
 requireAll("Realtime broadcaster",source.realtimeBroadcast,["validate_demo_session","aora_active_session_topics","/realtime/v1/api/broadcast","workspace-change","deliveredTopics"]);
+requireAll("origin-safe monitor",source.pilotMonitor,["new globalThis.URL(origin)","aora_consume_rate_limit","pilot_error_events","Access-Control-Allow-Private-Network"]);
+forbidAll("origin-safe monitor",source.pilotMonitor,['const URL=Deno.env.get("SUPABASE_URL")','new URL(origin)']);
+requireAll("compliance proxy",source.complianceProxy,["aora-v8-pilot-compliance","new globalThis.URL(origin)","content-disposition","x-aora-export-checksum","SERVICE_KEY"]);
+forbidAll("compliance proxy",source.complianceProxy,["SUPABASE_SERVICE_ROLE_KEY\")!;\nconst service"]);
 requireAll("scoped CI ledger cleanup",source.cleanupMigration,["aora.cleanup_organization_id","tenantSource","github-oidc-ci","aora_cleanup_ci_tenant"]);
 requireAll("monitoring",source.monitoring,["AORA_SECRET_PATTERN","[REDACTED]","unhandledrejection","reportClientDiagnostic"]);
 requireAll("compliance UI",source.compliance,["Compliance & Korrekturen","requestCorrection","decideCorrection","downloadCompliance","Verifiziertes Snapshot"]);
@@ -89,4 +95,4 @@ if(source.canonicalKiosk.includes("aora-v8-hardening"))throw new Error("Canonica
 requireAll("canonical style",source.baseCss,["--black:#000","--white:#fff","--radius:16px",".aora-logo"]);
 for(const selector of [/(^|})\s*:root\s*{/m,/(^|})\s*body\s*[{,]/m,/(^|})\s*\.aora-logo\s*{/m])if(selector.test(source.overlayCss))throw new Error(`Overlay replaces canonical selector: ${selector}`);
 if(!source.build.includes('`${originalCss}\\n\\n${extensionCss}\\n`'))throw new Error("Canonical CSS append order changed");
-console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): dynamic access origin safety, tenant isolation, OIDC-isolated CI, Realtime REST broadcast, compliance UI, durable punch integrity, encrypted offline queue and versioned work rules.`);
+console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): dynamic access origin safety, tenant isolation, OIDC-isolated CI, Realtime REST broadcast, origin-safe monitoring and compliance bridge, durable punch integrity, encrypted offline queue and versioned work rules.`);
