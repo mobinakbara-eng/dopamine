@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - agent/aora-v8-final
+      - main
     paths:
       - "aora-v8-final/**"
       - ".github/workflows/aora-v8-pilot-ci.yml"

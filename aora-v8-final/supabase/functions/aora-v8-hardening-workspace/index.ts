@@ -23,7 +23,8 @@ const ARRAY_KEYS = [
 const STRUCTURAL_TYPES = new Set([
   "ADD_LOCATION", "UPDATE_LOCATION", "ARCHIVE_LOCATION", "INVITE_MANAGER",
   "CREATE_EMPLOYEE_ACCOUNT", "RESEND_INVITATION", "REVOKE_INVITATION",
-  "UPDATE_MANAGER_ACCESS", "DEACTIVATE_ACCOUNT", "TOGGLE_KIOSK_LOCK",
+  "UPDATE_MANAGER_ACCESS", "DEACTIVATE_ACCOUNT", "CREATE_KIOSK_DEVICE",
+  "ROTATE_KIOSK_ACTIVATION", "TOGGLE_KIOSK_LOCK",
 ]);
 const MANAGER_LEGACY_TYPES = new Set([
   "ADD_SHIFT", "UPDATE_SHIFT", "DELETE_SHIFT", "COPY_WEEK", "PUBLISH_WEEK",
@@ -43,6 +44,17 @@ const id = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const clone = <T>(value: T): T => structuredClone(value);
 const emailOk = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const hex = (bytes: Uint8Array) => Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+function activationCode() {
+  let value = "";
+  while (value.length < 8) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    for (const byte of bytes) {
+      if (byte < 250) value += String(byte % 10);
+      if (value.length === 8) break;
+    }
+  }
+  return value;
+}
 
 function allowedOrigin(origin: string | null) {
   if (!origin) return true;
@@ -302,6 +314,32 @@ async function persist(ctx: any, state: any) {
   return revision;
 }
 
+async function persistKioskActivation(ctx: any, state: any, activation: any) {
+  const changedAt = now();
+  const revision = Number(ctx.snapshot.revision) + 1;
+  state.meta = { ...(state.meta || {}), revision, updatedAt: changedAt, variant: "isolated-v8-hardening" };
+  const { data, error } = await service.rpc("aora_commit_kiosk_activation", {
+    p_organization_id: ctx.organization.id,
+    p_expected_revision: Number(ctx.snapshot.revision),
+    p_state: state,
+    p_actor_role: ctx.accessRole,
+    p_actor_id: ctx.admin.id,
+    p_event_type: activation.eventType,
+    p_device_id: activation.deviceId,
+    p_device_name: activation.deviceName,
+    p_location_id: activation.locationId,
+    p_activation_code: activation.code,
+    p_event_payload: { deviceId: activation.deviceId, locationId: activation.locationId },
+  });
+  if (error || Number(data) !== revision) {
+    if (String(error?.message || "").includes("revision_conflict")) {
+      throw Object.assign(new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."), { status: 409 });
+    }
+    throw error || new Error("Kiosk-Aktivierung konnte nicht gespeichert werden.");
+  }
+  return revision;
+}
+
 function addAudit(state: any, ctx: any, action: string, entity: string, entityId: string, detail: string, metadata: any = null) {
   state.audit = [{
     id: id("audit"), action, actor: ctx.admin?.name || ctx.session.display_name || "Aora",
@@ -367,20 +405,23 @@ async function issueInvitationToken(ctx: any, invitation: any, accessRole: "mana
 
   const appOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
-  const inviteUrl = `${appOrigin}/${route}?invitation=${encodeURIComponent(invitation.id)}&token=${encodeURIComponent(token)}`;
+  const inviteUrl = new globalThis.URL(`/${route}`, appOrigin);
+  inviteUrl.searchParams.set("workspace", ctx.organization.slug);
+  inviteUrl.searchParams.set("invitation", invitation.id);
+  inviteUrl.searchParams.set("token", token);
   const roleLabel = accessRole === "manager" ? "Manager / Arbeitgeber" : "Mitarbeiter";
   const subject = `Einladung zu ${ctx.state.company?.name || "AoraAI Workforce"}`;
   const body = [
     `Hallo ${invitation.name},`, "",
     `du wurdest als ${roleLabel} zu ${ctx.state.company?.name || "AoraAI Workforce"} eingeladen.`,
     "Öffne den folgenden einmaligen Link und lege dein persönliches Passwort fest:", "",
-    inviteUrl, "",
+    inviteUrl.toString(), "",
     `Der Link ist bis ${new Intl.DateTimeFormat("de-DE", {
       dateStyle: "medium", timeStyle: "short", timeZone: ctx.state.company?.timezone || "Europe/Berlin",
     }).format(new Date(invitation.expiresAt))} gültig.`, "",
     "Falls du diese Einladung nicht erwartest, kannst du die E-Mail ignorieren.",
   ].join("\n");
-  return { invitationId: invitation.id, email: invitation.email, name: invitation.name, accessRole, inviteUrl, subject, body, expiresAt: invitation.expiresAt };
+  return { invitationId: invitation.id, email: invitation.email, name: invitation.name, accessRole, inviteUrl: inviteUrl.toString(), subject, body, expiresAt: invitation.expiresAt };
 }
 
 async function revokeInvitationToken(ctx: any, invitationId: string) {
@@ -403,6 +444,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
   let invitation: any = null;
   let inviteRole: "manager" | "employee" | null = null;
   let revokeTokenId: string | null = null;
+  let kioskActivation: any = null;
   const postCommit: Array<() => Promise<unknown>> = [];
 
   switch (event.type) {
@@ -613,6 +655,60 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       addAudit(state, ctx, `${kind}.deactivated`, subjectRole, account.id, account.name, account.locationId ? { locationId: account.locationId } : null);
       break;
     }
+    case "CREATE_KIOSK_DEVICE": {
+      const name = String(event.name || "").trim();
+      const locationId = String(event.locationId || "");
+      if (name.length < 2 || name.length > 80 || !locationId) {
+        throw Object.assign(new Error("Gerätename und Laden sind erforderlich."), { status: 400 });
+      }
+      requireLocation(state, locationId);
+      if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(locationId)) {
+        throw Object.assign(new Error("Du darfst Kiosk-Geräte nur für deine eigenen Läden anlegen."), { status: 403 });
+      }
+      if (state.kioskDevices.filter((item: any) => item.locationId === locationId && item.active !== false).length >= 10) {
+        throw Object.assign(new Error("Für diesen Laden sind bereits zehn aktive Kiosk-Geräte eingerichtet."), { status: 409 });
+      }
+      const device = {
+        id: id("kiosk"),
+        name,
+        locationId,
+        active: true,
+        locked: false,
+        activationVersion: 1,
+        createdAt: now(),
+        createdBy: ctx.admin.id,
+      };
+      state.kioskDevices.push(device);
+      kioskActivation = {
+        eventType: "CREATE_KIOSK_DEVICE",
+        deviceId: device.id,
+        deviceName: device.name,
+        locationId,
+        code: activationCode(),
+      };
+      addAudit(state, ctx, "kiosk.created", "kiosk", device.id, device.name, { locationId });
+      break;
+    }
+    case "ROTATE_KIOSK_ACTIVATION": {
+      const device = state.kioskDevices.find((item: any) => item.id === event.id && item.active !== false);
+      if (!device) throw Object.assign(new Error("Kiosk-Gerät wurde nicht gefunden."), { status: 404 });
+      if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(device.locationId)) {
+        throw Object.assign(new Error("Kein Zugriff auf dieses Kiosk-Gerät."), { status: 403 });
+      }
+      const version = Number(device.activationVersion || 0) + 1;
+      state.kioskDevices = state.kioskDevices.map((item: any) => item.id === device.id
+        ? { ...item, locked: false, activationVersion: version, activatedAt: now(), activatedBy: ctx.admin.id }
+        : item);
+      kioskActivation = {
+        eventType: "ROTATE_KIOSK_ACTIVATION",
+        deviceId: device.id,
+        deviceName: device.name || device.id,
+        locationId: device.locationId,
+        code: activationCode(),
+      };
+      addAudit(state, ctx, "kiosk.activation_rotated", "kiosk", device.id, device.name || device.id, { locationId: device.locationId });
+      break;
+    }
     case "TOGGLE_KIOSK_LOCK": {
       if (typeof event.locked !== "boolean") {
         throw Object.assign(new Error("Der gewünschte Sperrstatus fehlt."), { status: 400 });
@@ -647,18 +743,38 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       throw Object.assign(new Error("Unbekannte Verwaltungsaktion."), { status: 400 });
   }
 
-  const revision = await persist(ctx, state);
+  const revision = kioskActivation
+    ? await persistKioskActivation(ctx, state, kioskActivation)
+    : await persist(ctx, state);
   if (revokeTokenId) await revokeInvitationToken(ctx, revokeTokenId);
   for (const task of postCommit) await task();
   const delivery = invitation && inviteRole ? await issueInvitationToken({ ...ctx, state }, invitation, inviteRole, origin) : null;
   const { data: finalSnapshot, error: finalError } = await service.from("workspace_snapshots")
     .select("state,revision").eq("organization_id", ctx.organization.id).single();
   if (finalError || !finalSnapshot) throw finalError || new Error("Finaler Snapshot fehlt.");
-  return { state: scopeState(ctx, normalize(finalSnapshot.state)), revision: finalSnapshot.revision || revision, delivery };
+  const appOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
+  const kioskUrl = kioskActivation
+    ? `${appOrigin}/kiosk/dashboard/?workspace=${encodeURIComponent(ctx.organization.slug)}`
+    : null;
+  return {
+    state: scopeState(ctx, normalize(finalSnapshot.state)),
+    revision: finalSnapshot.revision || revision,
+    delivery,
+    kioskActivation: kioskActivation ? {
+      deviceId: kioskActivation.deviceId,
+      deviceName: kioskActivation.deviceName,
+      activationCode: kioskActivation.code,
+      kioskUrl,
+    } : null,
+  };
 }
 
 Deno.serve(async (request) => {
-  const origin = request.headers.get("origin");
+  const directOrigin = request.headers.get("origin");
+  const trustedProxy = request.headers.get("authorization") === `Bearer ${SERVICE_KEY}`
+    && request.headers.get("apikey") === SERVICE_KEY;
+  const forwardedOrigin = trustedProxy ? request.headers.get("x-aora-request-origin") : null;
+  const origin = directOrigin || (forwardedOrigin && allowedOrigin(forwardedOrigin) ? forwardedOrigin : null);
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (request.method !== "POST") return reply({ error: "Method not allowed" }, 405, origin);
   if (origin && !allowedOrigin(origin)) return reply({ error: "Origin not allowed" }, 403, origin);

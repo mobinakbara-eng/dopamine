@@ -22,6 +22,7 @@ function diagnostics(page,{allowOffline=false}={}){
   return()=>errors;
 }
 function isAccessAction(request,action){return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes(`"action":"${action}"`)}
+function isWorkspaceEvent(request,eventType){return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-workspace-rules")&&String(request.postData()||"").includes(`"type":"${eventType}"`)}
 function isComplianceAction(request,action){return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-compliance-proxy")&&String(request.postData()||"").includes(`"action":"${action}"`)}
 async function observeAccessAction(page,action,trigger){
   const responsePromise=page.waitForResponse(response=>isAccessAction(response.request(),action),{timeout:15000}).then(response=>({kind:"response",response}));
@@ -41,6 +42,14 @@ async function triggerAccessAction(page,action,trigger){
 async function triggerAccessRejection(page,action,expectedStatus,trigger){
   const {response,body}=await observeAccessAction(page,action,trigger);
   if(response.status()!==expectedStatus)throw new Error(`Access ${action} expected HTTP ${expectedStatus}, received ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return body;
+}
+async function triggerWorkspaceEvent(page,eventType,trigger){
+  const responsePromise=page.waitForResponse(response=>isWorkspaceEvent(response.request(),eventType),{timeout:30000});
+  await trigger();
+  const response=await responsePromise;
+  const body=await response.json().catch(()=>({}));
+  if(response.status()!==200)throw new Error(`Workspace ${eventType} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
   return body;
 }
 async function observeComplianceAction(page,action,trigger){
@@ -119,6 +128,17 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await page.locator('.admin-nav [data-view="owner-overview"]').click();
     await openAndCloseModal(page,'[data-a="location-modal"]',"Laden");
     await openAndCloseModal(page,'[data-a="manager-modal"]',"Manager");
+    await page.locator('[data-a="manager-modal"]').click();
+    const managerInvite=page.locator(".modal-backdrop .modal").last();
+    await managerInvite.locator('input[name="name"]').fill("Workspace Link QA");
+    await managerInvite.locator('input[name="email"]').fill(`workspace-link-${Date.now()}@example.com`);
+    await managerInvite.locator('input[name="locationIds"]').first().check();
+    const inviteResult=await triggerWorkspaceEvent(page,"INVITE_MANAGER",()=>managerInvite.locator('button[type="submit"]').click());
+    const generatedInvite=new URL(inviteResult.delivery.inviteUrl);
+    expect(generatedInvite.searchParams.get("workspace")).toBe(workspace);
+    expect(generatedInvite.pathname).toBe("/arbeitgeber/");
+    await expect(page.locator("#delivery-link")).toHaveValue(inviteResult.delivery.inviteUrl);
+    await page.locator(".modal-backdrop .modal").last().locator('[data-a="close"]').first().click();
     const options=page.locator("#loc-select option");
     if(await options.count()>1){const first=await options.nth(0).getAttribute("value");const second=await options.nth(1).getAttribute("value");await page.locator("#loc-select").selectOption(second);await expect(page.locator("#loc-select")).toHaveValue(second);await page.locator("#loc-select").selectOption(first)}
     await page.locator('.admin-nav [data-view="compliance"]').click();
@@ -133,7 +153,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await assertHealthy(page);await assertNoHorizontalOverflow(page);expect(getErrors()).toEqual([]);
   });
 
-  test("Manager: all scoped views and every creation modal render without errors",async({page})=>{
+  test("Manager: all scoped views and every creation modal render without errors",async({page,browser})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
     await expect(page.locator("#loc-select option")).toHaveCount(Number(env("AORA_MANAGER_LOCATION_COUNT")));
@@ -143,6 +163,26 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await page.locator('.admin-nav [data-view="schedule"]').click();await openAndCloseModal(page,'[data-a="shift-modal"]',"Neue Schicht");
     await page.locator('.admin-nav [data-view="news"]').click();await openAndCloseModal(page,'[data-a="news-modal"]',"Mitteilung erstellen");
     await page.locator('.admin-nav [data-view="kiosk"]').click();
+    await page.locator('[data-a="kiosk-create-modal"]').click();
+    const createKiosk=page.locator(".modal-backdrop .modal").last();
+    await createKiosk.locator('input[name="name"]').fill(`Manager Kiosk ${Date.now()}`);
+    const kioskResult=await triggerWorkspaceEvent(page,"CREATE_KIOSK_DEVICE",()=>createKiosk.locator('button[type="submit"]').click());
+    expect(kioskResult.kioskActivation.deviceId).toMatch(/^kiosk_/);
+    expect(kioskResult.kioskActivation.activationCode).toMatch(/^\d{8}$/);
+    expect(new URL(kioskResult.kioskActivation.kioskUrl).searchParams.get("workspace")).toBe(workspace);
+    expect(new URL(kioskResult.kioskActivation.kioskUrl).origin).toBe(new URL(page.url()).origin);
+    await expect(page.getByText("Zugangsdaten bereit")).toBeVisible();
+    const kioskContext=await browser.newContext();
+    const createdKiosk=await kioskContext.newPage();
+    const kioskErrors=diagnostics(createdKiosk);
+    await createdKiosk.goto(kioskResult.kioskActivation.kioskUrl);
+    await createdKiosk.locator('select[name="subject"]').selectOption(kioskResult.kioskActivation.deviceId);
+    await createdKiosk.locator('input[name="pin"]').fill(kioskResult.kioskActivation.activationCode);
+    await triggerAccessAction(createdKiosk,"login",()=>createdKiosk.locator('#pin-login button[type="submit"]').click());
+    await expect(createdKiosk.locator(".kiosk-app")).toBeVisible({timeout:30000});
+    expect(kioskErrors()).toEqual([]);
+    await kioskContext.close();
+    await page.locator(".modal-backdrop .modal").last().locator('[data-a="close"]').first().click();
     const toggle=page.locator('[data-a="toggle-kiosk"]').first();
     if(await toggle.count()){
       const before=(await toggle.innerText()).trim();
