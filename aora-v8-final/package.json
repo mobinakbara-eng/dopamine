@@ -6,7 +6,8 @@
   "scripts": {
     "check": "node check.mjs && node tests/offline-crypto.mjs",
     "smoke": "node smoke.mjs",
-    "build": "node check.mjs && node tests/offline-crypto.mjs && node build.mjs && node smoke.mjs"
+    "build": "node check.mjs && node tests/offline-crypto.mjs && node build.mjs && node smoke.mjs",
+    "test:e2e": "playwright test"
   },
   "engines": {
     "node": ">=20"
