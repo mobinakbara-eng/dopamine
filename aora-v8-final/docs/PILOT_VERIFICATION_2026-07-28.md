@@ -2,18 +2,19 @@
 
 Scope: `agent/aora-v8-hardening`, PR #6, Supabase Staging `xqgkawskftzurbujrpex` only.
 
-Head verified before this document update: `e10ab32cd29af5ba99acff4bd71cbbf7d7916492`.
+Head verified before this document update: `be6c89d8c7fedbd3d523e56d4744a47edfff7ef5`.
 
 ## Final release-gate result
 
-GitHub Actions run `30346116913` completed successfully:
+GitHub Actions run `30347238499` completed successfully:
 
 - Source, crypto and immutable bundle build gate: passed.
 - Owner login, dynamic workspace routing and Compliance Center: passed.
 - Manager login, location scope and Compliance access: passed.
 - Employee login and correction-request entry point: passed.
 - Kiosk login, browser offline mode, encrypted AES-GCM queue and online resync: passed.
-- Invitation inspection, atomic activation, session creation, password login, tenant scope and replay rejection: passed.
+- Known breached password rejection through HIBP k-anonymity: passed.
+- Invitation inspection, atomic activation with a safe password, session creation, password login, tenant scope and replay rejection: passed.
 - GitHub OIDC ephemeral tenant bootstrap and cleanup: passed.
 - Aggregate Aora Pilot Release Gate: passed.
 
@@ -22,7 +23,7 @@ The workflow does not require permanent staging passwords, PINs or onboarding se
 ## Live staging verification
 
 - Supabase project health was confirmed healthy in `eu-central-1`.
-- Active pilot functions include Access v3, Workspace Rules v3, Monitoring v2, Onboarding v3, Compliance Proxy v1, Realtime Broadcast v1, Kiosk, Workspace, Compliance Core and CI Bootstrap.
+- Active pilot functions include Access v4, Workspace Rules v3, Monitoring v2, Onboarding v3, Compliance Proxy v1, Realtime Broadcast v1, Kiosk, Workspace, Compliance Core and CI Bootstrap.
 - Dynamic workspace selection uses the validated `workspace` query parameter or session storage and defaults to `aora-demo`.
 - Production database, production aliases, `main` and canonical `aora/` source were not changed.
 
@@ -52,6 +53,11 @@ The workflow does not require permanent staging passwords, PINs or onboarding se
 - Browser monitoring redacts session-like values and query-string secrets before reporting.
 - CI ledger cleanup is allowed only for verified `github-oidc-ci` tenants; real tenant ledgers remain append-only.
 - Onboarding kiosk activation codes are generated with `crypto.getRandomValues`, not `Math.random`.
+- Invitation activation checks passwords against Have I Been Pwned using the free Pwned Passwords range API. Only the first five characters of a SHA-1 hash are transmitted, response padding is enabled and the full password or full hash never leaves Aora.
+- If the breached-password service is unavailable, activation fails closed with HTTP 503 instead of bypassing the security check.
+- Browser QA verified that `Password123!` is rejected with HTTP 400 before the invitation can be activated.
+
+The Supabase organization is on the Free plan, so the platform's separate Supabase Auth leaked-password toggle is unavailable. Aora Pilot does not use Supabase Auth for these credentials; its actual invitation/password path is now protected independently. If Supabase Auth is introduced later, the organization must move to Pro and enable the platform option.
 
 ## Repository source-of-truth
 
@@ -67,15 +73,14 @@ The repository now contains and gates the deployed sources for:
 - CI OIDC Bootstrap
 - Security and cleanup migrations
 
-The Source Gate rejects fixed-workspace Access code, unsafe URL shadowing, `Math.random` onboarding codes, missing deployed-function sources and regressions to five-second polling.
+The Source Gate rejects fixed-workspace Access code, unsafe URL shadowing, missing HIBP k-anonymity markers, full-hash password range requests, `Math.random` onboarding codes, missing deployed-function sources and regressions to five-second polling.
 
 ## Vercel verification
 
 A Branch Preview exists with state `READY`, and the Aora owner route returned HTTP 200 with the expected 8.1.0 shell. Newer Preview builds are currently blocked by Vercel Free-plan quota `api-deployments-free-per-day` after more than 100 deployments in one day. This is an external quota failure, not a source or build failure.
 
-## Remaining external Stop-Ship items
+## Remaining external Stop-Ship item
 
 - Build one fresh Vercel Preview from the final Head after the daily quota resets or the plan is upgraded, then record final visual/layout QA on that exact SHA.
-- Enable Supabase Auth leaked-password protection before a public production rollout.
 
-PR #6 must remain Draft until those external release conditions are satisfied. No merge or production promotion is authorized by this verification.
+PR #6 must remain Draft until that external release condition is satisfied. No merge or production promotion is authorized by this verification.
