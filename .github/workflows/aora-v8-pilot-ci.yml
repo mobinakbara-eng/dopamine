@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: aora-v8-pilot-${{ github.event.pull_request.number || github.ref }}
@@ -59,30 +60,62 @@ jobs:
         working-directory: aora-v8-final
     env:
       AORA_SUPABASE_URL: https://xqgkawskftzurbujrpex.supabase.co
-      AORA_WORKSPACE_SLUG: ${{ vars.AORA_WORKSPACE_SLUG || 'aora-demo' }}
-      AORA_OWNER_EMAIL: ${{ secrets.AORA_OWNER_EMAIL }}
-      AORA_OWNER_PASSWORD: ${{ secrets.AORA_OWNER_PASSWORD }}
-      AORA_MANAGER_EMAIL: ${{ secrets.AORA_MANAGER_EMAIL }}
-      AORA_MANAGER_PASSWORD: ${{ secrets.AORA_MANAGER_PASSWORD }}
-      AORA_EMPLOYEE_EMAIL: ${{ secrets.AORA_EMPLOYEE_EMAIL }}
-      AORA_EMPLOYEE_PASSWORD: ${{ secrets.AORA_EMPLOYEE_PASSWORD }}
-      AORA_KIOSK_DEVICE_ID: ${{ secrets.AORA_KIOSK_DEVICE_ID }}
-      AORA_KIOSK_PIN: ${{ secrets.AORA_KIOSK_PIN }}
-      AORA_ONBOARDING_CODE: ${{ secrets.AORA_ONBOARDING_CODE }}
-      AORA_MANAGER_LOCATION_COUNT: ${{ vars.AORA_MANAGER_LOCATION_COUNT || '1' }}
+      AORA_CI_BOOTSTRAP_URL: https://xqgkawskftzurbujrpex.supabase.co/functions/v1/aora-v8-pilot-ci-bootstrap
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify required staging secrets exist
+      - name: Bootstrap isolated staging tenant with GitHub OIDC
         shell: bash
         run: |
-          missing=0
-          for name in AORA_OWNER_EMAIL AORA_OWNER_PASSWORD AORA_MANAGER_EMAIL AORA_MANAGER_PASSWORD AORA_EMPLOYEE_EMAIL AORA_EMPLOYEE_PASSWORD AORA_KIOSK_DEVICE_ID AORA_KIOSK_PIN AORA_ONBOARDING_CODE; do
-            if [ -z "${!name}" ]; then echo "::error::Missing required GitHub Actions secret: $name"; missing=1; fi
-          done
-          exit "$missing"
+          set -euo pipefail
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-staging-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          response_file=$(mktemp)
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data '{"action":"bootstrap"}')
+          if [ "$status" != "201" ]; then
+            jq -c '{error}' "$response_file" || true
+            exit 1
+          fi
+          jq -e '
+            .workspaceSlug and .owner.email and .owner.password and
+            .manager.email and .manager.password and
+            .employee.email and .employee.password and
+            .kiosk.deviceId and .kiosk.pin and
+            .invitation.email and .invitation.password and .invitation.url
+          ' "$response_file" >/dev/null
+          mapfile -t masked_values < <(jq -r '[
+            .workspaceSlug,.owner.email,.owner.password,.manager.email,.manager.password,
+            .employee.email,.employee.password,.kiosk.deviceId,.kiosk.pin,
+            .invitation.email,.invitation.password,.invitation.url
+          ] | .[]' "$response_file")
+          for value in "${masked_values[@]}"; do echo "::add-mask::$value"; done
+          invitation_token=$(jq -r '.invitation.url' "$response_file" | sed -E 's/.*[?&]token=([^&]+).*/\1/')
+          echo "::add-mask::$invitation_token"
+          {
+            echo "AORA_WORKSPACE_SLUG=$(jq -r '.workspaceSlug' "$response_file")"
+            echo "AORA_OWNER_EMAIL=$(jq -r '.owner.email' "$response_file")"
+            echo "AORA_OWNER_PASSWORD=$(jq -r '.owner.password' "$response_file")"
+            echo "AORA_MANAGER_EMAIL=$(jq -r '.manager.email' "$response_file")"
+            echo "AORA_MANAGER_PASSWORD=$(jq -r '.manager.password' "$response_file")"
+            echo "AORA_EMPLOYEE_EMAIL=$(jq -r '.employee.email' "$response_file")"
+            echo "AORA_EMPLOYEE_PASSWORD=$(jq -r '.employee.password' "$response_file")"
+            echo "AORA_KIOSK_DEVICE_ID=$(jq -r '.kiosk.deviceId' "$response_file")"
+            echo "AORA_KIOSK_PIN=$(jq -r '.kiosk.pin' "$response_file")"
+            echo "AORA_INVITATION_EMAIL=$(jq -r '.invitation.email' "$response_file")"
+            echo "AORA_INVITATION_PASSWORD=$(jq -r '.invitation.password' "$response_file")"
+            echo "AORA_INVITATION_URL=$(jq -r '.invitation.url' "$response_file")"
+            echo "AORA_MANAGER_LOCATION_COUNT=$(jq -r '.managerLocationCount' "$response_file")"
+          } >> "$GITHUB_ENV"
+          rm -f "$response_file"
       - name: Install Playwright without changing lockfiles
         run: |
           npm install --no-save @playwright/test@1.56.1
@@ -99,6 +132,23 @@ jobs:
           path: aora-v8-final/test-results/**/*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Cleanup isolated staging tenant
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${AORA_WORKSPACE_SLUG:-}" ]; then exit 0; fi
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-staging-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          payload=$(jq -cn --arg workspaceSlug "$AORA_WORKSPACE_SLUG" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
+          curl --fail-with-body -sS \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data "$payload" >/dev/null
 
   release-gate:
     name: Aora pilot release gate
