@@ -8,7 +8,12 @@ function diagnostics(page,{allowOffline=false}={}){
   const errors=[];
   page.on("console",message=>{if(message.type()==="error")errors.push(`console:${message.text()}`)});
   page.on("pageerror",error=>errors.push(`page:${error.message}`));
-  page.on("requestfailed",request=>{if(!allowOffline)errors.push(`network:${request.failure()?.errorText||"failed"}:${safeUrl(request.url())}`)});
+  page.on("requestfailed",request=>{
+    const reason=request.failure()?.errorText||"failed";
+    const url=safeUrl(request.url());
+    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast"));
+    if(!allowOffline&&!expectedAbort)errors.push(`network:${reason}:${url}`);
+  });
   return()=>errors;
 }
 function isAccessAction(request,action){
