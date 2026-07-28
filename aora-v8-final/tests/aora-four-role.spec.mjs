@@ -14,6 +14,9 @@ function diagnostics(page,{allowOffline=false}={}){
 function isAccessAction(request,action){
   return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes(`"action":"${action}"`);
 }
+function isComplianceAction(request,action){
+  return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-compliance-proxy")&&String(request.postData()||"").includes(`"action":"${action}"`);
+}
 async function observeAccessAction(page,action,trigger){
   const responsePromise=page.waitForResponse(response=>isAccessAction(response.request(),action),{timeout:15000}).then(response=>({kind:"response",response}));
   const failurePromise=page.waitForEvent("requestfailed",{predicate:request=>isAccessAction(request,action),timeout:15000}).then(request=>({kind:"failure",request}));
@@ -26,6 +29,14 @@ async function observeAccessAction(page,action,trigger){
     throw new Error(`Access ${action} POST was not observed. Visible UI: ${visible}`);
   }
   return{response:outcome.response,body:await outcome.response.json().catch(()=>({}))};
+}
+async function observeComplianceAction(page,action,trigger){
+  const responsePromise=page.waitForResponse(response=>isComplianceAction(response.request(),action),{timeout:30000});
+  await trigger();
+  const response=await responsePromise;
+  const body=await response.json().catch(()=>({}));
+  if(response.status()!==200)throw new Error(`Compliance ${action} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return body;
 }
 async function triggerAccessAction(page,action,trigger){
   const {response,body}=await observeAccessAction(page,action,trigger);
@@ -53,44 +64,195 @@ async function kioskLogin(page){
   await triggerAccessAction(page,"login",()=>page.locator('#pin-login button[type="submit"]').click());
   await page.waitForFunction(value=>Boolean(sessionStorage.getItem(`aora:${value}:kiosk`)),workspace);
 }
+async function assertHealthy(page){
+  await expect(page.locator("body")).not.toContainText("Verbindung nicht möglich");
+  await expect(page.locator("body")).not.toContainText("Anwendungsfehler");
+  await expect(page.locator("body")).not.toContainText("Internal Server Error");
+  expect(await page.evaluate(()=>document.body.innerText.trim().length)).toBeGreaterThan(40);
+  const duplicateIds=await page.evaluate(()=>{
+    const ids=[...document.querySelectorAll("[id]")].map(node=>node.id).filter(Boolean);
+    return ids.filter((id,index)=>ids.indexOf(id)!==index);
+  });
+  expect(duplicateIds).toEqual([]);
+}
+async function assertNoHorizontalOverflow(page){
+  const metrics=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth}));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.innerWidth+2);
+}
+async function visitAdminViews(page){
+  const views=await page.locator('.admin-nav [data-a="admin-view"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.view));
+  expect(views.length).toBeGreaterThan(6);
+  for(const view of views){
+    await page.locator(`.admin-nav [data-a="admin-view"][data-view="${view}"]`).click();
+    await expect(page.locator(".admin-content")).toBeVisible();
+    await expect.poll(()=>page.locator(".admin-content").innerText().then(text=>text.trim().length)).toBeGreaterThan(20);
+    await assertHealthy(page);
+  }
+  return views;
+}
+async function openAndCloseModal(page,selector,heading){
+  const button=page.locator(selector).first();
+  await expect(button).toBeVisible();
+  await button.click();
+  const modal=page.locator(".modal-backdrop .modal").last();
+  await expect(modal).toBeVisible();
+  if(heading)await expect(modal).toContainText(heading);
+  await modal.locator('[data-a="close"]').first().click();
+  await expect(modal).toBeHidden();
+}
+async function downloadComplianceExport(page,format){
+  const downloadPromise=page.waitForEvent("download",{timeout:30000});
+  await page.locator(`[data-compliance-action="export"][data-format="${format}"]`).click();
+  const download=await downloadPromise;
+  expect(download.suggestedFilename().length).toBeGreaterThan(4);
+  const failure=await download.failure();
+  expect(failure).toBeNull();
+  return download.suggestedFilename();
+}
+
+const futureStart="2026-08-10";
+const futureEnd="2026-08-11";
+const correctionReason=()=>`Agent QA correction ${workspace}`;
 
 test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
   test.beforeAll(()=>{env("AORA_WORKSPACE_SLUG")});
 
-  test("Owner: login, workspace routing and compliance center",async({page})=>{
+  test("Owner: every navigation view, responsive shell, modals, exports and verified backup",async({page})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"owner",env("AORA_OWNER_EMAIL"),env("AORA_OWNER_PASSWORD"));
     await expect(page.locator('[data-view="owner-overview"]')).toBeVisible();
-    await page.locator('[data-view="compliance"]').click();
+    const views=await visitAdminViews(page);
+    expect(views).toEqual(expect.arrayContaining(["owner-overview","locations","managers","invitations","operations","reports","compliance","settings"]));
+
+    await page.locator('[data-a="admin-view"][data-view="owner-overview"]').click();
+    await openAndCloseModal(page,'[data-a="location-modal"]',"Laden");
+    await openAndCloseModal(page,'[data-a="manager-modal"]',"Manager");
+
+    const locationCount=await page.locator("#loc-select option").count();
+    if(locationCount>1){
+      const first=await page.locator("#loc-select option").nth(0).getAttribute("value");
+      const second=await page.locator("#loc-select option").nth(1).getAttribute("value");
+      await page.locator("#loc-select").selectOption(second);
+      await expect(page.locator("#loc-select")).toHaveValue(second);
+      await page.locator("#loc-select").selectOption(first);
+      await expect(page.locator("#loc-select")).toHaveValue(first);
+    }
+
+    await page.locator('[data-a="admin-view"][data-view="compliance"]').click();
     await expect(page.getByText("Compliance, Exporte und Zeitkorrekturen")).toBeVisible();
-    await page.waitForTimeout(1500);
+    await expect(page.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
+    const filenames=[];
+    for(const format of ["csv","pdf","audit","steuerberater"])filenames.push(await downloadComplianceExport(page,format));
+    expect(new Set(filenames).size).toBe(4);
+    const backup=await observeComplianceAction(page,"backup",()=>page.locator('[data-compliance-action="backup"]').click());
+    expect(backup.verified).toBe(true);
+
+    await page.reload();
+    await expect(page.locator(".admin-app")).toBeVisible();
+    await assertHealthy(page);
+    await assertNoHorizontalOverflow(page);
     expect(getErrors()).toEqual([]);
   });
 
-  test("Manager: scoped login and compliance access",async({page})=>{
+  test("Manager: all scoped views and every creation modal render without errors",async({page})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
     await expect(page.locator("#loc-select option")).toHaveCount(Number(env("AORA_MANAGER_LOCATION_COUNT")));
-    await page.locator('[data-view="compliance"]').click();
-    await expect(page.getByText("Compliance, Exporte und Zeitkorrekturen")).toBeVisible();
-    await page.waitForTimeout(1500);
+    const views=await visitAdminViews(page);
+    expect(views).toEqual(expect.arrayContaining(["overview","schedule","time","leave","employees","reports","news","kiosk","compliance","settings"]));
+
+    await page.locator('[data-a="admin-view"][data-view="overview"]').click();
+    await openAndCloseModal(page,'[data-a="employee-account-modal"]',"Mitarbeiter");
+    await page.locator('[data-a="admin-view"][data-view="schedule"]').click();
+    await openAndCloseModal(page,'[data-a="shift-modal"]',"Neue Schicht");
+    await page.locator('[data-a="admin-view"][data-view="news"]').click();
+    await openAndCloseModal(page,'[data-a="news-modal"]',"Mitteilung erstellen");
+
+    await page.locator('[data-a="admin-view"][data-view="kiosk"]').click();
+    const toggle=page.locator('[data-a="toggle-kiosk"]').first();
+    if(await toggle.count()){
+      const before=(await toggle.innerText()).trim();
+      await toggle.click();
+      await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText()).not.toBe(before);
+      await page.locator('[data-a="toggle-kiosk"]').first().click();
+      await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText()).toBe(before);
+    }
+    await assertNoHorizontalOverflow(page);
     expect(getErrors()).toEqual([]);
   });
 
-  test("Employee: personal login and correction entry point",async({page})=>{
+  test("Employee: every tab, profile, leave and correction dialogs render on mobile",async({page})=>{
+    await page.setViewportSize({width:390,height:844});
     const getErrors=diagnostics(page);
     await passwordLogin(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
-    await expect(page.locator('[data-compliance-action="request-correction"]')).toBeVisible();
+    const tabs=await page.locator('.employee-bottom [data-a="employee-view"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.view));
+    expect(tabs).toEqual(["home","calendar","time","leave","more"]);
+    for(const view of tabs){
+      await page.locator(`[data-a="employee-view"][data-view="${view}"]`).click();
+      await expect(page.locator(".employee-main")).toBeVisible();
+      await assertHealthy(page);
+      await assertNoHorizontalOverflow(page);
+    }
+    await page.locator('[data-a="employee-view"][data-view="more"]').click();
+    await openAndCloseModal(page,'[data-a="profile-modal"]',"Profil bearbeiten");
+    await page.locator('[data-a="employee-view"][data-view="leave"]').click();
+    await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
     await page.locator('[data-compliance-action="request-correction"]').click();
     await expect(page.getByText("Korrektur beantragen")).toBeVisible();
     await page.locator('[data-compliance-action="close"]').first().click();
-    await page.waitForTimeout(1000);
     expect(getErrors()).toEqual([]);
   });
 
-  test("Kiosk: encrypted offline queue and online resync",async({page,context})=>{
+  test("Employee → Manager: submit and approve leave plus time correction",async({page,browser})=>{
+    const getErrors=diagnostics(page);
+    await passwordLogin(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
+
+    await page.locator('[data-a="employee-view"][data-view="leave"]').click();
+    await page.locator('[data-a="leave-modal"]').click();
+    const leaveModal=page.locator(".modal-backdrop .modal").last();
+    await leaveModal.locator('input[name="start"]').fill(futureStart);
+    await leaveModal.locator('input[name="end"]').fill(futureEnd);
+    await leaveModal.locator('textarea[name="note"]').fill(`Agent QA ${workspace}`);
+    await leaveModal.locator('button[type="submit"]').click();
+    await expect(leaveModal).toBeHidden({timeout:30000});
+    await expect(page.locator(".employee-main")).toContainText(futureStart);
+
+    await page.locator('[data-compliance-action="request-correction"]').click();
+    const correctionDialog=page.locator("#aora-compliance-dialog");
+    await expect(correctionDialog).toBeVisible();
+    await correctionDialog.locator('input[name="breakMinutes"]').fill("5");
+    await correctionDialog.locator('textarea[name="reason"]').fill(correctionReason());
+    await correctionDialog.locator('button[type="submit"]').click();
+    await expect(correctionDialog).not.toBeVisible({timeout:30000});
+    expect(getErrors()).toEqual([]);
+
+    const managerContext=await browser.newContext();
+    const manager=await managerContext.newPage();
+    const managerErrors=diagnostics(manager);
+    await passwordLogin(manager,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
+    await manager.locator('[data-a="admin-view"][data-view="leave"]').click();
+    const leaveRow=manager.locator(".leave-row").filter({hasText:futureStart}).first();
+    await expect(leaveRow).toBeVisible();
+    await leaveRow.locator('[data-decision="approved"]').click();
+    await expect.poll(()=>manager.locator(".leave-row").filter({hasText:futureStart}).first().innerText()).toContain("approved");
+
+    await manager.locator('[data-a="admin-view"][data-view="compliance"]').click();
+    await expect(manager.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
+    const correctionRow=manager.locator(".compliance-row").filter({hasText:correctionReason()}).first();
+    await expect(correctionRow).toBeVisible();
+    manager.once("dialog",dialog=>dialog.accept("Agent QA approved"));
+    await correctionRow.locator('[data-decision="approved"]').click();
+    await expect.poll(()=>manager.locator(".compliance-row").filter({hasText:correctionReason()}).first().innerText()).toContain("Genehmigt");
+    expect(managerErrors()).toEqual([]);
+    await managerContext.close();
+  });
+
+  test("Kiosk: online shell, encrypted offline queue and online resync",async({page,context})=>{
+    await page.setViewportSize({width:1024,height:768});
     const getErrors=diagnostics(page,{allowOffline:true});
     await kioskLogin(page);
+    await assertHealthy(page);
+    await assertNoHorizontalOverflow(page);
     const people=page.locator('[data-a="select-person"]');
     await expect(people.first()).toBeVisible();
     await people.first().click();
