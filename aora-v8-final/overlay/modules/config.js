@@ -22,7 +22,7 @@ const CFG={
   url:"https://xqgkawskftzurbujrpex.supabase.co",
   slug:"aora-v8-hardening-demo",
   accessFunction:"aora-v8-hardening-access",
-  workspaceFunction:"aora-v8-pilot-workspace",
+  workspaceFunction:"aora-v8-pilot-workspace-rules",
   kioskWorkspaceFunction:"aora-v8-pilot-kiosk",
   tz:"Europe/Berlin",
   version:"8.1.0-pilot",
@@ -33,7 +33,7 @@ const S={
   role:sessionRole(initialAccessRole),
   accessRole:initialAccessRole,
   loginRole:initialAccessRole,
-  session:null,directory:null,state:null,revision:0,
+  session:null,directory:null,state:null,revision:0,ruleEngine:null,
   employeeView:"home",adminView:initialAccessRole==="owner"?"owner-overview":"overview",
   locationId:null,selected:null,busy:false
 };
