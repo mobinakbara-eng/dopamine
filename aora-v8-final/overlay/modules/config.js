@@ -42,6 +42,7 @@ const CFG={
   complianceFunction:"aora-v8-pilot-compliance",
   monitorFunction:"aora-v8-pilot-monitor",
   onboardingFunction:"aora-v8-pilot-onboarding",
+  realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast",
   realtimeFallbackMs:60000,
   tz:"Europe/Berlin",
   version:"8.1.0-pilot",
