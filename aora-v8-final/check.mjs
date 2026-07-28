@@ -93,6 +93,7 @@ requireAll("manager projection and session lifecycle",source.unifiedMigration,["
 requireAll("production foreign-key indexes",source.productionIndexes,["billing_events_organization_id_idx","compliance_exports_organization_id_idx","data_export_requests_organization_id_idx","deletion_requests_organization_id_idx","pilot_backups_organization_id_idx","subprocessors_organization_id_idx","work_rules_organization_id_idx"]);
 requireAll("durable manager projection",source.managerProjection,["not exists (","access_row.manager_id","access_row.location_id","on conflict(organization_id,manager_id,location_id) do update"]);
 requireAll("structural action routing",source.pilotWorkspace,["STRUCTURAL_TYPES.has(body.event?.type)","HARDENING_WORKSPACE","CREATE_EMPLOYEE_ACCOUNT","INVITE_MANAGER","TOGGLE_KIOSK_LOCK"]);
+requireAll("legacy manager projection repair",source.pilotWorkspace,["aora_sync_manager_location_access","managerProjectionError","legacy.data?.state"]);
 requireAll("strict manager projection",source.hardeningWorkspace,["manager_location_access","managerLocationIds","kein expliziter Standortzugriff"]);
 forbidAll("strict manager projection",source.hardeningWorkspace,['.eq("slug", WORKSPACE_SLUG)',"ctx.admin.locationIds"]);
 forbidAll("pilot manager fallback",source.pilotWorkspace,["admin?.locationIds"]);

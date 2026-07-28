@@ -276,6 +276,13 @@ Deno.serve(async (request: Request) => {
 
     const legacy = await callFunction(LEGACY_WORKSPACE, body);
     if (!legacy.ok) return reply(legacy.data, legacy.status, origin);
+    if (body.action === "apply" && legacy.data?.state) {
+      const { error: managerProjectionError } = await service.rpc("aora_sync_manager_location_access", {
+        p_organization_id: ctx.organization.id,
+        p_state: legacy.data.state,
+      });
+      if (managerProjectionError) throw managerProjectionError;
+    }
     return reply({ ...legacy.data, state: scopeManagerState(ctx, legacy.data.state), session: { ...(legacy.data.session || {}), ...session } }, 200, origin);
   } catch (error: any) {
     const status = Number(error?.status || 500);
