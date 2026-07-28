@@ -8,8 +8,8 @@ const AUDIENCE="aora-staging-ci";
 const REPOSITORY="mobinakbara-eng/dopamine";
 const REPOSITORY_ID="1044549733";
 const WORKFLOW_PREFIX=REPOSITORY+"/.github/workflows/aora-v8-pilot-ci.yml@";
-const ALLOWED_HEAD="agent/aora-v8-hardening";
-const ALLOWED_BASE="agent/aora-v8-final";
+const ALLOWED_HEADS=new Set(["agent/aora-v8-hardening","agent/aora-kiosk-invite-fix-clean"]);
+const ALLOWED_BASES=new Set(["agent/aora-v8-final","main"]);
 const ITERATIONS=210000;
 const encoder=new TextEncoder();
 let jwksCache:any=null;
@@ -83,9 +83,9 @@ async function claims(req:Request){
   if(!String(payload.workflow_ref||"").startsWith(WORKFLOW_PREFIX))fail("workflow_not_allowed",403);
   const eventName=String(payload.event_name||"");
   if(eventName==="pull_request"){
-    if(String(payload.head_ref||"")!==ALLOWED_HEAD||String(payload.base_ref||"")!==ALLOWED_BASE)fail("pull_request_not_allowed",403);
+    if(!ALLOWED_HEADS.has(String(payload.head_ref||""))||!ALLOWED_BASES.has(String(payload.base_ref||"")))fail("pull_request_not_allowed",403);
   }else if(eventName==="workflow_dispatch"){
-    if(String(payload.ref||"")!=="refs/heads/"+ALLOWED_HEAD)fail("dispatch_ref_not_allowed",403);
+    if(!ALLOWED_HEADS.has(String(payload.ref||"").replace(/^refs\/heads\//,"")))fail("dispatch_ref_not_allowed",403);
   }else fail("event_not_allowed",403);
   if(String(payload.runner_environment||"")!=="github-hosted")fail("runner_not_allowed",403);
   const runId=String(payload.run_id||"");
