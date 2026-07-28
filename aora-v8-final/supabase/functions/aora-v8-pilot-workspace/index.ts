@@ -15,41 +15,33 @@ const EXACT_ORIGINS = new Set([
   "https://aora-workforce.vercel.app",
 ]);
 const ARRAY_KEYS = [
-  "admins", "locations", "employees", "shifts", "timeEntries", "leaveRequests",
-  "correctionRequests", "announcements", "notifications", "kioskDevices", "audit",
-  "clockRequests", "availabilityRules", "shiftRequests", "checklistTemplates",
-  "checklistAssignments", "dailyLogs", "timesheetPeriods", "staffingRequirements",
-  "shiftFeedback", "shiftTemplates", "invitations",
+  "admins","locations","employees","shifts","timeEntries","leaveRequests","correctionRequests",
+  "announcements","notifications","kioskDevices","audit","clockRequests","availabilityRules",
+  "shiftRequests","checklistTemplates","checklistAssignments","dailyLogs","timesheetPeriods",
+  "staffingRequirements","shiftFeedback","shiftTemplates","invitations",
 ];
-
-const service = createClient(URL, SERVICE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+const service = createClient(URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 function allowedOrigin(origin: string | null) {
   if (!origin) return true;
   if (EXACT_ORIGINS.has(origin)) return true;
   try {
-    const parsed = new URL(origin);
+    const parsed = new globalThis.URL(origin);
     if (["localhost", "127.0.0.1"].includes(parsed.hostname)) return true;
     return parsed.protocol === "https:" && parsed.hostname.endsWith(TEAM_PREVIEW_SUFFIX);
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
-
 function cors(origin: string | null) {
-  const responseOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
+  const value = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
   return {
-    "Access-Control-Allow-Origin": responseOrigin,
+    "Access-Control-Allow-Origin": value,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
   };
 }
-
-function reply(body: unknown, status = 200, origin: string | null = null) {
+function reply(body: unknown, status = 200, origin: string | null = null, replay = false) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -58,25 +50,20 @@ function reply(body: unknown, status = 200, origin: string | null = null) {
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
       "referrer-policy": "no-referrer",
+      "x-aora-punch-replay": replay ? "true" : "false",
     },
   });
 }
-
 function normalize(input: any) {
   const state = input && typeof input === "object" ? structuredClone(input) : {};
   for (const key of ARRAY_KEYS) if (!Array.isArray(state[key])) state[key] = [];
   state.meta = { ...(state.meta || {}), variant: "aora-8.1.0-pilot", tenantSource: "session" };
   return state;
 }
-
 async function callFunction(url: string, body: unknown) {
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${SERVICE_KEY}`,
-      apikey: SERVICE_KEY,
-    },
+    headers: { "content-type": "application/json", authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
     body: JSON.stringify(body),
   });
   const text = await response.text();
@@ -84,62 +71,33 @@ async function callFunction(url: string, body: unknown) {
   try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
   return { ok: response.ok, status: response.status, data };
 }
-
 async function loadContext(token: string) {
   const { data: sessions, error: sessionError } = await service.rpc("validate_demo_session", { p_token: token });
-  if (sessionError || !sessions?.length) {
-    throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
-  }
+  if (sessionError || !sessions?.length) throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
   const session = sessions[0];
-  const { data: organization, error: organizationError } = await service
-    .from("organizations")
-    .select("id,slug,name,status,timezone")
-    .eq("id", session.organization_id)
-    .eq("status", "active")
-    .single();
-  if (organizationError || !organization) {
-    throw Object.assign(new Error("Organisation ist nicht aktiv oder wurde nicht gefunden."), { status: 403 });
-  }
-  const { data: snapshot, error: snapshotError } = await service
-    .from("workspace_snapshots")
-    .select("state,revision")
-    .eq("organization_id", organization.id)
-    .single();
+  const { data: organization, error: organizationError } = await service.from("organizations").select("id,slug,name,status,timezone").eq("id", session.organization_id).eq("status", "active").single();
+  if (organizationError || !organization) throw Object.assign(new Error("Organisation ist nicht aktiv oder wurde nicht gefunden."), { status: 403 });
+  const { data: snapshot, error: snapshotError } = await service.from("workspace_snapshots").select("state,revision").eq("organization_id", organization.id).single();
   if (snapshotError || !snapshot) throw Object.assign(new Error("Arbeitsbereich konnte nicht geladen werden."), { status: 404 });
-
   const state = normalize(snapshot.state);
-  const admin = session.role === "admin"
-    ? state.admins.find((item: any) => item.id === session.subject_id && item.active !== false && item.status !== "revoked")
-    : null;
-  if (session.role === "admin" && !admin) {
-    throw Object.assign(new Error("Administrationszugang wurde deaktiviert."), { status: 403 });
-  }
+  const admin = session.role === "admin" ? state.admins.find((item: any) => item.id === session.subject_id && item.active !== false && item.status !== "revoked") : null;
+  if (session.role === "admin" && !admin) throw Object.assign(new Error("Administrationszugang wurde deaktiviert."), { status: 403 });
   const accessRole = session.role === "admin" ? (admin?.scope === "owner" ? "owner" : "manager") : session.role;
   let managerLocationIds: string[] = [];
   if (accessRole === "manager") {
-    const { data: rows, error } = await service
-      .from("manager_location_access")
-      .select("location_id")
-      .eq("organization_id", organization.id)
-      .eq("manager_id", session.subject_id);
+    const { data: rows, error } = await service.from("manager_location_access").select("location_id").eq("organization_id", organization.id).eq("manager_id", session.subject_id);
     if (error) throw error;
     managerLocationIds = (rows || []).map((row: any) => String(row.location_id));
-    if (!managerLocationIds.length) {
-      managerLocationIds = (admin?.locationIds || [admin?.locationId]).filter(Boolean).map(String);
-    }
+    if (!managerLocationIds.length) managerLocationIds = (admin?.locationIds || [admin?.locationId]).filter(Boolean).map(String);
   }
-  return { session, organization, snapshot, state, admin, accessRole, managerLocationIds };
+  return { token, session, organization, snapshot, state, admin, accessRole, managerLocationIds };
 }
-
 function allowedLocations(ctx: any) {
-  if (ctx.accessRole === "owner") {
-    return new Set<string>(ctx.state.locations.filter((item: any) => item.active !== false).map((item: any) => String(item.id)));
-  }
+  if (ctx.accessRole === "owner") return new Set<string>(ctx.state.locations.filter((item: any) => item.active !== false).map((item: any) => String(item.id)));
   if (ctx.accessRole === "manager") return new Set<string>(ctx.managerLocationIds);
   if (ctx.session.location_id) return new Set<string>([String(ctx.session.location_id)]);
   return new Set<string>();
 }
-
 function scopeManagerState(ctx: any, sourceInput: any) {
   const source = normalize(sourceInput);
   if (ctx.accessRole === "owner") return source;
@@ -167,33 +125,102 @@ function scopeManagerState(ctx: any, sourceInput: any) {
     staffingRequirements: source.staffingRequirements.filter((item: any) => locations.has(String(item.locationId))),
     shiftFeedback: source.shiftFeedback.filter((item: any) => employeeIds.has(String(item.employeeId))),
     shiftTemplates: source.shiftTemplates.filter((item: any) => !item.locationId || locations.has(String(item.locationId))),
-    invitations: source.invitations.filter((item: any) =>
-      item.kind === "employee" && (item.locationIds || [item.locationId]).some((locationId: string) => locations.has(String(locationId)))
-    ),
+    invitations: source.invitations.filter((item: any) => item.kind === "employee" && (item.locationIds || [item.locationId]).some((locationId: string) => locations.has(String(locationId)))),
     audit: source.audit.filter((item: any) => !item.metadata?.locationId || locations.has(String(item.metadata.locationId))).slice(0, 250),
   };
 }
-
 function eventLocationIds(state: any, event: any) {
   const values = new Set<string>();
   const add = (value: any) => { if (value != null && value !== "") values.add(String(value)); };
-  add(event?.locationId);
-  add(event?.shift?.locationId);
-  add(event?.employee?.locationId);
-  add(event?.patch?.locationId);
-  add(event?.assignment?.locationId);
+  add(event?.locationId); add(event?.shift?.locationId); add(event?.employee?.locationId); add(event?.patch?.locationId); add(event?.assignment?.locationId);
   add(state.shifts.find((item: any) => item.id === event?.id || item.id === event?.shiftId)?.locationId);
   add(state.employees.find((item: any) => item.id === event?.id || item.id === event?.employeeId)?.locationId);
   add(state.timeEntries.find((item: any) => item.id === event?.id || item.id === event?.entryId)?.locationId);
   return [...values];
 }
-
 function guardManagerEvent(ctx: any, event: any) {
   const locations = allowedLocations(ctx);
   const eventLocations = eventLocationIds(ctx.state, event);
-  if (!event?.type || !eventLocations.length || eventLocations.some((locationId) => !locations.has(locationId))) {
-    throw Object.assign(new Error("Kein Zugriff auf diesen Standort."), { status: 403 });
+  if (!event?.type || !eventLocations.length || eventLocations.some((locationId) => !locations.has(locationId))) throw Object.assign(new Error("Kein Zugriff auf diesen Standort."), { status: 403 });
+}
+function upstreamFor(ctx: any) { return ctx.organization.slug === PRIMARY_PILOT_SLUG ? HARDENING_WORKSPACE : LEGACY_WORKSPACE; }
+async function loadCurrent(ctx: any) {
+  return await callFunction(upstreamFor(ctx), { action: "load", token: ctx.token });
+}
+async function findPunchByClock(organizationId: string, clockRequestId: string) {
+  const { data, error } = await service.from("punch_events")
+    .select("event_id,status,result_time_entry_id,approval_response_status,approval_response_payload,updated_at")
+    .eq("organization_id", organizationId).eq("result_clock_request_id", clockRequestId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+async function recoverApproval(ctx: any, clockRequestId: string, punch: any) {
+  const { data: latest, error } = await service.from("workspace_snapshots").select("state,revision").eq("organization_id", ctx.organization.id).single();
+  if (error || !latest) return null;
+  const state = normalize(latest.state);
+  const request = state.clockRequests.find((item: any) => item.id === clockRequestId);
+  if (!request || !["approved", "denied"].includes(request.status)) return null;
+  const timeEntry = state.timeEntries.find((item: any) => item.clockRequestId === clockRequestId);
+  const loaded = await loadCurrent(ctx);
+  if (!loaded.ok) return null;
+  const payload = { ...loaded.data, punch: { eventId: punch.event_id, clockRequestId, timeEntryId: timeEntry?.id || null, status: request.status } };
+  await service.rpc("aora_complete_punch_approval", {
+    p_organization_id: ctx.organization.id,
+    p_event_id: punch.event_id,
+    p_time_entry_id: timeEntry?.id || null,
+    p_http_status: loaded.status,
+    p_payload: payload,
+    p_final_status: request.status,
+  });
+  return { payload, status: loaded.status };
+}
+async function waitForApproval(organizationId: string, clockRequestId: string) {
+  for (let index = 0; index < 30; index += 1) {
+    const row: any = await findPunchByClock(organizationId, clockRequestId);
+    if (row?.approval_response_payload) return row;
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
+  return await findPunchByClock(organizationId, clockRequestId);
+}
+async function idempotentDecision(ctx: any, body: any, origin: string | null) {
+  const event = body.event || {};
+  const clockRequestId = String(event.id || "");
+  const punch: any = await findPunchByClock(ctx.organization.id, clockRequestId);
+  if (!punch) return null;
+  if (punch.approval_response_payload) return reply({ ...punch.approval_response_payload, idempotentReplay: true }, Number(punch.approval_response_status || 200), origin, true);
+
+  const recovered = await recoverApproval(ctx, clockRequestId, punch);
+  if (recovered) return reply({ ...recovered.payload, idempotentReplay: true }, recovered.status, origin, true);
+
+  const { data: claims, error: claimError } = await service.rpc("aora_claim_punch_approval", { p_organization_id: ctx.organization.id, p_clock_request_id: clockRequestId });
+  if (claimError || !claims?.length) throw claimError || new Error("Punch approval receipt could not be claimed.");
+  const claim = claims[0];
+  if (!claim.acquired) {
+    const completed: any = await waitForApproval(ctx.organization.id, clockRequestId);
+    if (completed?.approval_response_payload) return reply({ ...completed.approval_response_payload, idempotentReplay: true }, Number(completed.approval_response_status || 200), origin, true);
+    throw Object.assign(new Error("Die Buchung wird bereits verarbeitet. Bitte nicht erneut bestätigen."), { status: 409 });
+  }
+
+  const upstream = await callFunction(upstreamFor(ctx), body);
+  if (!upstream.ok) {
+    const afterError = await recoverApproval(ctx, clockRequestId, punch);
+    if (afterError) return reply({ ...afterError.payload, idempotentReplay: true }, afterError.status, origin, true);
+    await service.rpc("aora_release_punch_approval", { p_organization_id: ctx.organization.id, p_event_id: claim.event_id, p_error: upstream.data?.error || `HTTP ${upstream.status}` });
+    return reply(upstream.data, upstream.status, origin);
+  }
+  const timeEntry = upstream.data?.state?.timeEntries?.find((item: any) => item.clockRequestId === clockRequestId);
+  const request = upstream.data?.state?.clockRequests?.find((item: any) => item.id === clockRequestId);
+  const finalStatus = request?.status === "denied" || event.type === "DENY_CLOCK_REQUEST" ? "denied" : "approved";
+  const payload = { ...upstream.data, punch: { eventId: claim.event_id, clockRequestId, timeEntryId: timeEntry?.id || null, status: finalStatus } };
+  await service.rpc("aora_complete_punch_approval", {
+    p_organization_id: ctx.organization.id,
+    p_event_id: claim.event_id,
+    p_time_entry_id: timeEntry?.id || null,
+    p_http_status: upstream.status,
+    p_payload: payload,
+    p_final_status: finalStatus,
+  });
+  return reply(payload, upstream.status, origin);
 }
 
 Deno.serve(async (request: Request) => {
@@ -209,6 +236,11 @@ Deno.serve(async (request: Request) => {
     const token = String(body.token || "");
     if (token.length !== 64) return reply({ error: "Sitzungstoken fehlt." }, 401, origin);
     const ctx = await loadContext(token);
+
+    if (body.action === "apply" && ["APPROVE_CLOCK_REQUEST", "DENY_CLOCK_REQUEST"].includes(body.event?.type)) {
+      const handled = await idempotentDecision(ctx, body, origin);
+      if (handled) return handled;
+    }
 
     if (ctx.organization.slug === PRIMARY_PILOT_SLUG) {
       const result = await callFunction(HARDENING_WORKSPACE, body);
@@ -229,21 +261,13 @@ Deno.serve(async (request: Request) => {
       expiresAt: ctx.session.expires_at,
     };
 
-    if (body.action === "load" && (ctx.accessRole === "owner" || ctx.accessRole === "manager")) {
-      return reply({ state: scopeManagerState(ctx, ctx.state), revision: ctx.snapshot.revision, session }, 200, origin);
-    }
+    if (body.action === "load" && (ctx.accessRole === "owner" || ctx.accessRole === "manager")) return reply({ state: scopeManagerState(ctx, ctx.state), revision: ctx.snapshot.revision, session }, 200, origin);
     if (body.action === "apply" && ctx.accessRole === "manager") guardManagerEvent(ctx, body.event);
-    if (body.action === "apply" && ctx.session.role === "kiosk") {
-      return reply({ error: "Kiosk-Buchungen sind für neue Pilot-Tenants erst nach P0-2 freigeschaltet." }, 409, origin);
-    }
+    if (body.action === "apply" && ctx.session.role === "kiosk") return reply({ error: "Kiosk-Buchungen müssen über den Pilot-Kiosk-Endpunkt gesendet werden." }, 409, origin);
 
     const legacy = await callFunction(LEGACY_WORKSPACE, body);
     if (!legacy.ok) return reply(legacy.data, legacy.status, origin);
-    return reply({
-      ...legacy.data,
-      state: scopeManagerState(ctx, legacy.data.state),
-      session: { ...(legacy.data.session || {}), ...session },
-    }, 200, origin);
+    return reply({ ...legacy.data, state: scopeManagerState(ctx, legacy.data.state), session: { ...(legacy.data.session || {}), ...session } }, 200, origin);
   } catch (error: any) {
     return reply({ error: error instanceof Error ? error.message : String(error) }, Number(error?.status || 500), origin);
   }
