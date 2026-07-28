@@ -33,6 +33,7 @@ const paths=[
   "supabase/migrations/202607280910_aora_ci_ledger_cleanup_exception.sql",
   "supabase/migrations/202607281000_aora_unified_login_projection_sessions.sql",
   "supabase/migrations/202607281100_aora_production_fk_indexes.sql",
+  "supabase/migrations/202607281200_aora_manager_projection_durability.sql",
   "tests/offline-crypto.mjs","tests/aora-four-role.spec.mjs","playwright.config.mjs","../.github/workflows/aora-v8-pilot-ci.yml"
 ];
 for(const path of paths)await access(resolve(root,path)).catch(()=>{throw new Error(`Missing pilot source: ${path}`)});
@@ -44,7 +45,7 @@ const source={
   tenant:await read("supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql"),punch:await read("supabase/migrations/202607280012_aora_pilot_punch_idempotency.sql"),rules:await read("supabase/migrations/202607280013_aora_pilot_work_rule_engine.sql"),
   security:await read("supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql"),ciMigration:await read("supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql"),
   realtimeMigration:await read("supabase/migrations/202607280900_aora_realtime_rest_bridge.sql"),cleanupMigration:await read("supabase/migrations/202607280910_aora_ci_ledger_cleanup_exception.sql"),
-  unifiedMigration:await read("supabase/migrations/202607281000_aora_unified_login_projection_sessions.sql"),productionIndexes:await read("supabase/migrations/202607281100_aora_production_fk_indexes.sql"),
+  unifiedMigration:await read("supabase/migrations/202607281000_aora_unified_login_projection_sessions.sql"),productionIndexes:await read("supabase/migrations/202607281100_aora_production_fk_indexes.sql"),managerProjection:await read("supabase/migrations/202607281200_aora_manager_projection_durability.sql"),
   ciBootstrap:await read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),realtimeBroadcast:await read("supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts"),
   pilotMonitor:await read("supabase/functions/aora-v8-pilot-monitor/index.ts"),complianceProxy:await read("supabase/functions/aora-v8-pilot-compliance-proxy/index.ts"),pilotOnboarding:await read("supabase/functions/aora-v8-pilot-onboarding/index.ts"),
   ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),e2e:await read("tests/aora-four-role.spec.mjs"),
@@ -90,6 +91,7 @@ forbidAll("origin-safe onboarding",source.pilotOnboarding,['const URL=Deno.env.g
 requireAll("scoped CI ledger cleanup",source.cleanupMigration,["aora.cleanup_organization_id","tenantSource","github-oidc-ci","aora_cleanup_ci_tenant"]);
 requireAll("manager projection and session lifecycle",source.unifiedMigration,["aora_sync_manager_location_access","aora_project_snapshot_trigger","aora_trim_subject_sessions","aora_cleanup_expired_sessions","manager-session-projection-cleanup"]);
 requireAll("production foreign-key indexes",source.productionIndexes,["billing_events_organization_id_idx","compliance_exports_organization_id_idx","data_export_requests_organization_id_idx","deletion_requests_organization_id_idx","pilot_backups_organization_id_idx","subprocessors_organization_id_idx","work_rules_organization_id_idx"]);
+requireAll("durable manager projection",source.managerProjection,["not exists (","access_row.manager_id","access_row.location_id","on conflict(organization_id,manager_id,location_id) do update"]);
 requireAll("structural action routing",source.pilotWorkspace,["STRUCTURAL_TYPES.has(body.event?.type)","HARDENING_WORKSPACE","CREATE_EMPLOYEE_ACCOUNT","INVITE_MANAGER","TOGGLE_KIOSK_LOCK"]);
 requireAll("strict manager projection",source.hardeningWorkspace,["manager_location_access","managerLocationIds","kein expliziter Standortzugriff"]);
 forbidAll("strict manager projection",source.hardeningWorkspace,['.eq("slug", WORKSPACE_SLUG)',"ctx.admin.locationIds"]);
