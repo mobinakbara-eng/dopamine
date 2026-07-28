@@ -1,0 +1,184 @@
+name: Aora V8 Pilot Gate
+
+on:
+  pull_request:
+    branches:
+      - agent/aora-v8-final
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-v8-pilot-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aora-v8-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-gate:
+    name: Source, crypto and build gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate and build immutable pilot bundle
+        id: source_build
+        shell: bash
+        run: |
+          set +e
+          npm run build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload source-gate diagnostics
+        if: steps.source_build.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-source-gate-build-log
+          path: aora-v8-final/build.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce source build result
+        if: always()
+        shell: bash
+        run: test "${{ steps.source_build.outputs.status }}" = "0"
+
+  four-role-browser:
+    name: Four roles, invitation and offline browser gate
+    needs: source-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    env:
+      AORA_SUPABASE_URL: https://xqgkawskftzurbujrpex.supabase.co
+      AORA_CI_BOOTSTRAP_URL: https://xqgkawskftzurbujrpex.supabase.co/functions/v1/aora-v8-pilot-ci-bootstrap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Bootstrap isolated staging tenant with GitHub OIDC
+        id: ci_bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$GITHUB_WORKSPACE/aora-v8-final/bootstrap-response.json"
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-staging-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data '{"action":"bootstrap"}')
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" != "201" ]; then exit 0; fi
+          jq -e '
+            .workspaceSlug and .owner.email and .owner.password and
+            .manager.email and .manager.password and
+            .employee.email and .employee.password and
+            .kiosk.deviceId and .kiosk.pin and
+            .invitation.email and .invitation.password and .invitation.url
+          ' "$response_file" >/dev/null
+          mapfile -t masked_values < <(jq -r '[
+            .workspaceSlug,.owner.email,.owner.password,.manager.email,.manager.password,
+            .employee.email,.employee.password,.kiosk.deviceId,.kiosk.pin,
+            .invitation.email,.invitation.password,.invitation.url
+          ] | .[]' "$response_file")
+          for value in "${masked_values[@]}"; do echo "::add-mask::$value"; done
+          invitation_token=$(jq -r '.invitation.url' "$response_file" | sed -E 's/.*[?&]token=([^&]+).*/\1/')
+          echo "::add-mask::$invitation_token"
+          {
+            echo "AORA_WORKSPACE_SLUG=$(jq -r '.workspaceSlug' "$response_file")"
+            echo "AORA_OWNER_EMAIL=$(jq -r '.owner.email' "$response_file")"
+            echo "AORA_OWNER_PASSWORD=$(jq -r '.owner.password' "$response_file")"
+            echo "AORA_MANAGER_EMAIL=$(jq -r '.manager.email' "$response_file")"
+            echo "AORA_MANAGER_PASSWORD=$(jq -r '.manager.password' "$response_file")"
+            echo "AORA_EMPLOYEE_EMAIL=$(jq -r '.employee.email' "$response_file")"
+            echo "AORA_EMPLOYEE_PASSWORD=$(jq -r '.employee.password' "$response_file")"
+            echo "AORA_KIOSK_DEVICE_ID=$(jq -r '.kiosk.deviceId' "$response_file")"
+            echo "AORA_KIOSK_PIN=$(jq -r '.kiosk.pin' "$response_file")"
+            echo "AORA_INVITATION_EMAIL=$(jq -r '.invitation.email' "$response_file")"
+            echo "AORA_INVITATION_PASSWORD=$(jq -r '.invitation.password' "$response_file")"
+            echo "AORA_INVITATION_URL=$(jq -r '.invitation.url' "$response_file")"
+            echo "AORA_MANAGER_LOCATION_COUNT=$(jq -r '.managerLocationCount' "$response_file")"
+            echo "AORA_A11Y_EMAIL=$(jq -r '.owner.email' "$response_file")"
+            echo "AORA_A11Y_PASSWORD=$(jq -r '.owner.password' "$response_file")"
+          } >> "$GITHUB_ENV"
+          rm -f "$response_file"
+      - name: Upload sanitized bootstrap diagnostics
+        if: steps.ci_bootstrap.outputs.status != '201'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-ci-bootstrap-error
+          path: aora-v8-final/bootstrap-response.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce CI tenant bootstrap
+        shell: bash
+        run: test "${{ steps.ci_bootstrap.outputs.status }}" = "201"
+      - name: Install Playwright without changing lockfiles
+        run: |
+          npm install --no-save @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Build browser bundle
+        run: npm run build
+      - name: Run four-role, invitation replay and offline-resync tests
+        run: npm run test:e2e
+      - name: Run bounded workspace concurrency smoke
+        env:
+          AORA_LOAD_REQUESTS: "100"
+          AORA_LOAD_CONCURRENCY: "20"
+          AORA_LOAD_P95_BUDGET_MS: "5000"
+        run: npm run test:load
+      - name: Upload Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-playwright-failure-evidence
+          path: |
+            aora-v8-final/playwright-report.json
+            aora-v8-final/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup isolated staging tenant
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${AORA_WORKSPACE_SLUG:-}" ]; then exit 0; fi
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-staging-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          payload=$(jq -cn --arg workspaceSlug "$AORA_WORKSPACE_SLUG" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
+          curl --fail-with-body -sS \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data "$payload" >/dev/null
+
+  release-gate:
+    name: Aora pilot release gate
+    if: always()
+    needs: [source-gate, four-role-browser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce all mandatory checks
+        shell: bash
+        run: |
+          test "${{ needs.source-gate.result }}" = "success"
+          test "${{ needs.four-role-browser.result }}" = "success"
+

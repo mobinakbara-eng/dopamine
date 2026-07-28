@@ -1,13 +1,17 @@
 {
   "name": "aora-v8-final",
   "private": true,
-  "version": "8.0.5",
+  "version": "8.1.0-pilot",
   "type": "module",
   "scripts": {
-    "check": "node check.mjs",
-    "build": "node check.mjs && node build.mjs"
+    "check": "node check.mjs && node tests/offline-crypto.mjs",
+    "smoke": "node smoke.mjs",
+    "build": "node check.mjs && node tests/offline-crypto.mjs && node build.mjs && node smoke.mjs",
+    "test:e2e": "playwright test",
+    "test:load": "node tests/load-smoke.mjs"
   },
   "engines": {
     "node": ">=20"
   }
 }
+

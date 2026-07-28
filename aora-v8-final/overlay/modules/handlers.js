@@ -1,5 +1,19 @@
 "use strict";
 
+function secureCurrentPosition(){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation){
+      reject(new Error("Standortfreigabe wird für die sichere Kiosk-Bestätigung benötigt."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position=>resolve({lat:position.coords.latitude,lng:position.coords.longitude,accuracy:position.coords.accuracy,capturedAt:new Date(position.timestamp).toISOString()}),
+      ()=>reject(new Error("Standort konnte nicht bestätigt werden. Bitte Standortzugriff erlauben und erneut versuchen.")),
+      {enableHighAccuracy:true,timeout:12000,maximumAge:0}
+    );
+  });
+}
+
 app.addEventListener("click",async event=>{
   const button=event.target.closest("[data-a]");
   if(!button)return;
@@ -11,11 +25,10 @@ app.addEventListener("click",async event=>{
     S.session=null;
     S.state=null;
     history.replaceState({},"",accessPath(accessRole));
-    renderLogin();
+    try{await ensureDirectory(accessRole);renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="invitation-back"){
     clearInvitationCallback();
-    await loadDirectory();
-    renderLogin();
+    try{await ensureDirectory(S.accessRole);renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="logout"){
     await logout();
   }else if(action==="retry"){
@@ -43,12 +56,12 @@ app.addEventListener("click",async event=>{
       try{await apply({type:"ARCHIVE_LOCATION",id:location.id})}catch{}
     }
   }else if(action==="manager-modal"){
-    managerModal();
+    managerInvitationModal();
   }else if(action==="manager-access-modal"){
     const manager=S.state.admins.find(item=>item.id===button.dataset.id);
     if(manager)managerAccessModal(manager);
   }else if(action==="employee-account-modal"){
-    employeeAccountModal();
+    employeeInvitationModal();
   }else if(action==="resend-invitation"){
     try{
       const result=await apply({type:"RESEND_INVITATION",id:button.dataset.id});
@@ -67,18 +80,36 @@ app.addEventListener("click",async event=>{
       try{await apply({type:"DEACTIVATE_ACCOUNT",kind:"employee",id:button.dataset.id})}catch{}
     }
   }else if(action==="open-kiosk"){
+    const previousRole=["owner","manager"].includes(S.accessRole)?S.accessRole:null;
+    if(previousRole)sessionStorage.setItem(`aora:${CFG.slug}:return-admin-role`,previousRole);
+    const previousToken=S.session?.token;
+    if(previousToken){
+      try{await access({action:"logout",token:previousToken})}catch{}
+    }
+    if(S.accessRole)sessionStorage.removeItem(key(S.accessRole));
+    sessionStorage.removeItem(key("owner"));
+    sessionStorage.removeItem(key("manager"));
     setAccessRole("kiosk");
     S.session=null;
     S.state=null;
+    S.directory=null;
     sessionStorage.removeItem(key("kiosk"));
     history.pushState({},"",accessPath("kiosk"));
-    renderLogin();
+    try{await ensureDirectory("kiosk");renderLogin()}catch(error){renderError(error.message)}
   }else if(action==="switch-admin"){
-    const role=S.session?.accessRole||"manager";
-    setAccessRole(role);
-    S.session=restore(role);
-    history.pushState({},"",accessPath(role));
-    S.session?loadState():renderLogin();
+    const kioskToken=S.session?.token;
+    if(kioskToken){
+      try{await access({action:"logout",token:kioskToken})}catch{}
+    }
+    sessionStorage.removeItem(key("kiosk"));
+    const returnRole=sessionStorage.getItem(`aora:${CFG.slug}:return-admin-role`)||"manager";
+    sessionStorage.removeItem(`aora:${CFG.slug}:return-admin-role`);
+    setAccessRole(returnRole==="owner"?"owner":"manager");
+    S.session=null;
+    S.state=null;
+    S.directory=null;
+    history.pushState({},"",accessPath(S.accessRole));
+    renderLogin("Bitte erneut anmelden, um den Verwaltungsbereich zu öffnen.");
   }else if(action==="select-person"){
     S.selected=button.dataset.id;
     renderKiosk();
@@ -90,7 +121,26 @@ app.addEventListener("click",async event=>{
       await apply({type:"KIOSK_TRANSITION",employeeId:S.selected,target:button.dataset.target});
       S.selected=null;
       renderKiosk();
+      toast("Anfrage wurde an das persönliche Mitarbeiterkonto gesendet.");
     }catch{}
+  }else if(action==="clock-approve"){
+    button.disabled=true;
+    try{
+      const position=await secureCurrentPosition();
+      await apply({type:"APPROVE_CLOCK_REQUEST",id:button.dataset.id,position});
+      toast("Zeiterfassung wurde bestätigt.");
+    }catch(error){
+      toast(error.message,"error");
+      button.disabled=false;
+    }
+  }else if(action==="clock-deny"){
+    button.disabled=true;
+    try{
+      await apply({type:"DENY_CLOCK_REQUEST",id:button.dataset.id,reason:"Vom Mitarbeiter abgelehnt"});
+      toast("Kiosk-Anfrage wurde abgelehnt.");
+    }catch{
+      button.disabled=false;
+    }
   }else if(action==="kiosk-help"){
     kioskHelpModal();
   }else if(action==="leave-modal"){
@@ -104,6 +154,20 @@ app.addEventListener("click",async event=>{
   }else if(action==="leave-decision"){
     try{await apply({type:"DECIDE_LEAVE",id:button.dataset.id,decision:button.dataset.decision})}catch{}
   }else if(action==="toggle-kiosk"){
-    try{await apply({type:"TOGGLE_KIOSK_LOCK",id:button.dataset.id})}catch{}
+    const device=S.state.kioskDevices.find(item=>item.id===button.dataset.id);
+    if(!device){
+      toast("Kiosk-Gerät wurde nicht gefunden.","error");
+      return;
+    }
+    const locking=!Boolean(device.locked);
+    button.disabled=true;
+    try{
+      await apply({type:"TOGGLE_KIOSK_LOCK",id:device.id,locked:locking});
+      toast(locking?"Kiosk-Gerät wurde gesperrt.":"Kiosk-Gerät wurde entsperrt.");
+    }catch(error){
+      toast(error.message||"Kiosk-Gerät konnte nicht aktualisiert werden.","error");
+      if(button.isConnected)button.disabled=false;
+    }
   }
 });
+

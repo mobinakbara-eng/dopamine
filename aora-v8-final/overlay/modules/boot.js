@@ -7,19 +7,19 @@ setInterval(()=>{
 },1000);
 
 async function refreshWorkspace(){
-  if(!S.session||S.busy||backgroundRefreshRunning||document.hidden)return;
+  if(!S.session||S.busy||backgroundRefreshRunning||document.hidden||!navigator.onLine)return;
   backgroundRefreshRunning=true;
   try{await loadState(true)}finally{backgroundRefreshRunning=false}
 }
-setInterval(refreshWorkspace,5000);
 window.addEventListener("focus",refreshWorkspace);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshWorkspace()});
 
-window.addEventListener("popstate",()=>{
+window.addEventListener("popstate",async()=>{
   const accessRole=accessRoleFromPath();
   setAccessRole(accessRole);
   S.session=restore(accessRole);
-  S.session?loadState():renderLogin();
+  if(S.session)return loadState();
+  try{await ensureDirectory(accessRole);renderLogin()}catch(error){renderError(error.message)}
 });
 
 function invitationCallback(){
@@ -30,6 +30,7 @@ function clearInvitationCallback(){
   const url=new URL(location.href);
   url.searchParams.delete("invitation");
   url.searchParams.delete("token");
+  url.searchParams.set("workspace",CFG.slug);
   history.replaceState({},"",url.pathname+(url.searchParams.toString()?`?${url.searchParams}`:""));
 }
 async function boot(){
@@ -40,14 +41,17 @@ async function boot(){
     const callback=invitationCallback();
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
+      clearInvitationCallback();
       renderInvitationSetup(info,callback.invitationId,callback.token);
       return;
     }
-    await loadDirectory();
     S.session=restore(accessRole);
-    S.session?await loadState():renderLogin();
+    if(S.session){await loadState();return}
+    await ensureDirectory(accessRole);
+    renderLogin();
   }catch(error){
     renderError(error.message);
+    reportClientDiagnostic(error.message,error.stack||"","error",{kind:"boot"});
   }
 }
 boot();
