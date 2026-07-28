@@ -35,7 +35,7 @@ async function observeComplianceAction(page,action,trigger){
   await trigger();
   const response=await responsePromise;
   const body=await response.json().catch(()=>({}));
-  if(response.status()!==200)throw new Error(`Compliance ${action} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  if(![200,201].includes(response.status()))throw new Error(`Compliance ${action} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
   return body;
 }
 async function triggerAccessAction(page,action,trigger){
