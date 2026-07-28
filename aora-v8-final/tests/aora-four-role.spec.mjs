@@ -129,7 +129,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const views=await visitAdminViews(page);
     expect(views).toEqual(expect.arrayContaining(["owner-overview","locations","managers","invitations","operations","reports","compliance","settings"]));
 
-    await page.locator('[data-a="admin-view"][data-view="owner-overview"]').click();
+    await page.locator('.admin-nav [data-a="admin-view"][data-view="owner-overview"]').click();
     await openAndCloseModal(page,'[data-a="location-modal"]',"Laden");
     await openAndCloseModal(page,'[data-a="manager-modal"]',"Manager");
 
@@ -143,7 +143,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
       await expect(page.locator("#loc-select")).toHaveValue(first);
     }
 
-    await page.locator('[data-a="admin-view"][data-view="compliance"]').click();
+    await page.locator('.admin-nav [data-a="admin-view"][data-view="compliance"]').click();
     await expect(page.getByText("Compliance, Exporte und Zeitkorrekturen")).toBeVisible();
     await expect(page.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
     const filenames=[];
@@ -166,14 +166,14 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const views=await visitAdminViews(page);
     expect(views).toEqual(expect.arrayContaining(["overview","schedule","time","leave","employees","reports","news","kiosk","compliance","settings"]));
 
-    await page.locator('[data-a="admin-view"][data-view="overview"]').click();
+    await page.locator('.admin-nav [data-a="admin-view"][data-view="overview"]').click();
     await openAndCloseModal(page,'[data-a="employee-account-modal"]',"Mitarbeiter");
-    await page.locator('[data-a="admin-view"][data-view="schedule"]').click();
+    await page.locator('.admin-nav [data-a="admin-view"][data-view="schedule"]').click();
     await openAndCloseModal(page,'[data-a="shift-modal"]',"Neue Schicht");
-    await page.locator('[data-a="admin-view"][data-view="news"]').click();
+    await page.locator('.admin-nav [data-a="admin-view"][data-view="news"]').click();
     await openAndCloseModal(page,'[data-a="news-modal"]',"Mitteilung erstellen");
 
-    await page.locator('[data-a="admin-view"][data-view="kiosk"]').click();
+    await page.locator('.admin-nav [data-a="admin-view"][data-view="kiosk"]').click();
     const toggle=page.locator('[data-a="toggle-kiosk"]').first();
     if(await toggle.count()){
       const before=(await toggle.innerText()).trim();
@@ -235,13 +235,13 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const manager=await managerContext.newPage();
     const managerErrors=diagnostics(manager);
     await passwordLogin(manager,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
-    await manager.locator('[data-a="admin-view"][data-view="leave"]').click();
+    await manager.locator('.admin-nav [data-a="admin-view"][data-view="leave"]').click();
     const leaveRow=manager.locator(".leave-row").filter({hasText:futureStart}).first();
     await expect(leaveRow).toBeVisible();
     await leaveRow.locator('[data-decision="approved"]').click();
     await expect.poll(()=>manager.locator(".leave-row").filter({hasText:futureStart}).first().innerText()).toContain("approved");
 
-    await manager.locator('[data-a="admin-view"][data-view="compliance"]').click();
+    await manager.locator('.admin-nav [data-a="admin-view"][data-view="compliance"]').click();
     await expect(manager.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
     const correctionRow=manager.locator(".compliance-row").filter({hasText:correctionReason()}).first();
     await expect(correctionRow).toBeVisible();
