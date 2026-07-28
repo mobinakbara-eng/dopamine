@@ -9,9 +9,8 @@ async function request(functionName,body){
   try{
     const response=await fetch(`${CFG.url}/functions/v1/${functionName}`,{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"text/plain;charset=UTF-8"},
       body:JSON.stringify(body),
-      cache:"no-store",
       signal:controller.signal
     });
     const text=await response.text();
