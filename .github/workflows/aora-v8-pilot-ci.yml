@@ -29,7 +29,26 @@ jobs:
         with:
           node-version: 22
       - name: Validate and build immutable pilot bundle
-        run: npm run build
+        id: source_build
+        shell: bash
+        run: |
+          set +e
+          npm run build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload source-gate diagnostics
+        if: steps.source_build.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-source-gate-build-log
+          path: aora-v8-final/build.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce source build result
+        if: always()
+        shell: bash
+        run: test "${{ steps.source_build.outputs.status }}" = "0"
 
   four-role-browser:
     name: Four roles, invitation and offline browser gate
