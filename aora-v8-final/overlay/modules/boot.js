@@ -7,11 +7,10 @@ setInterval(()=>{
 },1000);
 
 async function refreshWorkspace(){
-  if(!S.session||S.busy||backgroundRefreshRunning||document.hidden)return;
+  if(!S.session||S.busy||backgroundRefreshRunning||document.hidden||!navigator.onLine)return;
   backgroundRefreshRunning=true;
   try{await loadState(true)}finally{backgroundRefreshRunning=false}
 }
-setInterval(refreshWorkspace,5000);
 window.addEventListener("focus",refreshWorkspace);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshWorkspace()});
 
@@ -31,6 +30,7 @@ function clearInvitationCallback(){
   const url=new URL(location.href);
   url.searchParams.delete("invitation");
   url.searchParams.delete("token");
+  url.searchParams.set("workspace",CFG.slug);
   history.replaceState({},"",url.pathname+(url.searchParams.toString()?`?${url.searchParams}`:""));
 }
 async function boot(){
@@ -41,6 +41,7 @@ async function boot(){
     const callback=invitationCallback();
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
+      clearInvitationCallback();
       renderInvitationSetup(info,callback.invitationId,callback.token);
       return;
     }
@@ -50,6 +51,7 @@ async function boot(){
     renderLogin();
   }catch(error){
     renderError(error.message);
+    reportClientDiagnostic(error.message,error.stack||"","error",{kind:"boot"});
   }
 }
 boot();
