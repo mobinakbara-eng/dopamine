@@ -1,6 +1,7 @@
 "use strict";
 
 const REQUEST_TIMEOUT_MS=15000;
+const PUNCH_PENDING_TTL_MS=15*60*1000;
 
 async function request(functionName,body){
   const controller=new AbortController();
@@ -25,13 +26,15 @@ async function request(functionName,body){
     return data;
   }catch(error){
     if(error?.name==="AbortError"){
-      const timeoutError=new Error("Die Verbindung dauert zu lange. Bitte erneut versuchen.");
+      const timeoutError=new Error("Die Verbindung dauert zu lange. Bitte nicht erneut stempeln; Aora prüft die Buchung automatisch.");
       timeoutError.status=408;
+      timeoutError.retryable=true;
       throw timeoutError;
     }
     if(error instanceof TypeError){
-      const networkError=new Error("Aora konnte den Server nicht erreichen. Bitte Verbindung prüfen.");
+      const networkError=new Error("Aora konnte den Server nicht erreichen. Die Buchung wird mit derselben event_id erneut gesendet.");
       networkError.status=503;
+      networkError.retryable=true;
       throw networkError;
     }
     throw error;
@@ -60,6 +63,47 @@ function activateSession(session,fallbackRole){
   S.loginRole=S.accessRole;
   save();
   history.replaceState({},"",accessPath(S.accessRole));
+}
+
+function punchStorageKey(event){
+  const tenant=S.session?.organizationId||CFG.slug;
+  const device=S.session?.deviceId||S.session?.subjectId||"kiosk";
+  return`aora:punch:${tenant}:${device}:${event.employeeId||"unknown"}:${event.target||"unknown"}`;
+}
+function readPendingPunch(storageKey){
+  try{
+    const value=JSON.parse(sessionStorage.getItem(storageKey)||"null");
+    if(!value?.eventId||Date.now()-Number(value.createdAt||0)>PUNCH_PENDING_TTL_MS){
+      sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return value;
+  }catch{
+    sessionStorage.removeItem(storageKey);
+    return null;
+  }
+}
+function preparePunchEvent(event){
+  if(event?.type!=="KIOSK_TRANSITION")return{event,storageKey:null};
+  const storageKey=punchStorageKey(event);
+  const pending=readPendingPunch(storageKey);
+  const eventId=pending?.eventId||crypto.randomUUID();
+  const clientCreatedAt=pending?.clientCreatedAt||new Date().toISOString();
+  const value={
+    ...event,
+    eventId,
+    clientCreatedAt,
+    clientTimezone:Intl.DateTimeFormat().resolvedOptions().timeZone||CFG.tz,
+    deviceClockOffset:new Date().getTimezoneOffset()
+  };
+  sessionStorage.setItem(storageKey,JSON.stringify({eventId,clientCreatedAt,createdAt:pending?.createdAt||Date.now()}));
+  return{event:value,storageKey};
+}
+function clearPendingPunch(storageKey){if(storageKey)sessionStorage.removeItem(storageKey)}
+function retryablePunchError(error){
+  if(error?.retryable===true)return true;
+  if([408,425,429,500,502,503,504].includes(Number(error?.status)))return true;
+  return Number(error?.status)===409&&/bereits verarbeitet|Paralleländerung/i.test(String(error?.message||""));
 }
 
 async function loadDirectory(){S.directory=await access({action:"directory",workspaceSlug:CFG.slug})}
@@ -141,16 +185,24 @@ async function apply(event){
     busyError.status=409;
     throw busyError;
   }
+  const prepared=preparePunchEvent(event);
   S.busy=true;
   try{
-    const data=await workspace({action:"apply",event,expectedRevision:S.revision});
-    S.state=data.state;
-    S.revision=data.revision;
+    const data=await workspace({action:"apply",event:prepared.event,expectedRevision:S.revision});
+    if(data.pending){
+      toast(data.message||"Die Buchung wird bereits verarbeitet.","warning");
+      return data;
+    }
+    if(data.state)S.state=data.state;
+    if(data.revision!==undefined)S.revision=data.revision;
+    clearPendingPunch(prepared.storageKey);
     render();
+    if(data.idempotentReplay)toast("Diese Aktion wurde bereits gespeichert.","success");
     return data;
   }catch(error){
+    if(prepared.storageKey&&!retryablePunchError(error))clearPendingPunch(prepared.storageKey);
     if(error.status===409){
-      toast("Daten wurden aktualisiert. Bitte erneut versuchen.","error");
+      toast(error.message||"Daten wurden aktualisiert. Bitte erneut versuchen.","error");
       await loadState(true);
     }else toast(error.message,"error");
     throw error;
