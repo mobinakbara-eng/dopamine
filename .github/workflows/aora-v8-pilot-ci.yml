@@ -67,24 +67,23 @@ jobs:
         with:
           node-version: 22
       - name: Bootstrap isolated staging tenant with GitHub OIDC
+        id: ci_bootstrap
         shell: bash
         run: |
           set -euo pipefail
+          response_file="$GITHUB_WORKSPACE/aora-v8-final/bootstrap-response.json"
           oidc_json=$(curl --fail-with-body -sS \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-staging-ci")
           oidc_token=$(jq -er '.value' <<<"$oidc_json")
           echo "::add-mask::$oidc_token"
-          response_file=$(mktemp)
           status=$(curl -sS -o "$response_file" -w '%{http_code}' \
             -X POST "$AORA_CI_BOOTSTRAP_URL" \
             -H "Authorization: Bearer $oidc_token" \
             -H 'content-type: application/json' \
             --data '{"action":"bootstrap"}')
-          if [ "$status" != "201" ]; then
-            jq -c '{error}' "$response_file" || true
-            exit 1
-          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" != "201" ]; then exit 0; fi
           jq -e '
             .workspaceSlug and .owner.email and .owner.password and
             .manager.email and .manager.password and
@@ -116,6 +115,17 @@ jobs:
             echo "AORA_MANAGER_LOCATION_COUNT=$(jq -r '.managerLocationCount' "$response_file")"
           } >> "$GITHUB_ENV"
           rm -f "$response_file"
+      - name: Upload sanitized bootstrap diagnostics
+        if: steps.ci_bootstrap.outputs.status != '201'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-ci-bootstrap-error
+          path: aora-v8-final/bootstrap-response.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce CI tenant bootstrap
+        shell: bash
+        run: test "${{ steps.ci_bootstrap.outputs.status }}" = "201"
       - name: Install Playwright without changing lockfiles
         run: |
           npm install --no-save @playwright/test@1.56.1
