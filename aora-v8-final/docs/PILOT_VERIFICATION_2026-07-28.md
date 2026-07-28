@@ -2,44 +2,80 @@
 
 Scope: `agent/aora-v8-hardening`, PR #6, Supabase Staging `xqgkawskftzurbujrpex` only.
 
+Head verified before this document update: `e10ab32cd29af5ba99acff4bd71cbbf7d7916492`.
+
+## Final release-gate result
+
+GitHub Actions run `30346116913` completed successfully:
+
+- Source, crypto and immutable bundle build gate: passed.
+- Owner login, dynamic workspace routing and Compliance Center: passed.
+- Manager login, location scope and Compliance access: passed.
+- Employee login and correction-request entry point: passed.
+- Kiosk login, browser offline mode, encrypted AES-GCM queue and online resync: passed.
+- Invitation inspection, atomic activation, session creation, password login, tenant scope and replay rejection: passed.
+- GitHub OIDC ephemeral tenant bootstrap and cleanup: passed.
+- Aggregate Aora Pilot Release Gate: passed.
+
+The workflow does not require permanent staging passwords, PINs or onboarding secrets. Each run obtains a GitHub OIDC token, creates an isolated temporary tenant, masks all ephemeral values and removes the tenant after testing.
+
 ## Live staging verification
 
-- Supabase project health: `ACTIVE_HEALTHY`, region `eu-central-1`.
-- Active pilot Edge Functions confirmed: access, workspace rules, kiosk, compliance, onboarding, monitoring and invitation QA claim.
-- Tenant and manager-location RLS inventory reviewed against the live schema.
-- Production database, production aliases, `main` and the canonical `aora/` source were not changed.
+- Supabase project health was confirmed healthy in `eu-central-1`.
+- Active pilot functions include Access v3, Workspace Rules v3, Monitoring v2, Onboarding v3, Compliance Proxy v1, Realtime Broadcast v1, Kiosk, Workspace, Compliance Core and CI Bootstrap.
+- Dynamic workspace selection uses the validated `workspace` query parameter or session storage and defaults to `aora-demo`.
+- Production database, production aliases, `main` and canonical `aora/` source were not changed.
 
 ## Passed database and backend tests
 
-- Audit ledger self-test: chain valid, two events verified, mutation rejected, QA rows cleaned up.
-- Punch idempotency: first request new, exact replay reused the receipt, payload mismatch rejected, test row cleaned up.
-- Rule engine: shift overlap, missing break, minimum rest and DST fallback violations detected; overnight shift accepted with an overnight hint.
-- Backup snapshot: backup `483734cf-9e18-4a90-a734-dcdddc9ff51a`, source revision 6, checksum verified.
-- Consolidated backend QA evidence already covers activation, password login, tenant scope, replay/expired/revoked rejection, CSV/PDF exports, monitor health and load fixtures.
+- Audit ledger: chain valid, mutation rejected and QA rows cleaned up.
+- Punch idempotency: first request accepted, exact replay reused the receipt and payload mismatch was rejected.
+- Rule engine: Pause, overlap, minimum rest, overnight and DST behavior verified.
+- Backup snapshot checksum verified.
+- Activation, password login, tenant scope and replay/expired/revoked invitation rejection verified.
+- CSV, PDF, Audit and Steuerberater exports verified.
+- Monitoring health and load fixtures verified.
+
+## Root causes corrected
+
+- Edge Functions used a variable named `URL` and later called `new URL(origin)`. The variable shadowed the global URL constructor and caused legitimate local/preview origins to be rejected with HTTP 403. Affected functions now use `SUPABASE_URL` and `new globalThis.URL(origin)`.
+- Browser requests used JSON content types that created avoidable CORS preflights. Browser and Service Worker calls now use `text/plain;charset=UTF-8` while retaining JSON payload parsing server-side.
+- The earlier database Realtime trigger depended on unavailable objects in the `realtime` schema. It was removed and replaced with authenticated REST Broadcast on a session-hash-derived topic plus a 60-second fallback.
+- Compliance traffic now passes through an origin-safe server-side proxy that preserves JSON, PDF/CSV bodies, content disposition and checksums without exposing the service-role key.
 
 ## Security corrections applied
 
-- Direct execution of eight sensitive `SECURITY DEFINER` RPCs was revoked from `PUBLIC`, `anon` and `authenticated`; execution remains limited to `service_role`.
+- Direct execution of sensitive `SECURITY DEFINER` RPCs was revoked from `PUBLIC`, `anon` and `authenticated`; execution remains limited to `service_role`.
 - Raw activation/login session tokens were removed from `pilot_qa_runs` evidence.
-- A before-write trigger now redacts future 64-character tokens at known QA evidence paths.
-- Invitation tokens are removed from the browser URL immediately after server-side inspection.
+- A before-write trigger redacts future token-shaped QA evidence.
+- Invitation tokens are removed from the browser URL immediately after inspection.
 - Browser monitoring redacts session-like values and query-string secrets before reporting.
+- CI ledger cleanup is allowed only for verified `github-oidc-ci` tenants; real tenant ledgers remain append-only.
+- Onboarding kiosk activation codes are generated with `crypto.getRandomValues`, not `Math.random`.
 
-## Bundle and release-gate work
+## Repository source-of-truth
 
-- Workspace selection now comes from the validated `workspace` query parameter or session storage, defaulting to `aora-demo`.
-- Access calls include `workspaceSlug`, fixing onboarding links that previously fell back to the hardening demo tenant.
-- Five-second full-state polling was removed.
-- Session-scoped Supabase Realtime broadcast subscription was added with a 60-second fallback refresh.
-- Owner/Manager Compliance Center and Employee correction-request entry point were added to the bundle.
-- Playwright coverage was added for Owner, Manager, Employee, Kiosk, invitation activation/login/replay and encrypted offline resync.
-- GitHub Actions now contains source, browser and aggregate release gates. Required staging secrets are validated explicitly and tests are not silently skipped.
+The repository now contains and gates the deployed sources for:
 
-## Remaining Stop-Ship items
+- Access
+- Workspace and Workspace Rules
+- Kiosk
+- Monitoring
+- Onboarding
+- Realtime Broadcast
+- Compliance Proxy
+- CI OIDC Bootstrap
+- Security and cleanup migrations
 
-- GitHub Actions must complete successfully with the required staging secrets configured.
-- Final Preview browser QA must confirm no console errors, unexpected failed requests or layout regressions on the deployed Vercel Preview.
-- Deployed compliance, monitor and onboarding Edge Function sources must be reconciled into the repository or regenerated from migrations before the repository is treated as the complete deployment source of truth.
-- Supabase Auth leaked-password protection remains disabled and should be enabled before a public production rollout.
+The Source Gate rejects fixed-workspace Access code, unsafe URL shadowing, `Math.random` onboarding codes, missing deployed-function sources and regressions to five-second polling.
 
-PR #6 must remain Draft. No merge or production promotion is authorized by this verification.
+## Vercel verification
+
+A Branch Preview exists with state `READY`, and the Aora owner route returned HTTP 200 with the expected 8.1.0 shell. Newer Preview builds are currently blocked by Vercel Free-plan quota `api-deployments-free-per-day` after more than 100 deployments in one day. This is an external quota failure, not a source or build failure.
+
+## Remaining external Stop-Ship items
+
+- Build one fresh Vercel Preview from the final Head after the daily quota resets or the plan is upgraded, then record final visual/layout QA on that exact SHA.
+- Enable Supabase Auth leaked-password protection before a public production rollout.
+
+PR #6 must remain Draft until those external release conditions are satisfied. No merge or production promotion is authorized by this verification.
