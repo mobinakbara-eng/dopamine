@@ -6,7 +6,7 @@ request=async function(functionName,body){
   try{
     const response=await fetch(`${CFG.url}/functions/v1/${functionName}`,{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"text/plain;charset=UTF-8"},
       body:JSON.stringify(body),
       signal:controller.signal
     });
@@ -66,7 +66,7 @@ async function downloadCompliance(format,filters={}){
   try{
     const response=await fetch(`${CFG.url}/functions/v1/${CFG.complianceFunction}`,{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"text/plain;charset=UTF-8"},
       body:JSON.stringify({action:"export",format,...filters,token:S.session?.token}),
       signal:controller.signal
     });
