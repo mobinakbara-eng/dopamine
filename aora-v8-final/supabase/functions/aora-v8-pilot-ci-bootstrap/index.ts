@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { createRemoteJWKSet, jwtVerify } from "https://esm.sh/jose@5.9.6";
+import { createRemoteJWKSet, jwtVerify } from "jsr:@panva/jose@6.2.4";
 
 const URL=Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
