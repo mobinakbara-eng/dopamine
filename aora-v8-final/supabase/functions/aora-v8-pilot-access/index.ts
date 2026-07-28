@@ -6,6 +6,9 @@ const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const DEFAULT_WORKSPACE = "aora-v8-hardening-demo";
 const ITERATIONS = 210_000;
 const MAX_BODY_BYTES = 20_000;
+const PWNED_PASSWORDS_RANGE_URL = "https://api.pwnedpasswords.com/range";
+const PWNED_PASSWORD_TIMEOUT_MS = 6_000;
+const PWNED_PASSWORD_USER_AGENT = "Aora-Workforce-Staging/8.1.0";
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
 const PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const EXACT_ORIGINS = new Set([
@@ -31,6 +34,9 @@ function randomHex(size = 32) {
 async function sha256(value: string) {
   return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value))));
 }
+async function sha1Upper(value: string) {
+  return hex(new Uint8Array(await crypto.subtle.digest("SHA-1", encoder.encode(value)))).toUpperCase();
+}
 async function derive(password: string, salt: string, iterations = ITERATIONS) {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
@@ -50,6 +56,34 @@ function constantTimeEqual(left: unknown, right: unknown) {
 }
 function passwordOk(value: string) {
   return value.length >= 10 && value.length <= 128 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value);
+}
+async function assertPasswordNotPwned(password: string) {
+  const hash = await sha1Upper(password);
+  const prefix = hash.slice(0, 5);
+  const suffix = hash.slice(5);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PWNED_PASSWORD_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${PWNED_PASSWORDS_RANGE_URL}/${prefix}`, {
+      headers: {
+        Accept: "text/plain",
+        "Add-Padding": "true",
+        "User-Agent": PWNED_PASSWORD_USER_AGENT,
+      },
+      signal: controller.signal,
+    });
+  } catch {
+    fail("Die sichere Passwortprüfung ist vorübergehend nicht verfügbar. Bitte erneut versuchen.", 503);
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) fail("Die sichere Passwortprüfung ist vorübergehend nicht verfügbar. Bitte erneut versuchen.", 503);
+  const breached = (await response.text()).split(/\r?\n/).some((line) => {
+    const [candidate, count] = line.split(":");
+    return candidate?.trim().toUpperCase() === suffix && Number(count || 0) > 0;
+  });
+  if (breached) fail("Dieses Passwort ist aus bekannten Datenlecks bekannt. Bitte wählen Sie ein anderes Passwort.", 400);
 }
 function privateOrLoopbackHost(hostname: string) {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -221,6 +255,7 @@ async function acceptInvitation(context: any, body: any) {
   if (!account || account.subjectId !== String(invitation.subjectId) || account.record.status !== "pending") {
     fail("Eingeladenes Konto wurde nicht gefunden.", 404);
   }
+  await assertPasswordNotPwned(password);
   const state = structuredClone(context.state);
   const acceptedAt = new Date().toISOString();
   state.invitations = (state.invitations || []).map((item: any) =>
