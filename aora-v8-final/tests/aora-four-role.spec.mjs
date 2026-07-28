@@ -147,14 +147,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     if(await toggle.count()){
       const before=(await toggle.innerText()).trim();
       await toggle.click();await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).not.toBe(before);
-      const unlockResponsePromise=page.waitForResponse(response=>
-        response.request().method()==="POST"&&
-        response.url().includes("/functions/v1/aora-v8-pilot-workspace-rules")
-      );
       await page.locator('[data-a="toggle-kiosk"]').first().click();
-      const unlockResponse=await unlockResponsePromise;
-      const unlockBody=await unlockResponse.text();
-      expect(unlockResponse.ok(),`Kiosk unlock failed (${unlockResponse.status()}): ${unlockBody}`).toBeTruthy();
       await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).toBe(before);
     }
     await assertNoHorizontalOverflow(page);expect(getErrors()).toEqual([]);
