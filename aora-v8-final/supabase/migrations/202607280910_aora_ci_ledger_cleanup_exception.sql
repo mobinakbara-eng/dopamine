@@ -9,15 +9,7 @@ begin
     if coalesce(old.metadata->>'selfTest','false')='true' then
       return old;
     end if;
-    if exists(
-      select 1
-      from public.organizations organization
-      join public.workspace_snapshots snapshot on snapshot.organization_id=organization.id
-      where organization.id=old.organization_id
-        and organization.slug like 'aora-ci-%'
-        and coalesce(snapshot.state #>> '{meta,tenantSource}','')='github-oidc-ci'
-        and coalesce(snapshot.state #>> '{meta,ciRunId}','') ~ '^[0-9]+$'
-    ) then
+    if current_setting('aora.cleanup_organization_id',true)=old.organization_id::text then
       return old;
     end if;
   end if;
@@ -49,6 +41,7 @@ begin
 
   if v_org_id is null then return false; end if;
   perform set_config('aora.maintenance_cleanup','on',true);
+  perform set_config('aora.cleanup_organization_id',v_org_id::text,true);
   delete from public.organizations where id=v_org_id;
   return true;
 end;
