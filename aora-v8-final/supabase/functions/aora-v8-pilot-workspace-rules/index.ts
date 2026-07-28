@@ -87,6 +87,20 @@ async function repairEmployeeLeaveDefaults(token: string) {
     .maybeSingle();
   if (updateError || !updated) throw Object.assign(new Error("Mitarbeiterdaten wurden parallel geändert. Bitte erneut versuchen."), { status: 409 });
 }
+async function enrichStoredLeaveDecision(token: string, eventInput: any) {
+  const session = await sessionFor(token);
+  if (session.role !== "admin") throw Object.assign(new Error("Nur Inhaber oder Manager dürfen Abwesenheiten entscheiden."), { status: 403 });
+  const { data: snapshot, error } = await service.from("workspace_snapshots").select("state").eq("organization_id", session.organization_id).single();
+  if (error || !snapshot) throw Object.assign(new Error("Arbeitsbereich konnte nicht geladen werden."), { status: 404 });
+  const state: any = snapshot.state && typeof snapshot.state === "object" ? snapshot.state : {};
+  const leaveRequests = Array.isArray(state.leaveRequests) ? state.leaveRequests : [];
+  const employees = Array.isArray(state.employees) ? state.employees : [];
+  const request = leaveRequests.find((item: any) => String(item.id) === String(eventInput?.id));
+  if (!request) throw Object.assign(new Error("Abwesenheitsantrag wurde nicht gefunden."), { status: 404 });
+  const employee = employees.find((item: any) => String(item.id) === String(request.employeeId));
+  if (!employee?.locationId) throw Object.assign(new Error("Standort des Mitarbeiters konnte nicht ermittelt werden."), { status: 409 });
+  return { ...eventInput, locationId: String(employee.locationId) };
+}
 async function loadContext(token: string) {
   const session = await sessionFor(token);
   const { data: organization, error: orgError } = await service.from("organizations").select("id,slug,status").eq("id", session.organization_id).eq("status", "active").single();
@@ -196,6 +210,12 @@ Deno.serve(async (request: Request) => {
       };
       const upstream = await callUpstream(forwarded);
       return reply({ ...upstream.data, ruleEvaluation: evaluation }, upstream.status, origin);
+    }
+
+    if (body.action === "apply" && body.event?.type === "DECIDE_LEAVE") {
+      const event = await enrichStoredLeaveDecision(token, body.event);
+      const upstream = await callUpstream({ ...body, event });
+      return reply(upstream.data, upstream.status, origin);
     }
 
     const upstream = await callUpstream(body);
