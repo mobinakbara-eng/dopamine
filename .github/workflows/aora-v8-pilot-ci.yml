@@ -1,0 +1,94 @@
+name: Aora V8 Pilot Gate
+
+on:
+  pull_request:
+    branches:
+      - agent/aora-v8-final
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-v8-pilot-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aora-v8-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-gate:
+    name: Source, crypto and build gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate and build immutable pilot bundle
+        run: npm run build
+
+  four-role-browser:
+    name: Four roles, invitation and offline browser gate
+    needs: source-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    env:
+      AORA_SUPABASE_URL: https://xqgkawskftzurbujrpex.supabase.co
+      AORA_WORKSPACE_SLUG: ${{ vars.AORA_WORKSPACE_SLUG || 'aora-demo' }}
+      AORA_OWNER_EMAIL: ${{ secrets.AORA_OWNER_EMAIL }}
+      AORA_OWNER_PASSWORD: ${{ secrets.AORA_OWNER_PASSWORD }}
+      AORA_MANAGER_EMAIL: ${{ secrets.AORA_MANAGER_EMAIL }}
+      AORA_MANAGER_PASSWORD: ${{ secrets.AORA_MANAGER_PASSWORD }}
+      AORA_EMPLOYEE_EMAIL: ${{ secrets.AORA_EMPLOYEE_EMAIL }}
+      AORA_EMPLOYEE_PASSWORD: ${{ secrets.AORA_EMPLOYEE_PASSWORD }}
+      AORA_KIOSK_DEVICE_ID: ${{ secrets.AORA_KIOSK_DEVICE_ID }}
+      AORA_KIOSK_PIN: ${{ secrets.AORA_KIOSK_PIN }}
+      AORA_ONBOARDING_CODE: ${{ secrets.AORA_ONBOARDING_CODE }}
+      AORA_MANAGER_LOCATION_COUNT: ${{ vars.AORA_MANAGER_LOCATION_COUNT || '1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify required staging secrets exist
+        shell: bash
+        run: |
+          missing=0
+          for name in AORA_OWNER_EMAIL AORA_OWNER_PASSWORD AORA_MANAGER_EMAIL AORA_MANAGER_PASSWORD AORA_EMPLOYEE_EMAIL AORA_EMPLOYEE_PASSWORD AORA_KIOSK_DEVICE_ID AORA_KIOSK_PIN AORA_ONBOARDING_CODE; do
+            if [ -z "${!name}" ]; then echo "::error::Missing required GitHub Actions secret: $name"; missing=1; fi
+          done
+          exit "$missing"
+      - name: Install Playwright without changing lockfiles
+        run: |
+          npm install --no-save @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Build browser bundle
+        run: npm run build
+      - name: Run four-role, invitation replay and offline-resync tests
+        run: npm run test:e2e
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-playwright-failure-screenshots
+          path: aora-v8-final/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release-gate:
+    name: Aora pilot release gate
+    if: always()
+    needs: [source-gate, four-role-browser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce all mandatory checks
+        shell: bash
+        run: |
+          test "${{ needs.source-gate.result }}" = "success"
+          test "${{ needs.four-role-browser.result }}" = "success"
