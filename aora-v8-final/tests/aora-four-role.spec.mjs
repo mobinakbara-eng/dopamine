@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-const workspace=process.env.AORA_WORKSPACE_SLUG||"aora-demo";
-const supabaseUrl=process.env.AORA_SUPABASE_URL||"https://xqgkawskftzurbujrpex.supabase.co";
+const workspace=process.env.AORA_WORKSPACE_SLUG;
 const paths={owner:"/inhaber/",manager:"/arbeitgeber/",employee:"/arbeitnehmer/",kiosk:"/kiosk/dashboard/"};
-function env(name){const value=process.env[name];if(!value)throw new Error(`Missing required staging secret: ${name}`);return value}
+function env(name){const value=process.env[name];if(!value)throw new Error(`Missing required ephemeral CI value: ${name}`);return value}
 function safeUrl(input){try{const url=new URL(input);for(const key of ["token","session","key"])if(url.searchParams.has(key))url.searchParams.set(key,"[REDACTED]");return url.pathname+url.search}catch{return String(input).replace(/([?&](?:token|session|key)=)[^&#\s]+/gi,"$1[REDACTED]")}}
 function diagnostics(page,{allowOffline=false}={}){
   const errors=[];
@@ -23,14 +22,15 @@ async function passwordLogin(page,role,email,password){
 }
 async function kioskLogin(page){
   await page.goto(`${paths.kiosk}?workspace=${encodeURIComponent(workspace)}`);
-  const deviceId=env("AORA_KIOSK_DEVICE_ID");
-  await page.locator('select[name="subject"]').selectOption(deviceId);
+  await page.locator('select[name="subject"]').selectOption(env("AORA_KIOSK_DEVICE_ID"));
   await page.locator('input[name="pin"]').fill(env("AORA_KIOSK_PIN"));
   await page.locator('#pin-login button[type="submit"]').click();
-  await page.waitForFunction(workspace=>Boolean(sessionStorage.getItem(`aora:${workspace}:kiosk`)),workspace);
+  await page.waitForFunction(value=>Boolean(sessionStorage.getItem(`aora:${value}:kiosk`)),workspace);
 }
 
-test.describe.serial("Aora 8.1.0 staging role and browser gates",()=>{
+test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
+  test.beforeAll(()=>{env("AORA_WORKSPACE_SLUG")});
+
   test("Owner: login, workspace routing and compliance center",async({page})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"owner",env("AORA_OWNER_EMAIL"),env("AORA_OWNER_PASSWORD"));
@@ -44,7 +44,7 @@ test.describe.serial("Aora 8.1.0 staging role and browser gates",()=>{
   test("Manager: scoped login and compliance access",async({page})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
-    await expect(page.locator("#loc-select option")).toHaveCount(Number(process.env.AORA_MANAGER_LOCATION_COUNT||1));
+    await expect(page.locator("#loc-select option")).toHaveCount(Number(env("AORA_MANAGER_LOCATION_COUNT")));
     await page.locator('[data-view="compliance"]').click();
     await expect(page.getByText("Compliance, Exporte und Zeitkorrekturen")).toBeVisible();
     await page.waitForTimeout(1500);
@@ -55,7 +55,10 @@ test.describe.serial("Aora 8.1.0 staging role and browser gates",()=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
     await expect(page.locator('[data-compliance-action="request-correction"]')).toBeVisible();
-    await page.waitForTimeout(1500);
+    await page.locator('[data-compliance-action="request-correction"]').click();
+    await expect(page.getByText("Korrektur beantragen")).toBeVisible();
+    await page.locator('[data-compliance-action="close"]').first().click();
+    await page.waitForTimeout(1000);
     expect(getErrors()).toEqual([]);
   });
 
@@ -74,35 +77,23 @@ test.describe.serial("Aora 8.1.0 staging role and browser gates",()=>{
     expect(getErrors().filter(item=>!item.includes("ERR_INTERNET_DISCONNECTED"))).toEqual([]);
   });
 
-  test("Invitation: provision, activate, login, tenant scope and replay rejection",async({page,request,browser})=>{
-    const onboardingCode=env("AORA_ONBOARDING_CODE");
-    const unique=`${Date.now()}-${process.env.GITHUB_RUN_ID||"local"}`;
-    const managerEmail=`aora-ci-${unique}@example.com`;
-    const password=`Aora-${unique}-Secure9`;
-    const provision=await request.post(`${supabaseUrl}/functions/v1/aora-v8-pilot-onboarding`,{data:{
-      action:"provision",code:onboardingCode,
-      company:{name:`Aora CI ${unique}`,billingEmail:managerEmail,timezone:"Europe/Berlin",language:"de"},
-      location:{name:"CI Standort",city:"Berlin",geofenceRadius:100},
-      manager:{name:"Aora CI Manager",email:managerEmail},kiosk:{name:"CI Kiosk"}
-    }});
-    const provisionBody=await provision.text();
-    expect(provision.status(),provisionBody).toBe(201);
-    const created=JSON.parse(provisionBody);
-    const invite=new URL(created.managerInvitation.inviteUrl);
-    const localInvite=`${invite.pathname}${invite.search}`;
+  test("Invitation: activate, login, tenant scope and replay rejection",async({page,browser,baseURL})=>{
+    const invitation=new URL(env("AORA_INVITATION_URL"));
+    const localInvite=new URL(`${invitation.pathname}${invitation.search}`,baseURL).toString();
+    const invitedEmail=env("AORA_INVITATION_EMAIL"),invitedPassword=env("AORA_INVITATION_PASSWORD");
     await page.goto(localInvite);
     await expect(page.getByText("Konto aktivieren")).toBeVisible();
-    await page.locator('input[name="email"]').fill(managerEmail);
-    await page.locator('input[name="password"]').fill(password);
-    await page.locator('input[name="confirm"]').fill(password);
+    await page.locator('input[name="email"]').fill(invitedEmail);
+    await page.locator('input[name="password"]').fill(invitedPassword);
+    await page.locator('input[name="confirm"]').fill(invitedPassword);
     await page.locator('#invitation-accept button[type="submit"]').click();
-    await page.waitForFunction(slug=>Boolean(sessionStorage.getItem(`aora:${slug}:manager`)),created.workspaceSlug);
+    await page.waitForFunction(slug=>Boolean(sessionStorage.getItem(`aora:${slug}:manager`)),workspace);
     await expect(page.locator("#loc-select option")).toHaveCount(1);
     await page.locator('[data-a="logout"]').click();
-    await page.locator('input[name="email"]').fill(managerEmail);
-    await page.locator('input[name="password"]').fill(password);
+    await page.locator('input[name="email"]').fill(invitedEmail);
+    await page.locator('input[name="password"]').fill(invitedPassword);
     await page.locator('#password-login button[type="submit"]').click();
-    await page.waitForFunction(slug=>Boolean(sessionStorage.getItem(`aora:${slug}:manager`)),created.workspaceSlug);
+    await page.waitForFunction(slug=>Boolean(sessionStorage.getItem(`aora:${slug}:manager`)),workspace);
     const replayContext=await browser.newContext();
     const replay=await replayContext.newPage();
     await replay.goto(localInvite);
