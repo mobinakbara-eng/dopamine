@@ -136,6 +136,7 @@ function eventLocationIds(state: any, event: any) {
   add(state.shifts.find((item: any) => item.id === event?.id || item.id === event?.shiftId)?.locationId);
   add(state.employees.find((item: any) => item.id === event?.id || item.id === event?.employeeId)?.locationId);
   add(state.timeEntries.find((item: any) => item.id === event?.id || item.id === event?.entryId)?.locationId);
+  add(state.kioskDevices.find((item: any) => item.id === event?.id || item.id === event?.deviceId)?.locationId);
   return [...values];
 }
 function guardManagerEvent(ctx: any, event: any) {
