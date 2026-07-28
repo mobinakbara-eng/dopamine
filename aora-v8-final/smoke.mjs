@@ -18,8 +18,8 @@ for(const relativePath of [
 
 const rootIndex=await readFile(resolve(dist,"index.html"),"utf8");
 requireMarkers("index",rootIndex,[
-  "AoraAI Workforce","styles.css?v=809","invitation.css?v=809","modules/config.js?v=810",
-  "modules/api.js?v=809","modules/access.js?v=809","modules/employee-hardening.js?v=809",
+  "AoraAI Workforce","styles.css?v=809","invitation.css?v=809","modules/config.js?v=811",
+  "modules/api.js?v=810","modules/access.js?v=809","modules/employee-hardening.js?v=809",
   "modules/identity-hardening.js?v=809","modules/profile-hardening.js?v=809","modules/handlers.js?v=809",
 ]);
 for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){
@@ -30,25 +30,23 @@ for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
 requireMarkers("config",config,[
   'slug:"aora-v8-hardening-demo"','accessFunction:"aora-v8-hardening-access"',
-  'workspaceFunction:"aora-v8-pilot-workspace"','kioskWorkspaceFunction:"aora-v8-hardening-kiosk"',
-  'version:"8.1.0-pilot"',
+  'workspaceFunction:"aora-v8-pilot-workspace"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','version:"8.1.0-pilot"',
 ]);
-for(const forbidden of ['slug:"aora-v8-final-demo"','accessFunction:"aora-v8-final-access"','workspaceFunction:"aora-v8-final-workspace"']){
-  if(config.includes(forbidden))throw new Error(`Built output points to old service: ${forbidden}`);
-}
+for(const forbidden of ['slug:"aora-v8-final-demo"','accessFunction:"aora-v8-final-access"','workspaceFunction:"aora-v8-final-workspace"'])if(config.includes(forbidden))throw new Error(`Built output points to old service: ${forbidden}`);
 
 const api=await readFile(resolve(dist,"modules/api.js"),"utf8");
-requireMarkers("API",api,["REQUEST_TIMEOUT_MS","AbortController",'if(accessRole!=="kiosk")return','if(loginRole!=="kiosk")']);
+requireMarkers("API",api,[
+  "REQUEST_TIMEOUT_MS","AbortController",'if(accessRole!=="kiosk")return','if(loginRole!=="kiosk")',
+  "PUNCH_PENDING_TTL_MS","preparePunchEvent","crypto.randomUUID()","clientCreatedAt","deviceClockOffset",
+  "retryablePunchError","idempotentReplay","Diese Aktion wurde bereits gespeichert.",
+]);
 const accessUi=await readFile(resolve(dist,"modules/access.js"),"utf8");
 requireMarkers("access UI",accessUi,['const pinEnabled=role==="kiosk"','Inhaber, Arbeitgeber und Mitarbeiter melden sich ausschließlich']);
 forbidMarkers("access UI",accessUi,['role==="owner"||role==="kiosk"']);
 const date=await readFile(resolve(dist,"modules/date-hardening.js"),"utf8");
 requireMarkers("date",date,["Date.UTC","getUTCDay","setUTCDate"]);
 const employee=await readFile(resolve(dist,"modules/employee-hardening.js"),"utf8");
-requireMarkers("employee",employee,[
-  "employeeScopedState","activeEntryMinutes","pendingClockRequest","clockApprovalPanel","clock-approve","clock-deny",
-  "Das angemeldete Mitarbeiterkonto wurde nicht gefunden",
-]);
+requireMarkers("employee",employee,["employeeScopedState","activeEntryMinutes","pendingClockRequest","clockApprovalPanel","clock-approve","clock-deny","Das angemeldete Mitarbeiterkonto wurde nicht gefunden"]);
 forbidMarkers("employee",employee,["employees?.[0]","employees[0]"]);
 const identity=await readFile(resolve(dist,"modules/identity-hardening.js"),"utf8");
 requireMarkers("identity",identity,["item.id===subjectId","item.status!==\"pending\"","renderAdminCanonical"]);
@@ -57,10 +55,7 @@ const profile=await readFile(resolve(dist,"modules/profile-hardening.js"),"utf8"
 requireMarkers("profile",profile,["item.id===employeeId","UPDATE_PROFILE"]);
 forbidMarkers("profile",profile,["employees?.[0]","employees[0]"]);
 const handlers=await readFile(resolve(dist,"modules/handlers.js"),"utf8");
-requireMarkers("handlers",handlers,[
-  "secureCurrentPosition","APPROVE_CLOCK_REQUEST","DENY_CLOCK_REQUEST","return-admin-role",
-  "Bitte erneut anmelden, um den Verwaltungsbereich zu öffnen.",
-]);
+requireMarkers("handlers",handlers,["secureCurrentPosition","APPROVE_CLOCK_REQUEST","DENY_CLOCK_REQUEST","return-admin-role","Bitte erneut anmelden, um den Verwaltungsbereich zu öffnen."]);
 const adminMetrics=await readFile(resolve(dist,"modules/admin-metrics-hardening.js"),"utf8");
 requireMarkers("admin metrics",adminMetrics,["isActivatedAccount","Aktive Konten","Noch nicht aktiviert"]);
 const kiosk=await readFile(resolve(dist,"modules/kiosk-hardening.js"),"utf8");
@@ -69,12 +64,10 @@ const invitation=await readFile(resolve(dist,"modules/invitation-delivery.js"),"
 requireMarkers("invitation",invitation,["managerInvitationModal","employeeInvitationModal","submit.disabled=true"]);
 
 const css=await readFile(resolve(dist,"styles.css"),"utf8");
-requireMarkers("visual",css,[
-  "--black:#000","--white:#fff","--radius:16px",'--font:"Manrope",Arial,sans-serif','--display:"Sora","Manrope",sans-serif',".owner-hero",
-]);
+requireMarkers("visual",css,["--black:#000","--white:#fff","--radius:16px",'--font:"Manrope",Arial,sans-serif','--display:"Sora","Manrope",sans-serif',".owner-hero"]);
 const modulesDirectory=resolve(dist,"modules");
 const modules=(await readdir(modulesDirectory)).filter(file=>file.endsWith(".js")).sort();
 if(modules.length<21)throw new Error(`Unexpected built module count: ${modules.length}`);
 for(const module of modules)execFileSync(process.execPath,["--check",resolve(modulesDirectory,module)],{stdio:"inherit"});
 
-console.log(`Aora post-build smoke checks passed (${modules.length} modules, 4 role routes, tenant guard, exact identities, personal punch approval, kiosk re-auth, active hours and visual markers).`);
+console.log(`Aora post-build smoke checks passed (${modules.length} modules, 4 role routes, tenant guard and durable punch replay assets).`);
