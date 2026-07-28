@@ -10,6 +10,8 @@ const AUDIENCE="aora-staging-ci";
 const REPOSITORY="mobinakbara-eng/dopamine";
 const REPOSITORY_ID="1044549733";
 const WORKFLOW_PREFIX=`${REPOSITORY}/.github/workflows/aora-v8-pilot-ci.yml@`;
+const ALLOWED_HEAD="agent/aora-v8-hardening";
+const ALLOWED_BASE="agent/aora-v8-final";
 const JWKS=createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 const enc=new TextEncoder();
 const ITERATIONS=210000;
@@ -26,19 +28,24 @@ async function derive(password:string,salt:string){const key=await crypto.subtle
 function password(){return`Aora-${randomHex(12)}-9aZ`}
 function email(role:string,runId:string,attempt:string,suffix:string){return`aora-ci-${role}-${runId}-${attempt}-${suffix}@example.com`.toLowerCase()}
 function berlinDate(offsetDays=0){const date=new Date(Date.now()+offsetDays*86400000);return new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Berlin"}).format(date)}
-function safeSlug(runId:string,attempt:string){return`aora-ci-${runId}-${attempt}-${randomHex(3)}`.slice(0,63)}
+function safeSlug(runId:string,attempt:string){return`aora-ci-${runId}-${attempt}`.slice(0,63)}
 function safeId(prefix:string,suffix:string){return`${prefix}_${suffix}`}
 
 async function claims(req:Request){
   const {payload}=await jwtVerify(bearer(req),JWKS,{issuer:ISSUER,audience:AUDIENCE,clockTolerance:5});
   if(payload.repository!==REPOSITORY||String(payload.repository_id||"")!==REPOSITORY_ID)fail("repository_not_allowed",403);
   if(!String(payload.workflow_ref||"").startsWith(WORKFLOW_PREFIX))fail("workflow_not_allowed",403);
-  if(!["pull_request","workflow_dispatch"].includes(String(payload.event_name||"")))fail("event_not_allowed",403);
+  const eventName=String(payload.event_name||"");
+  if(eventName==="pull_request"){
+    if(String(payload.head_ref||"")!==ALLOWED_HEAD||String(payload.base_ref||"")!==ALLOWED_BASE)fail("pull_request_not_allowed",403);
+  }else if(eventName==="workflow_dispatch"){
+    if(String(payload.ref||"")!==`refs/heads/${ALLOWED_HEAD}`)fail("dispatch_ref_not_allowed",403);
+  }else fail("event_not_allowed",403);
   if(String(payload.runner_environment||"")!=="github-hosted")fail("runner_not_allowed",403);
   const runId=String(payload.run_id||"");
   const runAttempt=String(payload.run_attempt||"");
   if(!/^\d+$/.test(runId)||!/^\d+$/.test(runAttempt))fail("invalid_run_claims",403);
-  return{runId,runAttempt,workflowRef:String(payload.workflow_ref),eventName:String(payload.event_name)};
+  return{runId,runAttempt,workflowRef:String(payload.workflow_ref),eventName};
 }
 
 async function credential(subjectRole:string,subjectId:string,address:string,plain:string){
