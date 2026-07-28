@@ -113,6 +113,8 @@ jobs:
             echo "AORA_INVITATION_PASSWORD=$(jq -r '.invitation.password' "$response_file")"
             echo "AORA_INVITATION_URL=$(jq -r '.invitation.url' "$response_file")"
             echo "AORA_MANAGER_LOCATION_COUNT=$(jq -r '.managerLocationCount' "$response_file")"
+            echo "AORA_A11Y_EMAIL=$(jq -r '.owner.email' "$response_file")"
+            echo "AORA_A11Y_PASSWORD=$(jq -r '.owner.password' "$response_file")"
           } >> "$GITHUB_ENV"
           rm -f "$response_file"
       - name: Upload sanitized bootstrap diagnostics
@@ -134,6 +136,12 @@ jobs:
         run: npm run build
       - name: Run four-role, invitation replay and offline-resync tests
         run: npm run test:e2e
+      - name: Run bounded workspace concurrency smoke
+        env:
+          AORA_LOAD_REQUESTS: "100"
+          AORA_LOAD_CONCURRENCY: "20"
+          AORA_LOAD_P95_BUDGET_MS: "5000"
+        run: npm run test:load
       - name: Upload Playwright failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
@@ -173,3 +181,4 @@ jobs:
         run: |
           test "${{ needs.source-gate.result }}" = "success"
           test "${{ needs.four-role-browser.result }}" = "success"
+

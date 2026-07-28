@@ -59,12 +59,12 @@ async function callUpstream(body: unknown) {
 }
 async function sessionFor(token: string) {
   const { data, error } = await service.rpc("validate_demo_session", { p_token: token });
-  if (error || !data?.length) throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
+  if (error || !data?.length) throw Object.assign(new Error("Sitzung ist ungÃ¼ltig oder abgelaufen."), { status: 401 });
   return data[0];
 }
 async function repairEmployeeLeaveDefaults(token: string) {
   const session = await sessionFor(token);
-  if (session.role !== "employee") throw Object.assign(new Error("Nur Mitarbeiter dürfen eigene Abwesenheiten beantragen."), { status: 403 });
+  if (session.role !== "employee") throw Object.assign(new Error("Nur Mitarbeiter dÃ¼rfen eigene Abwesenheiten beantragen."), { status: 403 });
   const { data: snapshot, error } = await service.from("workspace_snapshots").select("state,revision").eq("organization_id", session.organization_id).single();
   if (error || !snapshot) throw Object.assign(new Error("Arbeitsbereich konnte nicht geladen werden."), { status: 404 });
   const state: any = snapshot.state && typeof snapshot.state === "object" ? structuredClone(snapshot.state) : {};
@@ -85,11 +85,11 @@ async function repairEmployeeLeaveDefaults(token: string) {
     .eq("revision", snapshot.revision)
     .select("revision")
     .maybeSingle();
-  if (updateError || !updated) throw Object.assign(new Error("Mitarbeiterdaten wurden parallel geändert. Bitte erneut versuchen."), { status: 409 });
+  if (updateError || !updated) throw Object.assign(new Error("Mitarbeiterdaten wurden parallel geÃ¤ndert. Bitte erneut versuchen."), { status: 409 });
 }
 async function enrichStoredLeaveDecision(token: string, eventInput: any) {
   const session = await sessionFor(token);
-  if (session.role !== "admin") throw Object.assign(new Error("Nur Inhaber oder Manager dürfen Abwesenheiten entscheiden."), { status: 403 });
+  if (session.role !== "admin") throw Object.assign(new Error("Nur Inhaber oder Manager dÃ¼rfen Abwesenheiten entscheiden."), { status: 403 });
   const { data: snapshot, error } = await service.from("workspace_snapshots").select("state").eq("organization_id", session.organization_id).single();
   if (error || !snapshot) throw Object.assign(new Error("Arbeitsbereich konnte nicht geladen werden."), { status: 404 });
   const state: any = snapshot.state && typeof snapshot.state === "object" ? snapshot.state : {};
@@ -111,13 +111,13 @@ async function loadContext(token: string) {
   const admins = Array.isArray(state.admins) ? state.admins : [];
   const admin = session.role === "admin" ? admins.find((item: any) => item.id === session.subject_id && item.active !== false && item.status !== "revoked") : null;
   const accessRole = session.role === "admin" ? (admin?.scope === "owner" ? "owner" : "manager") : session.role;
-  if (!admin || !["owner", "manager"].includes(accessRole)) throw Object.assign(new Error("Nur Inhaber oder Manager dürfen Schichten planen."), { status: 403 });
+  if (!admin || !["owner", "manager"].includes(accessRole)) throw Object.assign(new Error("Nur Inhaber oder Manager dÃ¼rfen Schichten planen."), { status: 403 });
   let managerLocations: string[] = [];
   if (accessRole === "manager") {
     const { data: rows, error } = await service.from("manager_location_access").select("location_id").eq("organization_id", organization.id).eq("manager_id", session.subject_id);
     if (error) throw error;
     managerLocations = (rows || []).map((row: any) => String(row.location_id));
-    if (!managerLocations.length) managerLocations = (admin.locationIds || [admin.locationId]).filter(Boolean).map(String);
+    if (!managerLocations.length) throw Object.assign(new Error("FÃ¼r diesen Manager ist kein expliziter Standortzugriff eingerichtet."), { status: 403 });
   }
   return { token, session, organization, snapshot, state, admin, accessRole, managerLocations };
 }
@@ -131,7 +131,7 @@ function normalizeShift(input: any) {
   const shift = input && typeof input === "object" ? input : {};
   const breakMinutes = Number(shift.breakMinutes || 0);
   if (!shift.employeeId || !shift.locationId || !/^\d{4}-\d{2}-\d{2}$/.test(String(shift.date || "")) || !/^\d{2}:\d{2}/.test(String(shift.start || "")) || !/^\d{2}:\d{2}/.test(String(shift.end || "")) || !Number.isFinite(breakMinutes) || breakMinutes < 0) {
-    throw Object.assign(new Error("Schichtdaten sind unvollständig oder ungültig."), { status: 400 });
+    throw Object.assign(new Error("Schichtdaten sind unvollstÃ¤ndig oder ungÃ¼ltig."), { status: 400 });
   }
   return { ...shift, breakMinutes };
 }
@@ -193,7 +193,7 @@ Deno.serve(async (request: Request) => {
       const { shift, evaluation } = await evaluate(ctx, body.event.shift, body.event.ruleOverride);
       if (!evaluation?.valid) {
         const status = evaluation?.requiresConfirmation ? 428 : 422;
-        return reply({ error: evaluation?.requiresConfirmation ? "Bestätigung und Begründung erforderlich." : "Schicht verletzt eine blockierende Arbeitszeitregel.", ruleEvaluation: evaluation }, status, origin);
+        return reply({ error: evaluation?.requiresConfirmation ? "BestÃ¤tigung und BegrÃ¼ndung erforderlich." : "Schicht verletzt eine blockierende Arbeitszeitregel.", ruleEvaluation: evaluation }, status, origin);
       }
       const forwarded = {
         ...body,
@@ -224,3 +224,4 @@ Deno.serve(async (request: Request) => {
     return reply({ error: error instanceof Error ? error.message : String(error) }, Number(error?.status || 500), origin);
   }
 });
+

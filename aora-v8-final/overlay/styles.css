@@ -1,4 +1,6 @@
-/* AoraAI Workforce V8 Final — isolated owner/manager extension */
+/* AoraAI Workforce V8 Final â€” isolated owner/manager extension */
+*:focus-visible{outline:3px solid #155eef;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 .role-tabs-four{grid-template-columns:repeat(4,1fr)}
 .login-success{margin:18px 0 4px;padding:13px 14px;border:1px solid #000;border-radius:12px;background:#f4f4f4;font-size:11px;line-height:1.55}
 .access-divider{display:flex;align-items:center;gap:12px;margin:21px 0 4px;color:#999;font-size:9px;text-transform:uppercase;letter-spacing:.08em}
@@ -49,3 +51,4 @@
   .owner-location-row{grid-template-columns:42px 1fr 20px}.owner-location-row>b,.owner-location-row>em{display:none}
   .admin-top-actions .btn{display:none}
 }
+

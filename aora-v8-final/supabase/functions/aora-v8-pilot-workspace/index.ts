@@ -20,6 +20,11 @@ const ARRAY_KEYS = [
   "shiftRequests","checklistTemplates","checklistAssignments","dailyLogs","timesheetPeriods",
   "staffingRequirements","shiftFeedback","shiftTemplates","invitations",
 ];
+const STRUCTURAL_TYPES = new Set([
+  "ADD_LOCATION", "UPDATE_LOCATION", "ARCHIVE_LOCATION", "INVITE_MANAGER",
+  "CREATE_EMPLOYEE_ACCOUNT", "RESEND_INVITATION", "REVOKE_INVITATION",
+  "UPDATE_MANAGER_ACCESS", "DEACTIVATE_ACCOUNT",
+]);
 const service = createClient(URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 function allowedOrigin(origin: string | null) {
@@ -73,7 +78,7 @@ async function callFunction(url: string, body: unknown) {
 }
 async function loadContext(token: string) {
   const { data: sessions, error: sessionError } = await service.rpc("validate_demo_session", { p_token: token });
-  if (sessionError || !sessions?.length) throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
+  if (sessionError || !sessions?.length) throw Object.assign(new Error("Sitzung ist ungÃ¼ltig oder abgelaufen."), { status: 401 });
   const session = sessions[0];
   const { data: organization, error: organizationError } = await service.from("organizations").select("id,slug,name,status,timezone").eq("id", session.organization_id).eq("status", "active").single();
   if (organizationError || !organization) throw Object.assign(new Error("Organisation ist nicht aktiv oder wurde nicht gefunden."), { status: 403 });
@@ -88,7 +93,7 @@ async function loadContext(token: string) {
     const { data: rows, error } = await service.from("manager_location_access").select("location_id").eq("organization_id", organization.id).eq("manager_id", session.subject_id);
     if (error) throw error;
     managerLocationIds = (rows || []).map((row: any) => String(row.location_id));
-    if (!managerLocationIds.length) managerLocationIds = (admin?.locationIds || [admin?.locationId]).filter(Boolean).map(String);
+    if (!managerLocationIds.length) throw Object.assign(new Error("FÃ¼r diesen Manager ist kein expliziter Standortzugriff eingerichtet."), { status: 403 });
   }
   return { token, session, organization, snapshot, state, admin, accessRole, managerLocationIds };
 }
@@ -199,7 +204,7 @@ async function idempotentDecision(ctx: any, body: any, origin: string | null) {
   if (!claim.acquired) {
     const completed: any = await waitForApproval(ctx.organization.id, clockRequestId);
     if (completed?.approval_response_payload) return reply({ ...completed.approval_response_payload, idempotentReplay: true }, Number(completed.approval_response_status || 200), origin, true);
-    throw Object.assign(new Error("Die Buchung wird bereits verarbeitet. Bitte nicht erneut bestätigen."), { status: 409 });
+    throw Object.assign(new Error("Die Buchung wird bereits verarbeitet. Bitte nicht erneut bestÃ¤tigen."), { status: 409 });
   }
 
   const upstream = await callFunction(upstreamFor(ctx), body);
@@ -243,7 +248,10 @@ Deno.serve(async (request: Request) => {
       if (handled) return handled;
     }
 
-    if (ctx.organization.slug === PRIMARY_PILOT_SLUG) {
+    if (
+      ctx.organization.slug === PRIMARY_PILOT_SLUG ||
+      (body.action === "apply" && STRUCTURAL_TYPES.has(body.event?.type))
+    ) {
       const result = await callFunction(HARDENING_WORKSPACE, body);
       return reply(result.data, result.status, origin);
     }
@@ -264,7 +272,7 @@ Deno.serve(async (request: Request) => {
 
     if (body.action === "load" && (ctx.accessRole === "owner" || ctx.accessRole === "manager")) return reply({ state: scopeManagerState(ctx, ctx.state), revision: ctx.snapshot.revision, session }, 200, origin);
     if (body.action === "apply" && ctx.accessRole === "manager") guardManagerEvent(ctx, body.event);
-    if (body.action === "apply" && ctx.session.role === "kiosk") return reply({ error: "Kiosk-Buchungen müssen über den Pilot-Kiosk-Endpunkt gesendet werden." }, 409, origin);
+    if (body.action === "apply" && ctx.session.role === "kiosk") return reply({ error: "Kiosk-Buchungen mÃ¼ssen Ã¼ber den Pilot-Kiosk-Endpunkt gesendet werden." }, 409, origin);
 
     const legacy = await callFunction(LEGACY_WORKSPACE, body);
     if (!legacy.ok) return reply(legacy.data, legacy.status, origin);
@@ -273,3 +281,4 @@ Deno.serve(async (request: Request) => {
     return reply({ error: error instanceof Error ? error.message : String(error) }, Number(error?.status || 500), origin);
   }
 });
+

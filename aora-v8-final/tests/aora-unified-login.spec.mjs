@@ -16,6 +16,10 @@ test("Unified login hides role selection and routes the authenticated account",a
   await page.locator('input[name="email"]').fill(env("AORA_OWNER_EMAIL"));
   await page.locator('input[name="password"]').fill(env("AORA_OWNER_PASSWORD"));
 
+  let passwordLoginRequests=0;
+  page.on("request",request=>{
+    if(request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes('"action":"passwordLogin"'))passwordLoginRequests++;
+  });
   const successfulLogin=page.waitForResponse(response=>{
     const request=response.request();
     return response.status()===200&&request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes('"action":"passwordLogin"');
@@ -25,7 +29,9 @@ test("Unified login hides role selection and routes the authenticated account",a
   const body=await response.json();
 
   expect(body.accessRole).toBe("owner");
+  expect(passwordLoginRequests).toBe(1);
   await page.waitForFunction(({workspace})=>Boolean(sessionStorage.getItem(`aora:${workspace}:owner`)),{workspace});
   await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
   await expect(page).toHaveURL(new RegExp(`/inhaber/\\?workspace=${workspace}`));
 });
+

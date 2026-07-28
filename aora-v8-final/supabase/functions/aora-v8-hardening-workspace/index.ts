@@ -4,7 +4,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WORKSPACE_SLUG = "aora-v8-hardening-demo";
 const LEGACY_WORKSPACE = `${URL}/functions/v1/workspace`;
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
 const TEAM_PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
@@ -94,18 +93,17 @@ function normalize(input: any) {
 async function context(token: string) {
   const { data: sessions, error: sessionError } = await service.rpc("validate_demo_session", { p_token: token });
   if (sessionError || !sessions?.length) {
-    throw Object.assign(new Error("Sitzung ist ungültig oder abgelaufen."), { status: 401 });
+    throw Object.assign(new Error("Sitzung ist ungÃ¼ltig oder abgelaufen."), { status: 401 });
   }
   const session = sessions[0];
   const { data: organization, error: organizationError } = await service
     .from("organizations")
     .select("id,slug,status")
     .eq("id", session.organization_id)
-    .eq("slug", WORKSPACE_SLUG)
     .eq("status", "active")
     .single();
   if (organizationError || !organization) {
-    throw Object.assign(new Error("Diese Sitzung gehört nicht zur isolierten Hardening-Version."), { status: 403 });
+    throw Object.assign(new Error("Organisation ist nicht aktiv."), { status: 403 });
   }
   const { data: snapshot, error: snapshotError } = await service
     .from("workspace_snapshots")
@@ -124,7 +122,20 @@ async function context(token: string) {
   if (session.role === "admin" && !admin) {
     throw Object.assign(new Error("Administrationszugang wurde deaktiviert."), { status: 403 });
   }
-  return { session, organization, snapshot, state, admin, accessRole };
+  let managerLocationIds: string[] = [];
+  if (accessRole === "manager") {
+    const { data: rows, error } = await service
+      .from("manager_location_access")
+      .select("location_id")
+      .eq("organization_id", organization.id)
+      .eq("manager_id", session.subject_id);
+    if (error) throw error;
+    managerLocationIds = (rows || []).map((row: any) => String(row.location_id));
+    if (!managerLocationIds.length) {
+      throw Object.assign(new Error("FÃ¼r diesen Manager ist kein expliziter Standortzugriff eingerichtet."), { status: 403 });
+    }
+  }
+  return { session, organization, snapshot, state, admin, accessRole, managerLocationIds };
 }
 
 function allowedLocations(ctx: any) {
@@ -132,7 +143,7 @@ function allowedLocations(ctx: any) {
     return new Set<string>(ctx.state.locations.filter((item: any) => item.active !== false).map((item: any) => item.id));
   }
   if (ctx.accessRole === "manager") {
-    return new Set<string>((ctx.admin.locationIds || [ctx.admin.locationId]).filter(Boolean));
+    return new Set<string>(ctx.managerLocationIds);
   }
   if (ctx.session.location_id) return new Set<string>([ctx.session.location_id]);
   return new Set<string>();
@@ -210,7 +221,7 @@ function eventLocationIds(state: any, event: any) {
 function guardManagerEvent(ctx: any, event: any) {
   if (!event?.type) throw Object.assign(new Error("Aktion fehlt."), { status: 400 });
   if (!MANAGER_LEGACY_TYPES.has(event.type)) {
-    throw Object.assign(new Error("Diese Aktion ist für Manager nicht freigegeben."), { status: 403 });
+    throw Object.assign(new Error("Diese Aktion ist fÃ¼r Manager nicht freigegeben."), { status: 403 });
   }
   const locations = allowedLocations(ctx);
   const eventLocations = eventLocationIds(ctx.state, event);
@@ -222,12 +233,12 @@ function guardManagerEvent(ctx: any, event: any) {
   }
   if (event.type === "ADD_ANNOUNCEMENT" && event.announcement?.audience === "all") {
     if (locations.size !== 1) {
-      throw Object.assign(new Error("Bitte einen konkreten Standort auswählen."), { status: 400 });
+      throw Object.assign(new Error("Bitte einen konkreten Standort auswÃ¤hlen."), { status: 400 });
     }
     return { ...event, announcement: { ...event.announcement, audience: [...locations][0] } };
   }
   if (event.type === "UPDATE_EMPLOYEE" && (event.patch?.scope || event.patch?.locationIds)) {
-    throw Object.assign(new Error("Rollenbereiche können hier nicht geändert werden."), { status: 403 });
+    throw Object.assign(new Error("Rollenbereiche kÃ¶nnen hier nicht geÃ¤ndert werden."), { status: 403 });
   }
   return event;
 }
@@ -237,7 +248,7 @@ function mapKioskTransition(ctx: any, event: any) {
   const employeeId = String(event.employeeId || "");
   const employee = ctx.state.employees.find((item: any) => item.id === employeeId && item.active !== false);
   if (!employee || employee.locationId !== ctx.session.location_id) {
-    throw Object.assign(new Error("Mitarbeiter ist für dieses Kiosk nicht verfügbar."), { status: 403 });
+    throw Object.assign(new Error("Mitarbeiter ist fÃ¼r dieses Kiosk nicht verfÃ¼gbar."), { status: 403 });
   }
   const active = ctx.state.timeEntries.find((item: any) =>
     item.employeeId === employeeId && ["live", "paused"].includes(item.status)
@@ -281,7 +292,7 @@ async function persist(ctx: any, state: any) {
     .select("revision")
     .maybeSingle();
   if (updateError || !updated) {
-    throw Object.assign(new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."), { status: 409 });
+    throw Object.assign(new Error("ParallelÃ¤nderung erkannt. Bitte Ansicht aktualisieren."), { status: 409 });
   }
   const { error: projectionError } = await service.rpc("project_workspace_state", {
     p_organization_id: ctx.organization.id,
@@ -367,11 +378,11 @@ async function issueInvitationToken(ctx: any, invitation: any, accessRole: "mana
   const body = [
     `Hallo ${invitation.name},`, "",
     `du wurdest als ${roleLabel} zu ${ctx.state.company?.name || "AoraAI Workforce"} eingeladen.`,
-    "Öffne den folgenden einmaligen Link und lege dein persönliches Passwort fest:", "",
+    "Ã–ffne den folgenden einmaligen Link und lege dein persÃ¶nliches Passwort fest:", "",
     inviteUrl, "",
     `Der Link ist bis ${new Intl.DateTimeFormat("de-DE", {
       dateStyle: "medium", timeStyle: "short", timeZone: ctx.state.company?.timezone || "Europe/Berlin",
-    }).format(new Date(invitation.expiresAt))} gültig.`, "",
+    }).format(new Date(invitation.expiresAt))} gÃ¼ltig.`, "",
     "Falls du diese Einladung nicht erwartest, kannst du die E-Mail ignorieren.",
   ].join("\n");
   return { invitationId: invitation.id, email: invitation.email, name: invitation.name, accessRole, inviteUrl, subject, body, expiresAt: invitation.expiresAt };
@@ -388,7 +399,7 @@ async function revokeInvitationToken(ctx: any, invitationId: string) {
 
 async function applyStructural(ctx: any, event: any, expectedRevision: number, origin: string | null) {
   if (Number(expectedRevision) !== Number(ctx.snapshot.revision)) {
-    throw Object.assign(new Error("Daten wurden auf einem anderen Gerät geändert."), { status: 409 });
+    throw Object.assign(new Error("Daten wurden auf einem anderen GerÃ¤t geÃ¤ndert."), { status: 409 });
   }
   if (!new Set(["owner", "manager"]).has(ctx.accessRole)) {
     throw Object.assign(new Error("Verwaltungszugang erforderlich."), { status: 403 });
@@ -425,11 +436,11 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       state.admins = state.admins.map((admin: any) => admin.scope === "owner"
         ? { ...admin, locationIds: [...new Set([...(admin.locationIds || []), location.id])] }
         : admin);
-      addAudit(state, ctx, "location.created", "location", location.id, `${location.name} · ${location.city}`, { locationId: location.id });
+      addAudit(state, ctx, "location.created", "location", location.id, `${location.name} Â· ${location.city}`, { locationId: location.id });
       break;
     }
     case "UPDATE_LOCATION": {
-      requireOwner(ctx, "Nur der Inhaber kann Ladendaten ändern.");
+      requireOwner(ctx, "Nur der Inhaber kann Ladendaten Ã¤ndern.");
       const current = state.locations.find((item: any) => item.id === event.id);
       if (!current) throw Object.assign(new Error("Laden wurde nicht gefunden."), { status: 404 });
       const patch = event.patch || {};
@@ -456,7 +467,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       const current = state.locations.find((item: any) => item.id === event.id && item.active !== false);
       if (!current) throw Object.assign(new Error("Aktiver Laden wurde nicht gefunden."), { status: 404 });
       if (state.employees.some((item: any) => item.locationId === current.id && item.active !== false)) {
-        throw Object.assign(new Error("Aktive Mitarbeiter müssen zuerst versetzt oder deaktiviert werden."), { status: 409 });
+        throw Object.assign(new Error("Aktive Mitarbeiter mÃ¼ssen zuerst versetzt oder deaktiviert werden."), { status: 409 });
       }
       state.locations = state.locations.map((item: any) => item.id === current.id
         ? { ...item, active: false, archivedAt: now(), archivedBy: ctx.admin.id }
@@ -474,7 +485,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       const email = String(input.email || "").trim().toLowerCase();
       const locationIds: string[] = [...new Set<string>((input.locationIds || []).map((value: unknown) => String(value)))];
       if (name.length < 2 || !emailOk(email) || !locationIds.length) {
-        throw Object.assign(new Error("Name, gültige E-Mail und mindestens ein Laden sind erforderlich."), { status: 400 });
+        throw Object.assign(new Error("Name, gÃ¼ltige E-Mail und mindestens ein Laden sind erforderlich."), { status: 400 });
       }
       for (const locationId of locationIds) requireLocation(state, locationId);
       ensureEmailAvailable(state, email);
@@ -492,7 +503,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       state.admins.push(manager);
       state.invitations.unshift(invitation);
       inviteRole = "manager";
-      addAudit(state, ctx, "manager.invited", "admin", manager.id, `${name} · ${email}`, { locationIds });
+      addAudit(state, ctx, "manager.invited", "admin", manager.id, `${name} Â· ${email}`, { locationIds });
       break;
     }
     case "CREATE_EMPLOYEE_ACCOUNT": {
@@ -501,11 +512,11 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       const email = String(input.email || "").trim().toLowerCase();
       const locationId = String(input.locationId || "");
       if (name.length < 2 || !emailOk(email) || !locationId) {
-        throw Object.assign(new Error("Name, gültige E-Mail und Laden sind erforderlich."), { status: 400 });
+        throw Object.assign(new Error("Name, gÃ¼ltige E-Mail und Laden sind erforderlich."), { status: 400 });
       }
       requireLocation(state, locationId);
       if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(locationId)) {
-        throw Object.assign(new Error("Du darfst nur Mitarbeiter deiner eigenen Läden anlegen."), { status: 403 });
+        throw Object.assign(new Error("Du darfst nur Mitarbeiter deiner eigenen LÃ¤den anlegen."), { status: 403 });
       }
       ensureEmailAvailable(state, email);
       const employee = {
@@ -526,7 +537,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       state.employees.push(employee);
       state.invitations.unshift(invitation);
       inviteRole = "employee";
-      addAudit(state, ctx, "employee.invited", "employee", employee.id, `${name} · ${email}`, { locationId });
+      addAudit(state, ctx, "employee.invited", "employee", employee.id, `${name} Â· ${email}`, { locationId });
       break;
     }
     case "RESEND_INVITATION": {
@@ -563,11 +574,11 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       break;
     }
     case "UPDATE_MANAGER_ACCESS": {
-      requireOwner(ctx, "Nur der Inhaber kann Manager-Rechte ändern.");
+      requireOwner(ctx, "Nur der Inhaber kann Manager-Rechte Ã¤ndern.");
       const manager = state.admins.find((item: any) => item.id === event.id && item.scope === "manager" && item.status !== "revoked");
       if (!manager) throw Object.assign(new Error("Manager wurde nicht gefunden."), { status: 404 });
       const locationIds: string[] = [...new Set<string>((event.locationIds || []).map((value: unknown) => String(value)))];
-      if (!locationIds.length) throw Object.assign(new Error("Mindestens ein gültiger Laden ist erforderlich."), { status: 400 });
+      if (!locationIds.length) throw Object.assign(new Error("Mindestens ein gÃ¼ltiger Laden ist erforderlich."), { status: 400 });
       for (const locationId of locationIds) requireLocation(state, locationId);
       state.admins = state.admins.map((item: any) => item.id === manager.id
         ? { ...item, locationIds, updatedAt: now(), updatedBy: ctx.admin.id }
@@ -582,7 +593,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
     case "DEACTIVATE_ACCOUNT": {
       const kind = String(event.kind || "");
       if (!new Set(["manager", "employee"]).has(kind)) {
-        throw Object.assign(new Error("Kontotyp ist ungültig."), { status: 400 });
+        throw Object.assign(new Error("Kontotyp ist ungÃ¼ltig."), { status: 400 });
       }
       const subjectRole = kind === "manager" ? "admin" : "employee";
       const collection = kind === "manager" ? "admins" : "employees";
@@ -678,3 +689,4 @@ Deno.serve(async (request) => {
     }, Number(error?.status || 500), origin);
   }
 });
+

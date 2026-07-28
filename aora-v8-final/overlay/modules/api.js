@@ -25,13 +25,13 @@ async function request(functionName,body){
     return data;
   }catch(error){
     if(error?.name==="AbortError"){
-      const timeoutError=new Error("Die Verbindung dauert zu lange. Bitte nicht erneut stempeln; Aora prüft die Buchung automatisch.");
+      const timeoutError=new Error("Die Verbindung dauert zu lange. Bitte nicht erneut stempeln; Aora prÃ¼ft die Buchung automatisch.");
       timeoutError.status=408;
       timeoutError.retryable=true;
       throw timeoutError;
     }
     if(error instanceof TypeError){
-      const networkError=new Error("Aora konnte den Server nicht erreichen. Die Buchung wird verschlüsselt gespeichert und mit derselben event_id erneut gesendet.");
+      const networkError=new Error("Aora konnte den Server nicht erreichen. Die Buchung wird verschlÃ¼sselt gespeichert und mit derselben event_id erneut gesendet.");
       networkError.status=503;
       networkError.retryable=true;
       throw networkError;
@@ -103,7 +103,7 @@ function clearPendingPunch(storageKey){if(storageKey)sessionStorage.removeItem(s
 function retryablePunchError(error){
   if(error?.retryable===true)return true;
   if([408,425,429,500,502,503,504].includes(Number(error?.status)))return true;
-  return Number(error?.status)===409&&/bereits verarbeitet|Paralleländerung/i.test(String(error?.message||""));
+  return Number(error?.status)===409&&/bereits verarbeitet|ParallelÃ¤nderung/i.test(String(error?.message||""));
 }
 
 async function loadDirectory(){S.directory=await access({action:"directory",workspaceSlug:CFG.slug})}
@@ -114,15 +114,15 @@ async function ensureDirectory(accessRole=S.loginRole){
 }
 
 async function login(loginRole,subjectId,pin){
-  if(loginRole!=="kiosk")throw Object.assign(new Error("PIN-Anmeldung ist nur für lokale Kiosk-Geräte verfügbar."),{status:403});
+  if(loginRole!=="kiosk")throw Object.assign(new Error("PIN-Anmeldung ist nur fÃ¼r lokale Kiosk-GerÃ¤te verfÃ¼gbar."),{status:403});
   const session=await access({action:"login",workspaceSlug:CFG.slug,role:loginRole,subjectId,pin});
   activateSession(session,loginRole);
   await loadState();
 }
 
-async function passwordLogin(accessRole,email,password){
-  const session=await access({action:"passwordLogin",accessRole,email,password});
-  activateSession(session,accessRole);
+async function passwordLogin(email,password){
+  const session=await access({action:"passwordLogin",email,password});
+  activateSession(session,session.accessRole);
   await loadState();
 }
 
@@ -218,3 +218,4 @@ async function apply(event){
     S.busy=false;
   }
 }
+
