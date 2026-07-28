@@ -58,7 +58,8 @@ const configured=source.config.match(/version:\s*"([^"]+)"/)?.[1];
 if(configured!==pkg.version)throw new Error(`Version mismatch: ${configured} vs ${pkg.version}`);
 requireAll("tenant isolation",source.tenant,["manager_location_access","members read scoped locations","members read scoped employees","manager_can_access_location"]);
 requireAll("dynamic access",source.pilotAccess,["workspaceSlug(body","new globalThis.URL(origin)","aora_activate_invitation_atomic","passwordLogin","inspectInvitation","organizationSlug"]);
-forbidAll("dynamic access",source.pilotAccess,['const WORKSPACE="aora-v8-hardening-demo"','const URL = Deno.env.get("SUPABASE_URL")','new URL(origin)']);
+requireAll("breached-password protection",source.pilotAccess,["assertPasswordNotPwned","api.pwnedpasswords.com/range",'"Add-Padding": "true"','"SHA-1"',"hash.slice(0, 5)","hash.slice(5)","await assertPasswordNotPwned(password)"]);
+forbidAll("dynamic access",source.pilotAccess,['const WORKSPACE="aora-v8-hardening-demo"','const URL = Deno.env.get("SUPABASE_URL")','new URL(origin)','`${PWNED_PASSWORDS_RANGE_URL}/${hash}`']);
 requireAll("tenant workspace",source.pilotWorkspace,['tenantSource: "session"','eq("id", session.organization_id)',"Kein Zugriff auf diesen Standort."]);
 forbidAll("tenant workspace",source.pilotWorkspace,['.eq("slug", PRIMARY_PILOT_SLUG)']);
 requireAll("punch receipts",source.punch,["public.punch_events","primary key (organization_id, event_id)","aora_begin_punch","aora_claim_punch_approval","approval_response_payload"]);
@@ -97,4 +98,4 @@ if(source.canonicalKiosk.includes("aora-v8-hardening"))throw new Error("Canonica
 requireAll("canonical style",source.baseCss,["--black:#000","--white:#fff","--radius:16px",".aora-logo"]);
 for(const selector of [/(^|})\s*:root\s*{/m,/(^|})\s*body\s*[{,]/m,/(^|})\s*\.aora-logo\s*{/m])if(selector.test(source.overlayCss))throw new Error(`Overlay replaces canonical selector: ${selector}`);
 if(!source.build.includes('`${originalCss}\\n\\n${extensionCss}\\n`'))throw new Error("Canonical CSS append order changed");
-console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): dynamic access origin safety, tenant isolation, OIDC-isolated CI, Realtime REST broadcast, origin-safe monitoring, compliance bridge and onboarding, durable punch integrity, encrypted offline queue and versioned work rules.`);
+console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): dynamic access and breached-password protection, tenant isolation, OIDC-isolated CI, Realtime REST broadcast, origin-safe monitoring, compliance bridge and onboarding, durable punch integrity, encrypted offline queue and versioned work rules.`);
