@@ -1,5 +1,38 @@
 "use strict";
 
+request=async function(functionName,body){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+  try{
+    const response=await fetch(`${CFG.url}/functions/v1/${functionName}`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body),
+      signal:controller.signal
+    });
+    const text=await response.text();
+    let data;
+    try{data=text?JSON.parse(text):{}}catch{data={error:text}}
+    if(!response.ok){
+      const error=new Error(data.error||data.message||`HTTP ${response.status}`);
+      error.status=response.status;
+      error.data=data;
+      throw error;
+    }
+    return data;
+  }catch(error){
+    if(error?.name==="AbortError"){
+      const timeoutError=new Error("Die Verbindung dauert zu lange. Bitte den aktuellen Status prüfen, bevor die Aktion wiederholt wird.");
+      timeoutError.status=408;timeoutError.retryable=true;throw timeoutError;
+    }
+    if(error instanceof TypeError){
+      const networkError=new Error("Aora konnte den Server nicht erreichen. Die Verbindung wird automatisch erneut geprüft.");
+      networkError.status=503;networkError.retryable=true;throw networkError;
+    }
+    throw error;
+  }finally{clearTimeout(timeout)}
+};
+
 const aoraBaseAccess=access;
 access=function(body){return aoraBaseAccess({workspaceSlug:CFG.slug,...body})};
 
@@ -35,7 +68,6 @@ async function downloadCompliance(format,filters={}){
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({action:"export",format,...filters,token:S.session?.token}),
-      cache:"no-store",
       signal:controller.signal
     });
     if(!response.ok){
