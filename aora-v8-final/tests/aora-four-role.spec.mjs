@@ -147,7 +147,16 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     if(await toggle.count()){
       const before=(await toggle.innerText()).trim();
       await toggle.click();await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).not.toBe(before);
-      await page.locator('[data-a="toggle-kiosk"]').first().click();await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).toBe(before);
+      const unlockResponsePromise=page.waitForResponse(response=>
+        response.request().method()==="POST"&&
+        response.request().postData()?.includes('"TOGGLE_KIOSK_LOCK"')&&
+        response.request().postData()?.includes('"locked":false')
+      );
+      await page.locator('[data-a="toggle-kiosk"]').first().click();
+      const unlockResponse=await unlockResponsePromise;
+      const unlockBody=await unlockResponse.text();
+      expect(unlockResponse.ok(),`Kiosk unlock failed (${unlockResponse.status()}): ${unlockBody}`).toBeTruthy();
+      await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).toBe(before);
     }
     await assertNoHorizontalOverflow(page);expect(getErrors()).toEqual([]);
   });
@@ -206,3 +215,4 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const replayContext=await browser.newContext();const replay=await replayContext.newPage();await replay.goto(localInvite);await expect(replay.getByText("Link nicht mehr gültig")).toBeVisible();await replayContext.close();
   });
 });
+

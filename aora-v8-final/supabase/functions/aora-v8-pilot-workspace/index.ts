@@ -278,7 +278,13 @@ Deno.serve(async (request: Request) => {
     if (!legacy.ok) return reply(legacy.data, legacy.status, origin);
     return reply({ ...legacy.data, state: scopeManagerState(ctx, legacy.data.state), session: { ...(legacy.data.session || {}), ...session } }, 200, origin);
   } catch (error: any) {
-    return reply({ error: error instanceof Error ? error.message : String(error) }, Number(error?.status || 500), origin);
+    const status = Number(error?.status || 500);
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("aora-pilot-workspace-rejected", {
+      status,
+      message,
+    });
+    return reply({ error: message }, status, origin);
   }
 });
 
