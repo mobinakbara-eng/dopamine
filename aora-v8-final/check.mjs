@@ -6,7 +6,14 @@ import { fileURLToPath } from "node:url";
 const root=dirname(fileURLToPath(import.meta.url));
 const moduleDir=resolve(root,"overlay/modules");
 const modules=(await readdir(moduleDir)).filter(file=>file.endsWith(".js")).sort();
-if(modules.length<23)throw new Error(`Expected at least 23 overlay modules, found ${modules.length}`);
+const requiredOverlayModules=[
+  "access.js","admin-metrics-hardening.js","api.js","boot.js","config.js","date-hardening.js",
+  "employee-hardening.js","handlers.js","identity-hardening.js","invitation-delivery.js",
+  "kiosk-hardening.js","offline-punch.js","owner-routing.js","profile-hardening.js","rule-engine.js"
+];
+for(const required of requiredOverlayModules){
+  if(!modules.includes(required))throw new Error(`Missing required overlay module: ${required}`);
+}
 for(const file of modules)execFileSync(process.execPath,["--check",resolve(moduleDir,file)],{stdio:"inherit"});
 const pkg=JSON.parse(await readFile(resolve(root,"package.json"),"utf8"));
 JSON.parse(await readFile(resolve(root,"vercel.json"),"utf8"));
@@ -67,4 +74,4 @@ requireAll("canonical style",source.baseCss,["--black:#000","--white:#fff","--ra
 for(const selector of [/(^|})\s*:root\s*{/m,/(^|})\s*body\s*[{,]/m,/(^|})\s*\.aora-logo\s*{/m])if(selector.test(source.overlayCss))throw new Error(`Overlay replaces canonical selector: ${selector}`);
 if(!source.build.includes('`${originalCss}\\n\\n${extensionCss}\\n`'))throw new Error("Canonical CSS append order changed");
 
-console.log(`Aora 8.1.0 pilot gate passed: tenant isolation, durable punch integrity, encrypted offline queue and versioned work rules.`);
+console.log(`Aora 8.1.0 pilot gate passed (${modules.length} overlay modules): tenant isolation, durable punch integrity, encrypted offline queue and versioned work rules.`);
