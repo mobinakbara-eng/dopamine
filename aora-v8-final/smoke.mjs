@@ -18,13 +18,10 @@ const required=[
 ];
 for(const path of required)await exists(path);
 const index=await readFile(resolve(dist,"index.html"),"utf8");
-requireAll("index",index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=813","modules/config.js?v=813","modules/realtime.js?v=813","modules/runtime-hardening.js?v=813","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
-for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){
-  const shell=await readFile(resolve(dist,route,"index.html"),"utf8");
-  if(shell!==index)throw new Error(`Route shell differs: ${route}`);
-}
+requireAll("index",index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=813","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=814","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
+for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){const shell=await readFile(resolve(dist,route,"index.html"),"utf8");if(shell!==index)throw new Error(`Route shell differs: ${route}`)}
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
-requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','workspaceFunction:"aora-v8-pilot-workspace-rules"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','complianceFunction:"aora-v8-pilot-compliance"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
+requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','workspaceFunction:"aora-v8-pilot-workspace-rules"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','complianceFunction:"aora-v8-pilot-compliance"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
 const api=await readFile(resolve(dist,"modules/api.js"),"utf8");
 requireAll("API",api,["preparePunchEvent","enqueueOfflinePunch","resolveOfflinePunch","idempotentReplay"]);
 const offline=await readFile(resolve(dist,"modules/offline-punch.js"),"utf8");
@@ -33,9 +30,9 @@ forbidAll("offline",offline,["localStorage.setItem","payload:event"]);
 const rules=await readFile(resolve(dist,"modules/rule-engine.js"),"utf8");
 requireAll("rule UI",rules,["Backend-Prüfung aktiv","evaluateShift","shiftRuleDialog","Ausnahme mit Begründung","Arbeitszeitregeln","Regelset Version"]);
 const realtime=await readFile(resolve(dist,"modules/realtime.js"),"utf8");
-requireAll("realtime",realtime,["workspace-change","aoraSha256Hex","SUBSCRIBED","realtimeFallbackMs"]);
+requireAll("realtime",realtime,["workspace-change","aoraSha256Hex","SUBSCRIBED","realtimeFallbackMs","__aoraLastRealtimeEvent"]);
 const runtime=await readFile(resolve(dist,"modules/runtime-hardening.js"),"utf8");
-requireAll("runtime",runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime"]);
+requireAll("runtime",runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime","notifyWorkspaceRealtime","realtimeBroadcastFunction"]);
 const compliance=await readFile(resolve(dist,"modules/compliance.js"),"utf8");
 requireAll("compliance",compliance,["Compliance & Korrekturen","requestCorrection","decideCorrection"]);
 const employee=await readFile(resolve(dist,"modules/employee-hardening.js"),"utf8");
@@ -48,4 +45,4 @@ const moduleDir=resolve(dist,"modules");
 const modules=(await readdir(moduleDir)).filter(file=>file.endsWith(".js")).sort();
 if(modules.length<27)throw new Error(`Unexpected module count: ${modules.length}`);
 for(const module of modules)execFileSync(process.execPath,["--check",resolve(moduleDir,module)],{stdio:"inherit"});
-console.log(`Aora post-build smoke passed: ${modules.length} modules, four role routes, realtime fallback, compliance UI, offline queue and work-rule UI.`);
+console.log(`Aora post-build smoke passed: ${modules.length} modules, four role routes, authenticated Realtime broadcast, compliance UI, offline queue and work-rule UI.`);
