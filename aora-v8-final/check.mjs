@@ -90,7 +90,7 @@ requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercont
 requireAll("OIDC CI migration",source.ciMigration,["aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant","github-oidc-ci","grant execute on function public.aora_bootstrap_ci_tenant"]);
 requireAll("OIDC workflow",source.ciWorkflow,["id-token: write","ACTIONS_ID_TOKEN_REQUEST_URL","audience=aora-staging-ci","::add-mask::","Cleanup isolated staging tenant","AORA_INVITATION_URL","playwright-report.json"]);
 forbidAll("stored CI secrets",source.ciWorkflow,["secrets.AORA_OWNER","secrets.AORA_MANAGER","secrets.AORA_EMPLOYEE","secrets.AORA_KIOSK","secrets.AORA_ONBOARDING"]);
-requireAll("four-role E2E",source.e2e,["Owner: login","Manager: scoped login","Employee: personal login","Kiosk: encrypted offline queue","Invitation: reject breached password","triggerAccessRejection","Password123!","AORA_INVITATION_URL"]);
+requireAll("expanded browser E2E",source.e2e,["every navigation view","exports and verified backup","all scoped views","every tab","submit and approve leave plus time correction","encrypted offline queue","Invitation: reject breached password","assertNoHorizontalOverflow","triggerAccessRejection","Password123!","AORA_INVITATION_URL"]);
 forbidAll("employee identity",source.employee,["S.state.employees?.[0]","S.state.employees[0]"]);
 forbidAll("admin identity",source.identity,["admins?.[0]","admins[0]"]);
 forbidAll("profile identity",source.profile,["employees?.[0]","employees[0]"]);
