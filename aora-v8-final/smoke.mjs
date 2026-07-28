@@ -18,7 +18,7 @@ const required=[
 ];
 for(const path of required)await exists(path);
 const index=await readFile(resolve(dist,"index.html"),"utf8");
-requireAll("index",index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=813","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=815","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
+requireAll("index",index,["offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=815","modules/monitoring.js?v=813","modules/compliance.js?v=813"]);
 for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){const shell=await readFile(resolve(dist,route,"index.html"),"utf8");if(shell!==index)throw new Error(`Route shell differs: ${route}`)}
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
 requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','workspaceFunction:"aora-v8-pilot-workspace-rules"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','complianceFunction:"aora-v8-pilot-compliance"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
@@ -35,6 +35,10 @@ const runtime=await readFile(resolve(dist,"modules/runtime-hardening.js"),"utf8"
 requireAll("runtime",runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime","notifyWorkspaceRealtime","realtimeBroadcastFunction",'AORA_COMPLIANCE_FUNCTION="aora-v8-pilot-compliance-proxy"']);
 const compliance=await readFile(resolve(dist,"modules/compliance.js"),"utf8");
 requireAll("compliance",compliance,["Compliance & Korrekturen","requestCorrection","decideCorrection"]);
+const complianceCss=await readFile(resolve(dist,"compliance.css"),"utf8");
+requireAll("mobile compliance CSS",complianceCss,["employee-correction-fab","bottom:calc(81px + env(safe-area-inset-bottom,0px))","z-index:60"]);
+const handlers=await readFile(resolve(dist,"modules/handlers.js"),"utf8");
+requireAll("kiosk feedback",handlers,["TOGGLE_KIOSK_LOCK","Kiosk-Gerät wurde gesperrt.","Kiosk-Gerät konnte nicht aktualisiert werden."]);
 const employee=await readFile(resolve(dist,"modules/employee-hardening.js"),"utf8");
 forbidAll("employee",employee,["employees?.[0]","employees[0]"]);
 const identity=await readFile(resolve(dist,"modules/identity-hardening.js"),"utf8");
@@ -45,4 +49,4 @@ const moduleDir=resolve(dist,"modules");
 const modules=(await readdir(moduleDir)).filter(file=>file.endsWith(".js")).sort();
 if(modules.length<27)throw new Error(`Unexpected module count: ${modules.length}`);
 for(const module of modules)execFileSync(process.execPath,["--check",resolve(moduleDir,module)],{stdio:"inherit"});
-console.log(`Aora post-build smoke passed: ${modules.length} modules, four role routes, authenticated Realtime broadcast, origin-safe compliance bridge, offline queue and work-rule UI.`);
+console.log(`Aora post-build smoke passed: ${modules.length} modules, four role routes, authenticated Realtime broadcast, mobile correction action, origin-safe compliance bridge, offline queue and work-rule UI.`);
