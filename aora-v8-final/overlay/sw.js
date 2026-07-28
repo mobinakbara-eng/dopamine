@@ -49,7 +49,7 @@ async function syncRecord(record){
   const session=await decrypt(keyRecord.key,sessionRecord,aad(sessionRecord,"session"));
   if(session.expiresAt&&new Date(session.expiresAt)<=new Date())throw new Error("Kiosk-Sitzung ist abgelaufen.");
   await put(QUEUE,{...record,status:"syncing",updatedAt:Date.now()});
-  const response=await fetch(ENDPOINT,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"apply",token:session.token,event})});
+  const response=await fetch(ENDPOINT,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({action:"apply",token:session.token,event})});
   const text=await response.text();
   let data;
   try{data=text?JSON.parse(text):{}}catch{data={error:text}}
