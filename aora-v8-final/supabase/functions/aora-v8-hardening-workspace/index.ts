@@ -294,11 +294,6 @@ async function persist(ctx: any, state: any) {
   if (updateError || !updated) {
     throw Object.assign(new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."), { status: 409 });
   }
-  const { error: projectionError } = await service.rpc("project_workspace_state", {
-    p_organization_id: ctx.organization.id,
-    p_state: state,
-  });
-  if (projectionError) throw projectionError;
   await service.from("workspace_changes").upsert({
     organization_id: ctx.organization.id,
     revision,
