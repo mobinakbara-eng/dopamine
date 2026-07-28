@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL=process.env.AORA_PREVIEW_URL||"http://127.0.0.1:4173";
 export default defineConfig({
   testDir:"./tests",
-  testMatch:/aora-four-role\.spec\.mjs/,
+  testMatch:/aora-(four-role|unified-login)\.spec\.mjs/,
   timeout:60000,
   expect:{timeout:15000},
   fullyParallel:false,
