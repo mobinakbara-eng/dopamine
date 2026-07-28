@@ -74,16 +74,16 @@ async function assertPasswordNotPwned(password: string) {
       signal: controller.signal,
     });
   } catch {
-    fail("Die sichere PasswortprÃ¼fung ist vorÃ¼bergehend nicht verfÃ¼gbar. Bitte erneut versuchen.", 503);
+    fail("Die sichere Passwortprüfung ist vorübergehend nicht verfügbar. Bitte erneut versuchen.", 503);
   } finally {
     clearTimeout(timeout);
   }
-  if (!response.ok) fail("Die sichere PasswortprÃ¼fung ist vorÃ¼bergehend nicht verfÃ¼gbar. Bitte erneut versuchen.", 503);
+  if (!response.ok) fail("Die sichere Passwortprüfung ist vorübergehend nicht verfügbar. Bitte erneut versuchen.", 503);
   const breached = (await response.text()).split(/\r?\n/).some((line) => {
     const [candidate, count] = line.split(":");
     return candidate?.trim().toUpperCase() === suffix && Number(count || 0) > 0;
   });
-  if (breached) fail("Dieses Passwort ist aus bekannten Datenlecks bekannt. Bitte wÃ¤hlen Sie ein anderes Passwort.", 400);
+  if (breached) fail("Dieses Passwort ist aus bekannten Datenlecks bekannt. Bitte wählen Sie ein anderes Passwort.", 400);
 }
 function privateOrLoopbackHost(hostname: string) {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -127,11 +127,11 @@ function fail(message: string, status = 400): never {
 }
 async function readBody(request: Request) {
   const text = await request.text();
-  if (encoder.encode(text).byteLength > MAX_BODY_BYTES) fail("Anfrage ist zu groÃŸ.", 413);
+  if (encoder.encode(text).byteLength > MAX_BODY_BYTES) fail("Anfrage ist zu groß.", 413);
   try {
     return text ? JSON.parse(text) : {};
   } catch {
-    fail("UngÃ¼ltige Anfrage.", 400);
+    fail("Ungültige Anfrage.", 400);
   }
 }
 function clientIp(request: Request) {
@@ -156,7 +156,7 @@ async function clearRateLimit(bucket: string) {
 }
 function workspaceSlug(body: any) {
   const slug = String(body.workspaceSlug || DEFAULT_WORKSPACE).trim().toLowerCase();
-  if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(slug)) fail("Arbeitsbereich ist ungÃ¼ltig.", 400);
+  if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(slug)) fail("Arbeitsbereich ist ungültig.", 400);
   return slug;
 }
 async function workspace(slug: string) {
@@ -248,9 +248,9 @@ async function acceptInvitation(context: any, body: any) {
   const token = String(body.token || "");
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
-  if (!passwordOk(password)) fail("Das Passwort benÃ¶tigt mindestens 10 Zeichen, GroÃŸ-/Kleinbuchstaben und eine Zahl.", 400);
+  if (!passwordOk(password)) fail("Das Passwort benötigt mindestens 10 Zeichen, Groß-/Kleinbuchstaben und eine Zahl.", 400);
   const invitation = await inspectInvitation(context, invitationId, token);
-  if (!invitation || String(invitation.email || "").toLowerCase() !== email) fail("Einladung ist ungÃ¼ltig oder abgelaufen.", 401);
+  if (!invitation || String(invitation.email || "").toLowerCase() !== email) fail("Einladung ist ungültig oder abgelaufen.", 401);
   const account = accountRecord(context.state, email);
   if (!account || account.subjectId !== String(invitation.subjectId) || account.record.status !== "pending") {
     fail("Eingeladenes Konto wurde nicht gefunden.", 404);
@@ -287,8 +287,8 @@ async function acceptInvitation(context: any, body: any) {
   });
   if (error) {
     const message = String(error.message || "");
-    if (message.includes("invitation_invalid")) fail("Einladung ist ungÃ¼ltig oder abgelaufen.", 401);
-    if (message.includes("revision_conflict")) fail("Einladung wurde parallel geÃ¤ndert. Bitte neu Ã¶ffnen.", 409);
+    if (message.includes("invitation_invalid")) fail("Einladung ist ungültig oder abgelaufen.", 401);
+    if (message.includes("revision_conflict")) fail("Einladung wurde parallel geändert. Bitte neu öffnen.", 409);
     fail("Aktivierung fehlgeschlagen.", 500);
   }
   return {
@@ -337,13 +337,13 @@ Deno.serve(async (request: Request) => {
     if (action === "login") {
       const role = String(body.role || "");
       const subjectId = String(body.subjectId || "");
-      if (role !== "kiosk" || !subjectId) return reply({ error: "PIN-Anmeldung ist nur fÃ¼r Kiosk-GerÃ¤te verfÃ¼gbar." }, 403, origin);
+      if (role !== "kiosk" || !subjectId) return reply({ error: "PIN-Anmeldung ist nur für Kiosk-Geräte verfügbar." }, 403, origin);
       const rate = await consumeRateLimit(request, slug, "pin", subjectId);
       if (!rate.allowed) return reply({ error: "Zu viele Anmeldeversuche.", retryAfter: rate.retryAfter }, 429, origin);
       const device = (context.state.kioskDevices || []).find((item: any) =>
         item.id === subjectId && item.active !== false && !item.locked
       );
-      if (!device) return reply({ error: "UngÃ¼ltiger Zugang." }, 403, origin);
+      if (!device) return reply({ error: "Ungültiger Zugang." }, 403, origin);
       const { data, error } = await service.rpc("demo_login", {
         p_workspace_slug: slug,
         p_role: "kiosk",
@@ -398,7 +398,7 @@ Deno.serve(async (request: Request) => {
         invitationId,
         name: invitation.name,
         kind: invitation.kind,
-        emailHint: `${local?.slice(0, 2) || ""}â€¢â€¢â€¢@${domain || ""}`,
+        emailHint: `${local?.slice(0, 2) || ""}•••@${domain || ""}`,
         expiresAt: invitation.expiresAt,
       }, 200, origin);
     }

@@ -1,4 +1,4 @@
-/* AoraAI Workforce V8 Final â€” isolated owner/manager extension */
+/* AoraAI Workforce V8 Final — isolated owner/manager extension */
 *:focus-visible{outline:3px solid #155eef;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 .role-tabs-four{grid-template-columns:repeat(4,1fr)}

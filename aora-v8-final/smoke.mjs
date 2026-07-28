@@ -28,7 +28,7 @@ const offline=await readFile(resolve(dist,"modules/offline-punch.js"),"utf8");
 requireAll("offline",offline,["indexedDB.open","offline_punch_queue",'name:"AES-GCM"',"extractable:false","serviceWorker.register"]);
 forbidAll("offline",offline,["localStorage.setItem","payload:event"]);
 const rules=await readFile(resolve(dist,"modules/rule-engine.js"),"utf8");
-requireAll("rule UI",rules,["Backend-PrÃ¼fung aktiv","evaluateShift","shiftRuleDialog","Ausnahme mit BegrÃ¼ndung","Arbeitszeitregeln","Regelset Version"]);
+requireAll("rule UI",rules,["Backend-Prüfung aktiv","evaluateShift","shiftRuleDialog","Ausnahme mit Begründung","Arbeitszeitregeln","Regelset Version"]);
 const realtime=await readFile(resolve(dist,"modules/realtime.js"),"utf8");
 requireAll("realtime",realtime,["workspace-change","aoraSha256Hex","SUBSCRIBED","realtimeFallbackMs","__aoraLastRealtimeEvent"]);
 const runtime=await readFile(resolve(dist,"modules/runtime-hardening.js"),"utf8");
@@ -40,7 +40,7 @@ requireAll("compliance",compliance,["Compliance & Korrekturen","requestCorrectio
 const complianceCss=await readFile(resolve(dist,"compliance.css"),"utf8");
 requireAll("mobile compliance CSS",complianceCss,["employee-correction-fab","bottom:calc(81px + env(safe-area-inset-bottom,0px))","z-index:60"]);
 const handlers=await readFile(resolve(dist,"modules/handlers.js"),"utf8");
-requireAll("kiosk feedback",handlers,["TOGGLE_KIOSK_LOCK","Kiosk-GerÃ¤t wurde gesperrt.","Kiosk-GerÃ¤t konnte nicht aktualisiert werden."]);
+requireAll("kiosk feedback",handlers,["TOGGLE_KIOSK_LOCK","Kiosk-Gerät wurde gesperrt.","Kiosk-Gerät konnte nicht aktualisiert werden."]);
 const employee=await readFile(resolve(dist,"modules/employee-hardening.js"),"utf8");
 forbidAll("employee",employee,["employees?.[0]","employees[0]"]);
 const identity=await readFile(resolve(dist,"modules/identity-hardening.js"),"utf8");

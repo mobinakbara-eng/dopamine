@@ -4,8 +4,8 @@
   let fieldId=0;
   const controlSelector="input:not([type='hidden']),select,textarea";
   const buttonLabels={
-    close:"SchlieÃŸen",logout:"Abmelden","admin-menu":"MenÃ¼",
-    retry:"Erneut versuchen","toggle-kiosk":"Kiosk-Status Ã¤ndern",
+    close:"Schließen",logout:"Abmelden","admin-menu":"Menü",
+    retry:"Erneut versuchen","toggle-kiosk":"Kiosk-Status ändern",
     "archive-location":"Standort archivieren",
   };
   const controlLabels={"loc-select":"Standort"};

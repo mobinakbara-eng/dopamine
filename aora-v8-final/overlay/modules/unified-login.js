@@ -12,17 +12,17 @@ accessShell=function(card){
 };
 
 renderLoading=function(){
-  app.innerHTML=accessShell(`<h2>Anmeldung wird geladen â€¦</h2><div class="progress" style="margin-top:25px"><span style="width:65%"></span></div>`);
+  app.innerHTML=accessShell(`<h2>Anmeldung wird geladen …</h2><div class="progress" style="margin-top:25px"><span style="width:65%"></span></div>`);
 };
 
 renderError=function(message){
-  app.innerHTML=accessShell(`<h2>Verbindung nicht mÃ¶glich</h2><p class="access-explanation">${esc(message)}</p><button class="btn access-submit" data-a="retry">Erneut versuchen</button>`);
+  app.innerHTML=accessShell(`<h2>Verbindung nicht möglich</h2><p class="access-explanation">${esc(message)}</p><button class="btn access-submit" data-a="retry">Erneut versuchen</button>`);
 };
 
 passwordLogin=async function(email,password){
   const session=await access({action:"passwordLogin",email,password});
   if(!["owner","manager","employee"].includes(session.accessRole)){
-    throw Object.assign(new Error("Die Kontorolle ist ungÃ¼ltig."),{status:403});
+    throw Object.assign(new Error("Die Kontorolle ist ungültig."),{status:403});
   }
   activateSession(session,session.accessRole);
   await loadState();
@@ -39,7 +39,7 @@ renderLogin=function(message=""){
       <h2>Kiosk aktivieren</h2>
       ${message?`<div class="login-success">${esc(message)}</div>`:""}
       <form id="pin-login">
-        <div class="field"><label>GerÃ¤t</label>
+        <div class="field"><label>Gerät</label>
           <select class="select" name="subject" required>
             ${items.map(item=>`<option value="${esc(item.id)}">${esc(item.name||item.display_name||item.id)}</option>`).join("")}
           </select>
@@ -52,7 +52,7 @@ renderLogin=function(message=""){
       event.preventDefault();
       const form=new FormData(event.currentTarget);
       const button=event.currentTarget.querySelector('button[type="submit"]');
-      if(button){button.disabled=true;button.textContent="Wird aktiviert â€¦"}
+      if(button){button.disabled=true;button.textContent="Wird aktiviert …"}
       try{await login("kiosk",String(form.get("subject")||""),String(form.get("pin")||""))}
       catch(error){toast(error.message,"error");if(button){button.disabled=false;button.innerHTML=`Kiosk aktivieren ${I.arrow}`}}
     });
@@ -72,7 +72,7 @@ renderLogin=function(message=""){
     event.preventDefault();
     const form=new FormData(event.currentTarget);
     const button=event.currentTarget.querySelector('button[type="submit"]');
-    if(button){button.disabled=true;button.textContent="Anmeldung lÃ¤uft â€¦"}
+    if(button){button.disabled=true;button.textContent="Anmeldung läuft …"}
     try{await passwordLogin(String(form.get("email")||"").trim(),String(form.get("password")||""))}
     catch(error){toast(error.message,"error");if(button){button.disabled=false;button.innerHTML=`Anmelden ${I.arrow}`}}
   });
