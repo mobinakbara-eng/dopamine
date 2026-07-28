@@ -46,10 +46,15 @@ function reply(body: unknown, status = 200, origin: string | null = null) {
     },
   });
 }
-async function callUpstream(body: unknown) {
+async function callUpstream(body: unknown, origin: string | null) {
   const response = await fetch(UPSTREAM, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+      ...(origin && allowedOrigin(origin) ? { "x-aora-request-origin": origin } : {}),
+    },
     body: JSON.stringify(body),
   });
   const text = await response.text();
@@ -171,7 +176,7 @@ Deno.serve(async (request: Request) => {
     if (token.length !== 64) return reply({ error: "Sitzungstoken fehlt." }, 401, origin);
 
     if (body.action === "load") {
-      const upstream = await callUpstream(body);
+      const upstream = await callUpstream(body, origin);
       if (!upstream.ok) return reply(upstream.data, upstream.status, origin);
       const organizationId = upstream.data?.session?.organizationId;
       const ruleEngine = organizationId ? await workRuleSummary(organizationId) : null;
@@ -208,17 +213,17 @@ Deno.serve(async (request: Request) => {
           },
         },
       };
-      const upstream = await callUpstream(forwarded);
+      const upstream = await callUpstream(forwarded, origin);
       return reply({ ...upstream.data, ruleEvaluation: evaluation }, upstream.status, origin);
     }
 
     if (body.action === "apply" && body.event?.type === "DECIDE_LEAVE") {
       const event = await enrichStoredLeaveDecision(token, body.event);
-      const upstream = await callUpstream({ ...body, event });
+      const upstream = await callUpstream({ ...body, event }, origin);
       return reply(upstream.data, upstream.status, origin);
     }
 
-    const upstream = await callUpstream(body);
+    const upstream = await callUpstream(body, origin);
     return reply(upstream.data, upstream.status, origin);
   } catch (error: any) {
     return reply({ error: error instanceof Error ? error.message : String(error) }, Number(error?.status || 500), origin);

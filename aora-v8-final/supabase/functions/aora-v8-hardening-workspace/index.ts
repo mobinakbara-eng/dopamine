@@ -770,7 +770,11 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
 }
 
 Deno.serve(async (request) => {
-  const origin = request.headers.get("origin");
+  const directOrigin = request.headers.get("origin");
+  const trustedProxy = request.headers.get("authorization") === `Bearer ${SERVICE_KEY}`
+    && request.headers.get("apikey") === SERVICE_KEY;
+  const forwardedOrigin = trustedProxy ? request.headers.get("x-aora-request-origin") : null;
+  const origin = directOrigin || (forwardedOrigin && allowedOrigin(forwardedOrigin) ? forwardedOrigin : null);
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (request.method !== "POST") return reply({ error: "Method not allowed" }, 405, origin);
   if (origin && !allowedOrigin(origin)) return reply({ error: "Origin not allowed" }, 403, origin);

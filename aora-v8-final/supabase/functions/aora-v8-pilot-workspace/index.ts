@@ -66,10 +66,15 @@ function normalize(input: any) {
   state.meta = { ...(state.meta || {}), variant: "aora-8.1.0-pilot", tenantSource: "session" };
   return state;
 }
-async function callFunction(url: string, body: unknown) {
+async function callFunction(url: string, body: unknown, origin: string | null = null) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+      ...(origin && allowedOrigin(origin) ? { "x-aora-request-origin": origin } : {}),
+    },
     body: JSON.stringify(body),
   });
   const text = await response.text();
@@ -231,7 +236,11 @@ async function idempotentDecision(ctx: any, body: any, origin: string | null) {
 }
 
 Deno.serve(async (request: Request) => {
-  const origin = request.headers.get("origin");
+  const directOrigin = request.headers.get("origin");
+  const trustedProxy = request.headers.get("authorization") === `Bearer ${SERVICE_KEY}`
+    && request.headers.get("apikey") === SERVICE_KEY;
+  const forwardedOrigin = trustedProxy ? request.headers.get("x-aora-request-origin") : null;
+  const origin = directOrigin || (forwardedOrigin && allowedOrigin(forwardedOrigin) ? forwardedOrigin : null);
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (request.method !== "POST") return reply({ error: "Method not allowed" }, 405, origin);
   if (origin && !allowedOrigin(origin)) return reply({ error: "Origin not allowed" }, 403, origin);
@@ -253,7 +262,7 @@ Deno.serve(async (request: Request) => {
       ctx.organization.slug === PRIMARY_PILOT_SLUG ||
       (body.action === "apply" && STRUCTURAL_TYPES.has(body.event?.type))
     ) {
-      const result = await callFunction(HARDENING_WORKSPACE, body);
+      const result = await callFunction(HARDENING_WORKSPACE, body, origin);
       return reply(result.data, result.status, origin);
     }
 

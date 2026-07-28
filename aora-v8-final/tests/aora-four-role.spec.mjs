@@ -170,6 +170,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     expect(kioskResult.kioskActivation.deviceId).toMatch(/^kiosk_/);
     expect(kioskResult.kioskActivation.activationCode).toMatch(/^\d{8}$/);
     expect(new URL(kioskResult.kioskActivation.kioskUrl).searchParams.get("workspace")).toBe(workspace);
+    expect(new URL(kioskResult.kioskActivation.kioskUrl).origin).toBe(new URL(page.url()).origin);
     await expect(page.getByText("Zugangsdaten bereit")).toBeVisible();
     const kioskContext=await browser.newContext();
     const createdKiosk=await kioskContext.newPage();
