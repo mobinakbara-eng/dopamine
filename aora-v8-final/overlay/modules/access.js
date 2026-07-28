@@ -1,3 +1,4 @@
+
 "use strict";
 
 function renderLoading(){
@@ -69,7 +70,7 @@ function renderInvitationSetup(info,invitationId,token){
     app.innerHTML=accessShell(`<div class="caps muted">Einladung</div><h2 style="margin-top:8px">Link nicht mehr gültig</h2><p class="access-explanation">Die Einladung wurde bereits verwendet, widerrufen oder ist abgelaufen. Bitte den Inhaber oder Manager um einen neuen Link.</p><button class="btn access-submit" data-a="invitation-back">Zur Anmeldung</button>`);
     return;
   }
-  const role=info.kind==="manager"?"Arbeitgeber / Manager":"Mitarbeiter";
+  const role=info.kind==="owner"?"Inhaber / Owner":info.kind==="manager"?"Arbeitgeber / Manager":"Mitarbeiter";
   app.innerHTML=accessShell(`<div class="caps muted">Einladung · ${esc(role)}</div>
     <h2 style="margin-top:8px">Konto aktivieren</h2>
     <div class="invitation-summary"><strong>${esc(info.name)}</strong><span>${esc(info.emailHint)}</span><small>Einmaliger Link · gültig bis ${esc(new Date(info.expiresAt).toLocaleString("de-DE"))}</small></div>
