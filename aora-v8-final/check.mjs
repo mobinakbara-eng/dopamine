@@ -82,7 +82,7 @@ requireAll("server geofence enforcement",source.pilotWorkspace,["configuredLocat
 requireAll("geolocation timestamp fallback",source.handlers,["Number(position.timestamp)","Number.isFinite(timestamp)&&timestamp>0?timestamp:Date.now()"]);
 requireAll("location GPS persistence",source.finalWorkspaceStructural,["locationGps(input)","gpsConfigured: true","latitude,","longitude,"]);
 requireAll("canonical public links",source.finalWorkspaceInvitation,['CANONICAL_APP_ORIGIN =','"https://dopamine-mobins-projects-4f428afa.vercel.app"',"inviteUrlObject"]);
-requireAll("legacy workspace consolidation",source.hardeningWorkspace,["CANONICAL_WORKSPACE","aora-v8-final-workspace","authorization: `Bearer ${SERVICE_KEY}`","allowedOrigin(origin)"]);
+requireAll("legacy workspace consolidation",source.hardeningWorkspace,["CANONICAL_WORKSPACE","aora-v8-final-workspace","authorization: `Bearer ${SERVICE_KEY}`","allowedOrigin(origin)","x-aora-request-origin","trustedProxy"]);
 forbidAll("legacy workspace consolidation",source.hardeningWorkspace,["APPROVE_CLOCK_REQUEST","CREATE_KIOSK_DEVICE","INVITE_MANAGER"]);
 requireAll("canonical onboarding links",source.pilotOnboarding,['const APP_URL = "https://dopamine-mobins-projects-4f428afa.vercel.app"']);
 requireAll("duration correction consistency",source.geofenceDurationMigration,["aora_recalculate_time_entry_duration","durationMinutes","aora_decide_time_correction_atomic","aora_commit_workspace_state"]);
