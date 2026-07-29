@@ -81,7 +81,7 @@ async function passwordLogin(page,role,email,password){
 }
 async function kioskLogin(page){
   await page.goto(`${paths.kiosk}?workspace=${encodeURIComponent(workspace)}`);
-  await page.locator('select[name="subject"]').selectOption(env("AORA_KIOSK_DEVICE_ID"));
+  await page.locator('input[name="subject"]').fill(env("AORA_KIOSK_DEVICE_ID"));
   await page.locator('input[name="pin"]').fill(env("AORA_KIOSK_PIN"));
   await triggerAccessAction(page,"login",()=>page.locator('#pin-login button[type="submit"]').click());
   await page.waitForFunction(value=>Boolean(sessionStorage.getItem(`aora:${value}:kiosk`)),workspace);
@@ -196,7 +196,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const createdKiosk=await kioskContext.newPage();
     const kioskErrors=diagnostics(createdKiosk);
     await createdKiosk.goto(kioskResult.kioskActivation.kioskUrl);
-    await createdKiosk.locator('select[name="subject"]').selectOption(kioskResult.kioskActivation.deviceId);
+    await createdKiosk.locator('input[name="subject"]').fill(kioskResult.kioskActivation.deviceId);
     await createdKiosk.locator('input[name="pin"]').fill(kioskResult.kioskActivation.activationCode);
     await triggerAccessAction(createdKiosk,"login",()=>createdKiosk.locator('#pin-login button[type="submit"]').click());
     await expect(createdKiosk.locator(".kiosk-app")).toBeVisible({timeout:30000});

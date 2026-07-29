@@ -30,11 +30,10 @@ passwordLogin=async function(email,password){
 
 renderLogin=function(message=""){
   const kiosk=S.loginRole==="kiosk"||S.accessRole==="kiosk";
-  const directory=S.directory||{kioskDevices:[]};
+  const directory=S.directory||{};
 
   if(kiosk){
-    const items=loginItems("kiosk",directory);
-    if(!items.length){
+    if(directory.kioskAvailable===false){
       app.innerHTML=accessShell(`
         <div class="access-intro"><h1>Kiosk einrichten</h1><p>Für diesen Arbeitsbereich wurde noch kein Kiosk-Gerät angelegt.</p></div>
         <div class="access-empty-state" role="status">
@@ -49,12 +48,9 @@ renderLogin=function(message=""){
       <div class="access-intro"><h1>Kiosk aktivieren</h1><p>Dieses gemeinsam genutzte Gerät sicher mit einem Laden verbinden.</p></div>
       ${message?`<div class="login-success">${esc(message)}</div>`:""}
       <form id="pin-login" aria-describedby="kiosk-login-feedback">
-        <div class="field"><label>Gerät</label>
-          <select class="select" name="subject" required>
-            ${items.map(item=>`<option value="${esc(item.id)}">${esc(item.name||item.display_name||item.id)}</option>`).join("")}
-          </select>
-        </div>
+        <div class="field"><label>Geräte-ID</label><input class="input" name="subject" type="text" required autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="kiosk_…"></div>
         <div class="field"><label>Aktivierungscode</label><input class="input" name="pin" type="password" required autocomplete="current-password"></div>
+        <p class="access-note">Geräte-ID und Aktivierungscode werden nach dem Anlegen des Kiosks einmalig im Manager-Bereich angezeigt.</p>
         <p class="access-feedback" id="kiosk-login-feedback" role="status" aria-live="polite"></p>
         <button class="btn access-submit" type="submit">Kiosk aktivieren ${I.arrow}</button>
       </form>`);

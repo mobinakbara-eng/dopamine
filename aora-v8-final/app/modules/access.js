@@ -8,7 +8,7 @@ function renderError(message){
   app.innerHTML=`<div class="access-shell"><section class="access-brand"><div>${logo}</div><div><h1>Verbindung nicht möglich.</h1><p>${esc(message)}</p></div><span></span></section><section class="access-panel"><div class="access-card"><button class="btn" data-a="retry">Erneut versuchen</button></div></section></div>`;
 }
 function accessLabel(role){return({owner:"Inhaber",manager:"Arbeitgeber",employee:"Mitarbeiter",kiosk:"Kiosk"})[role]||role}
-function loginItems(role,directory){return role==="kiosk"?(directory.kioskDevices||[]):[]}
+function loginItems(){return[]}
 function accessShell(card){
   return`<div class="access-shell">
     <section class="access-brand">
@@ -25,7 +25,7 @@ function accessShell(card){
 }
 function renderLogin(message=""){
   const role=S.loginRole||S.accessRole;
-  const directory=S.directory||{kioskDevices:[]};
+  const directory=S.directory||{};
   const items=loginItems(role,directory);
   const passwordEnabled=role==="owner"||role==="manager"||role==="employee";
   const pinEnabled=role==="kiosk";
@@ -44,11 +44,7 @@ function renderLogin(message=""){
       <p class="access-note">Inhaber, Arbeitgeber und Mitarbeiter melden sich ausschließlich mit ihrem persönlichen E-Mail-Konto an.</p>
     </form>`:""}
     ${pinEnabled?`<form id="pin-login">
-      <div class="field"><label>Gerät</label>
-        <select class="select" name="subject" required>
-          ${items.map(item=>`<option value="${esc(item.id)}">${esc(item.name||item.display_name||item.id)}</option>`).join("")}
-        </select>
-      </div>
+      <div class="field"><label>Geräte-ID</label><input class="input" name="subject" type="text" required autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="kiosk_…"></div>
       <div class="field"><label>Aktivierungscode</label><input class="input" name="pin" type="password" required autocomplete="current-password"></div>
       <button class="btn access-submit" type="submit">Kiosk aktivieren ${I.arrow}</button>
       <p class="access-note">Der Aktivierungscode gilt nur für das lokale Kiosk-Gerät und ersetzt keine Mitarbeiterbestätigung.</p>

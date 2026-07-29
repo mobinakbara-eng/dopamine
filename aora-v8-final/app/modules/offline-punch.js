@@ -84,11 +84,11 @@ async function bindOfflinePunchSession(session=S.session){
     iv:encrypted.iv,ciphertext:encrypted.ciphertext,updatedAt:Date.now()
   }));
 }
-async function restoreOfflineKioskSession(directory=S.directory){
-  const allowedIds=new Set((directory?.kioskDevices||[]).map(device=>String(device.id)));
-  if(!allowedIds.size)return null;
+async function restoreOfflineKioskSession(){
   const sessions=await withStore(OFFLINE_SESSION_STORE,"readonly",store=>idbRequest(store.getAll()));
-  const ordered=(sessions||[]).filter(record=>allowedIds.has(String(record.deviceId))).sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0));
+  const ordered=(sessions||[]).filter(record=>
+    record?.organizationId&&record?.deviceId&&record?.keyId
+  ).sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0));
   for(const record of ordered){
     const context={keyId:record.keyId,organizationId:String(record.organizationId),deviceId:String(record.deviceId)};
     try{

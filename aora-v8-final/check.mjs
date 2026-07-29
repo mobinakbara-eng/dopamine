@@ -56,7 +56,7 @@ const source={
   pilotMonitor:await read("supabase/functions/aora-v8-pilot-monitor/index.ts"),complianceProxy:await read("supabase/functions/aora-v8-pilot-compliance-proxy/index.ts"),pilotOnboarding:await read("supabase/functions/aora-v8-pilot-onboarding/index.ts"),
   ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),e2e:await read("tests/aora-four-role.spec.mjs"),
   pilotAccess:await read("supabase/functions/aora-v8-pilot-access/index.ts"),pilotWorkspace:await read("supabase/functions/aora-v8-pilot-workspace/index.ts"),hardeningWorkspace:await read("supabase/functions/aora-v8-hardening-workspace/index.ts"),pilotKiosk:await read("supabase/functions/aora-v8-pilot-kiosk/index.ts"),ruleGate:await read("supabase/functions/aora-v8-pilot-workspace-rules/index.ts"),
-  employee:await read("app/modules/employee-hardening.js"),identity:await read("app/modules/identity-hardening.js"),profile:await read("app/modules/profile-hardening.js"),admin:await read("app/modules/admin.js"),modals:await read("app/modules/modals.js"),
+  employee:await read("app/modules/employee-hardening.js"),identity:await read("app/modules/identity-hardening.js"),profile:await read("app/modules/profile-hardening.js"),admin:await read("app/modules/admin.js"),modals:await read("app/modules/modals.js"),unifiedLogin:await read("app/modules/unified-login.js"),
   canonicalKiosk:await read("app/modules/kiosk-view.js"),baseCss:await read("app/styles.base.css"),overlayCss:await read("app/styles.css"),build:await read("build.mjs")
 };
 const requireAll=(name,text,markers)=>{for(const marker of markers)if(!text.includes(marker))throw new Error(`Missing ${name} marker: ${marker}`)};
@@ -70,6 +70,10 @@ requireAll("tenant isolation",source.tenant,["manager_location_access","members 
 requireAll("dynamic access",source.pilotAccess,["workspaceSlug(body","new globalThis.URL(origin)","aora_activate_invitation_atomic","passwordLogin","inspectInvitation","organizationSlug"]);
 requireAll("single-request login",source.pilotAccess,['consumeRateLimit(request, slug, "password", email)','account && account.record.status === "active"']);
 forbidAll("single-request login",source.pilotAccess,['`${accessRole}:${email}`','account.accessRole === accessRole']);
+requireAll("private kiosk activation",source.pilotAccess,["kioskAvailable:",'consumeRateLimit(request, slug, "pin", subjectId)']);
+forbidAll("public access directory",source.pilotAccess,["admins: (context.state.admins","kioskDevices: (context.state.kioskDevices"]);
+requireAll("typed kiosk credentials",source.unifiedLogin,['input class="input" name="subject"','Geräte-ID und Aktivierungscode']);
+forbidAll("public kiosk picker",source.unifiedLogin,['select class="select" name="subject"']);
 requireAll("breached-password protection",source.pilotAccess,["assertPasswordNotPwned","api.pwnedpasswords.com/range",'"Add-Padding": "true"','"SHA-1"',"hash.slice(0, 5)","hash.slice(5)","await assertPasswordNotPwned(password)"]);
 forbidAll("dynamic access",source.pilotAccess,['const WORKSPACE="aora-v8-hardening-demo"','const URL = Deno.env.get("SUPABASE_URL")','new URL(origin)','`${PWNED_PASSWORDS_RANGE_URL}/${hash}`']);
 requireAll("tenant workspace",source.pilotWorkspace,['tenantSource: "session"','eq("id", session.organization_id)',"Kein Zugriff auf diesen Standort.","state.kioskDevices.find"]);

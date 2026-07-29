@@ -325,12 +325,9 @@ Deno.serve(async (request: Request) => {
       return reply({
         workspaceSlug: slug,
         organizationName: context.organization.name,
-        admins: (context.state.admins || [])
-          .filter((item: any) => item.active !== false && item.scope === "owner")
-          .map((item: any) => ({ id: item.id, name: item.name, scope: "owner" })),
-        kioskDevices: (context.state.kioskDevices || [])
-          .filter((item: any) => item.active !== false)
-          .map((item: any) => ({ id: item.id, name: item.name || "Kiosk" })),
+        kioskAvailable: (context.state.kioskDevices || []).some((item: any) =>
+          item.active !== false && !item.locked
+        ),
       }, 200, origin);
     }
 

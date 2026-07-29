@@ -65,7 +65,7 @@ async function boot(){
     if(S.session){await loadState();return}
     if(accessRole==="kiosk"&&typeof restoreOfflineKioskSession==="function"){
       await ensureDirectory(accessRole);
-      const restored=await restoreOfflineKioskSession(S.directory);
+      const restored=await restoreOfflineKioskSession();
       if(restored){
         activateSession(restored,"kiosk");
         await loadState();
