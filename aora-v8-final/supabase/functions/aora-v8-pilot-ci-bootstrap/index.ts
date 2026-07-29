@@ -17,7 +17,12 @@ const ALLOWED_HEADS=new Set([
   "agent/aora-access-hardening",
   "agent/aora-workforce-features"
 ]);
-const ALLOWED_BASES=new Set(["agent/aora-v8-final","main"]);
+const ALLOWED_BASES=new Set([
+  "agent/aora-v8-final",
+  "agent/aora-unified-production",
+  "agent/aora-relational-foundation",
+  "main"
+]);
 const ITERATIONS=210000;
 const encoder=new TextEncoder();
 let jwksCache:any=null;

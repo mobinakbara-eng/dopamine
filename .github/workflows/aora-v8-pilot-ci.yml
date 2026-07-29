@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - agent/aora-v8-final
+      - agent/aora-unified-production
+      - agent/aora-relational-foundation
       - main
     paths:
       - "aora-v8-final/**"
