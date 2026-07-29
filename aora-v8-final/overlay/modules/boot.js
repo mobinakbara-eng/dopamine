@@ -4,6 +4,12 @@ let backgroundRefreshRunning=false;
 
 setInterval(()=>{
   document.querySelectorAll("[data-clock]").forEach(node=>{node.textContent=berlin().time});
+  document.querySelectorAll("[data-clock-request-expires]").forEach(node=>{
+    const seconds=Math.max(0,Math.ceil((new Date(node.dataset.clockRequestExpires).getTime()-Date.now())/1000));
+    node.textContent=seconds>0?`noch ${seconds} Sekunden gültig`:"abgelaufen";
+    const approve=node.closest("[data-clock-request-panel]")?.querySelector('[data-a="clock-approve"]');
+    if(approve)approve.disabled=seconds===0;
+  });
 },1000);
 
 async function refreshWorkspace(){
@@ -41,7 +47,6 @@ async function boot(){
     const callback=invitationCallback();
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
-      clearInvitationCallback();
       renderInvitationSetup(info,callback.invitationId,callback.token);
       return;
     }

@@ -113,9 +113,12 @@ async function openAndCloseModal(page,selector,heading){
   await button.click();
   const modal=page.locator(".modal-backdrop .modal").last();
   await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute("role","dialog");
+  await expect(modal).toHaveAttribute("aria-modal","true");
   if(heading)await expect(modal).toContainText(heading);
-  await modal.locator('[data-a="close"]').first().click();
+  await page.keyboard.press("Escape");
   await expect(modal).toBeHidden();
+  await expect(button).toBeFocused();
 }
 async function downloadComplianceExport(page,format){
   const downloadPromise=page.waitForEvent("download",{timeout:30000});
@@ -129,7 +132,7 @@ async function downloadComplianceExport(page,format){
 test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
   test.beforeAll(()=>env("AORA_WORKSPACE_SLUG"));
 
-  test("Owner: every navigation view, responsive shell, modals, exports and verified backup",async({page})=>{
+  test("Owner: every navigation view, responsive shell, modals, exports and verified backup",async({page,browser,baseURL})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"owner",env("AORA_OWNER_EMAIL"),env("AORA_OWNER_PASSWORD"));
     const views=await visitAdminViews(page);
@@ -147,6 +150,14 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     expect(generatedInvite.searchParams.get("workspace")).toBe(workspace);
     expect(generatedInvite.pathname).toBe("/arbeitgeber/");
     await expect(page.locator("#delivery-link")).toHaveValue(inviteResult.delivery.inviteUrl);
+    const inviteContext=await browser.newContext();
+    const generatedInvitePage=await inviteContext.newPage();
+    const localGeneratedInvite=new URL(`${generatedInvite.pathname}${generatedInvite.search}`,baseURL).toString();
+    await generatedInvitePage.goto(localGeneratedInvite);
+    await expect(generatedInvitePage.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible({timeout:30000});
+    await generatedInvitePage.reload();
+    await expect(generatedInvitePage.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible({timeout:30000});
+    await inviteContext.close();
     await page.locator(".modal-backdrop .modal").last().locator('[data-a="close"]').first().click();
     const options=page.locator("#loc-select option");
     if(await options.count()>1){const first=await options.nth(0).getAttribute("value");const second=await options.nth(1).getAttribute("value");await page.locator("#loc-select").selectOption(second);await expect(page.locator("#loc-select")).toHaveValue(second);await page.locator("#loc-select").selectOption(first)}

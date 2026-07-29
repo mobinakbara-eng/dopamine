@@ -1,12 +1,53 @@
 "use strict";
 
 function modal(html){
+  const previousFocus=document.activeElement;
   const backdrop=document.createElement("div");
   backdrop.className="modal-backdrop";
-  backdrop.innerHTML=`<section class="modal">${html}</section>`;
+  backdrop.innerHTML=`<section class="modal" role="dialog" aria-modal="true" tabindex="-1">${html}</section>`;
+  const dialog=backdrop.querySelector(".modal");
+  const nativeRemove=backdrop.remove.bind(backdrop);
+  let closed=false;
+  const focusable=()=>[...dialog.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(node=>!node.hidden&&node.getAttribute("aria-hidden")!=="true");
+  const close=()=>{
+    if(closed)return;
+    closed=true;
+    document.removeEventListener("keydown",onKeydown,true);
+    nativeRemove();
+    if(previousFocus instanceof HTMLElement&&previousFocus.isConnected)previousFocus.focus();
+  };
+  const onKeydown=event=>{
+    if(event.key==="Escape"){
+      event.preventDefault();
+      close();
+      return;
+    }
+    if(event.key!=="Tab")return;
+    const nodes=focusable();
+    if(!nodes.length){
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first=nodes[0],last=nodes[nodes.length-1];
+    if(event.shiftKey&&document.activeElement===first){
+      event.preventDefault();
+      last.focus();
+    }else if(!event.shiftKey&&document.activeElement===last){
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  backdrop.remove=close;
   document.body.appendChild(backdrop);
+  document.addEventListener("keydown",onKeydown,true);
   backdrop.addEventListener("click",event=>{
-    if(event.target===backdrop||event.target.closest('[data-a="close"]'))backdrop.remove();
+    if(event.target===backdrop||event.target.closest('[data-a="close"]'))close();
+  });
+  queueMicrotask(()=>{
+    const target=dialog.querySelector("[autofocus]")||focusable()[0]||dialog;
+    target.focus();
   });
   return backdrop;
 }
