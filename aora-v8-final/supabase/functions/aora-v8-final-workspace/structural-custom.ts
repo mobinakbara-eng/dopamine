@@ -25,7 +25,60 @@ export const STRUCTURAL_TYPES = new Set([
   "REVOKE_INVITATION",
   "UPDATE_MANAGER_ACCESS",
   "DEACTIVATE_ACCOUNT",
+  "CREATE_KIOSK_DEVICE",
+  "ROTATE_KIOSK_ACTIVATION",
+  "TOGGLE_KIOSK_LOCK",
 ]);
+
+function locationGps(input: any, fallback: any = null) {
+  const latitude = Number(input?.latitude ?? input?.gps?.lat ?? fallback?.gps?.lat ?? fallback?.latitude);
+  const longitude = Number(input?.longitude ?? input?.gps?.lng ?? fallback?.gps?.lng ?? fallback?.longitude);
+  if (
+    !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+    !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+    (latitude === 0 && longitude === 0)
+  ) {
+    throw Object.assign(new Error("Gültige GPS-Koordinaten für den Laden sind erforderlich."), { status: 400 });
+  }
+  return { latitude, longitude, gps: { lat: latitude, lng: longitude }, gpsConfigured: true };
+}
+
+function activationCode() {
+  let value = "";
+  while (value.length < 8) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(16))) {
+      if (byte < 250) value += String(byte % 10);
+      if (value.length === 8) break;
+    }
+  }
+  return value;
+}
+
+async function persistKioskActivation(ctx: any, state: any, activation: any) {
+  const changedAt = now();
+  const revision = Number(ctx.snapshot.revision) + 1;
+  state.meta = { ...(state.meta || {}), revision, updatedAt: changedAt, variant: "isolated-v8-final" };
+  const { data, error } = await service.rpc("aora_commit_kiosk_activation", {
+    p_organization_id: ctx.organization.id,
+    p_expected_revision: Number(ctx.snapshot.revision),
+    p_state: state,
+    p_actor_role: ctx.accessRole,
+    p_actor_id: ctx.admin.id,
+    p_event_type: activation.eventType,
+    p_device_id: activation.deviceId,
+    p_device_name: activation.deviceName,
+    p_location_id: activation.locationId,
+    p_activation_code: activation.code,
+    p_event_payload: { deviceId: activation.deviceId, locationId: activation.locationId },
+  });
+  if (error || Number(data) !== revision) {
+    if (String(error?.message || "").includes("revision_conflict")) {
+      throw Object.assign(new Error("Daten wurden parallel geändert. Bitte neu laden."), { status: 409 });
+    }
+    throw error || new Error("Kiosk-Aktivierung konnte nicht gespeichert werden.");
+  }
+  return revision;
+}
 
 const requireOwner = (ctx: any, message: string) => {
   if (ctx.accessRole !== "owner") {
@@ -98,6 +151,7 @@ export async function applyStructural(
   let invitation: any = null;
   let inviteRole: "manager" | "employee" | null = null;
   let revokeTokenId: string | null = null;
+  let kioskActivation: any = null;
 
   switch (event.type) {
     case "ADD_LOCATION": {
@@ -119,6 +173,7 @@ export async function applyStructural(
           status: 409,
         });
       }
+      const gps = locationGps(input);
       const location = {
         id: id("loc"),
         name,
@@ -129,7 +184,8 @@ export async function applyStructural(
           input.timezone || state.company.timezone || "Europe/Berlin",
         ),
         costCenter: String(input.costCenter || "").trim(),
-        geofenceRadius: Number(input.geofenceRadius || 100),
+        geofenceRadius: Math.min(1000, Math.max(25, Number(input.geofenceRadius || 100))),
+        ...gps,
         active: true,
         createdAt: now(),
         createdBy: ctx.admin.id,
@@ -164,11 +220,19 @@ export async function applyStructural(
         });
       }
       const patch = event.patch || {};
+      const gps = locationGps(patch, current);
       state.locations = state.locations.map((item: any) =>
         item.id === current.id
           ? {
             ...item,
-            ...patch,
+            name: patch.name == null ? item.name : String(patch.name).trim(),
+            city: patch.city == null ? item.city : String(patch.city).trim(),
+            address: patch.address == null ? item.address : String(patch.address).trim(),
+            country: patch.country == null ? item.country : String(patch.country).trim(),
+            timezone: patch.timezone == null ? item.timezone : String(patch.timezone),
+            costCenter: patch.costCenter == null ? item.costCenter : String(patch.costCenter).trim(),
+            geofenceRadius: patch.geofenceRadius == null ? item.geofenceRadius : Math.min(1000, Math.max(25, Number(patch.geofenceRadius))),
+            ...gps,
             id: item.id,
             active: item.active,
             updatedAt: now(),
@@ -536,13 +600,110 @@ export async function applyStructural(
       break;
     }
 
+    case "CREATE_KIOSK_DEVICE": {
+      const name = String(event.name || "").trim();
+      const locationId = String(event.locationId || "");
+      if (name.length < 2 || name.length > 80 || !locationId) {
+        throw Object.assign(new Error("Gerätename und Laden sind erforderlich."), { status: 400 });
+      }
+      requireLocation(state, locationId);
+      if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(locationId)) {
+        throw Object.assign(new Error("Du darfst Kiosk-Geräte nur für deine eigenen Läden anlegen."), { status: 403 });
+      }
+      if (state.kioskDevices.filter((item: any) =>
+        item.locationId === locationId && item.active !== false
+      ).length >= 10) {
+        throw Object.assign(new Error("Für diesen Laden sind bereits zehn aktive Kiosk-Geräte eingerichtet."), { status: 409 });
+      }
+      const device = {
+        id: id("kiosk"),
+        name,
+        locationId,
+        active: true,
+        locked: false,
+        activationVersion: 1,
+        createdAt: now(),
+        createdBy: ctx.admin.id,
+      };
+      state.kioskDevices.push(device);
+      kioskActivation = {
+        eventType: "CREATE_KIOSK_DEVICE",
+        deviceId: device.id,
+        deviceName: device.name,
+        locationId,
+        code: activationCode(),
+      };
+      addAudit(state, ctx, "kiosk.created", "kiosk", device.id, device.name, { locationId });
+      break;
+    }
+
+    case "ROTATE_KIOSK_ACTIVATION": {
+      const device = state.kioskDevices.find((item: any) =>
+        item.id === event.id && item.active !== false
+      );
+      if (!device) throw Object.assign(new Error("Kiosk-Gerät wurde nicht gefunden."), { status: 404 });
+      if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(device.locationId)) {
+        throw Object.assign(new Error("Kein Zugriff auf dieses Kiosk-Gerät."), { status: 403 });
+      }
+      const version = Number(device.activationVersion || 0) + 1;
+      state.kioskDevices = state.kioskDevices.map((item: any) =>
+        item.id === device.id
+          ? { ...item, locked: false, activationVersion: version, activatedAt: now(), activatedBy: ctx.admin.id }
+          : item
+      );
+      kioskActivation = {
+        eventType: "ROTATE_KIOSK_ACTIVATION",
+        deviceId: device.id,
+        deviceName: device.name || device.id,
+        locationId: device.locationId,
+        code: activationCode(),
+      };
+      addAudit(state, ctx, "kiosk.activation_rotated", "kiosk", device.id, device.name || device.id, { locationId: device.locationId });
+      break;
+    }
+
+    case "TOGGLE_KIOSK_LOCK": {
+      if (typeof event.locked !== "boolean") {
+        throw Object.assign(new Error("Der gewünschte Sperrstatus fehlt."), { status: 400 });
+      }
+      const device = state.kioskDevices.find((item: any) => item.id === event.id);
+      if (!device) throw Object.assign(new Error("Kiosk-Gerät wurde nicht gefunden."), { status: 404 });
+      if (ctx.accessRole === "manager" && !allowedLocations(ctx).has(device.locationId)) {
+        throw Object.assign(new Error("Kein Zugriff auf dieses Kiosk-Gerät."), { status: 403 });
+      }
+      state.kioskDevices = state.kioskDevices.map((item: any) =>
+        item.id === device.id
+          ? {
+            ...item,
+            locked: event.locked,
+            lockedAt: event.locked ? now() : null,
+            lockedBy: event.locked ? ctx.admin.id : null,
+            updatedAt: now(),
+            updatedBy: ctx.admin.id,
+          }
+          : item
+      );
+      addAudit(
+        state,
+        ctx,
+        event.locked ? "kiosk.locked" : "kiosk.unlocked",
+        "kiosk",
+        device.id,
+        device.name || device.id,
+        { locationId: device.locationId },
+      );
+      break;
+    }
+
     default:
       throw Object.assign(new Error("Unbekannte Verwaltungsaktion."), {
         status: 400,
       });
   }
 
-  const revision = await persist(ctx, state);
+  const revision = kioskActivation
+    ? await persistKioskActivation(ctx, state, kioskActivation)
+    : await persist(ctx, state);
   if (revokeTokenId) await revokeInvitationToken(ctx, revokeTokenId);
   const delivery = invitation && inviteRole
     ? await issueInvitationToken(
@@ -565,5 +726,15 @@ export async function applyStructural(
     state: scopeState(ctx, normalize(finalSnapshot.state)),
     revision: finalSnapshot.revision || revision,
     delivery,
+    kioskActivation: kioskActivation
+      ? {
+        deviceId: kioskActivation.deviceId,
+        deviceName: kioskActivation.deviceName,
+        activationCode: kioskActivation.code,
+        kioskUrl: `${origin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+          ? origin
+          : "https://dopamine-mobins-projects-4f428afa.vercel.app"}/kiosk/dashboard/?workspace=${encodeURIComponent(ctx.organization.slug)}`,
+      }
+      : null,
   };
 }

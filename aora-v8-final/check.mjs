@@ -55,7 +55,7 @@ const source={
   ciBootstrap:await read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),realtimeBroadcast:await read("supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts"),
   pilotMonitor:await read("supabase/functions/aora-v8-pilot-monitor/index.ts"),complianceProxy:await read("supabase/functions/aora-v8-pilot-compliance-proxy/index.ts"),pilotOnboarding:await read("supabase/functions/aora-v8-pilot-onboarding/index.ts"),
   ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),e2e:await read("tests/aora-four-role.spec.mjs"),
-  pilotAccess:await read("supabase/functions/aora-v8-pilot-access/index.ts"),pilotWorkspace:await read("supabase/functions/aora-v8-pilot-workspace/index.ts"),hardeningWorkspace:await read("supabase/functions/aora-v8-hardening-workspace/index.ts"),pilotKiosk:await read("supabase/functions/aora-v8-pilot-kiosk/index.ts"),ruleGate:await read("supabase/functions/aora-v8-pilot-workspace-rules/index.ts"),
+  pilotAccess:await read("supabase/functions/aora-v8-pilot-access/index.ts"),pilotWorkspace:await read("supabase/functions/aora-v8-pilot-workspace/index.ts"),hardeningWorkspace:await read("supabase/functions/aora-v8-hardening-workspace/index.ts"),finalWorkspace:await read("supabase/functions/aora-v8-final-workspace/index.ts"),finalWorkspaceCore:await read("supabase/functions/aora-v8-final-workspace/core.ts"),finalWorkspaceStructural:await read("supabase/functions/aora-v8-final-workspace/structural-custom.ts"),finalWorkspaceInvitation:await read("supabase/functions/aora-v8-final-workspace/invitation.ts"),pilotKiosk:await read("supabase/functions/aora-v8-pilot-kiosk/index.ts"),ruleGate:await read("supabase/functions/aora-v8-pilot-workspace-rules/index.ts"),
   employee:await read("app/modules/employee-hardening.js"),identity:await read("app/modules/identity-hardening.js"),profile:await read("app/modules/profile-hardening.js"),admin:await read("app/modules/admin.js"),modals:await read("app/modules/modals.js"),unifiedLogin:await read("app/modules/unified-login.js"),
   canonicalKiosk:await read("app/modules/kiosk-view.js"),baseCss:await read("app/styles.base.css"),overlayCss:await read("app/styles.css"),build:await read("build.mjs")
 };
@@ -80,8 +80,10 @@ requireAll("tenant workspace",source.pilotWorkspace,['tenantSource: "session"','
 forbidAll("tenant workspace",source.pilotWorkspace,['.eq("slug", PRIMARY_PILOT_SLUG)']);
 requireAll("server geofence enforcement",source.pilotWorkspace,["configuredLocationPosition","enforceApprovalGeofence","Math.abs(Date.now() - capturedAt) > 120_000","Ausserhalb des Standorts","maxGpsAccuracy"]);
 requireAll("geolocation timestamp fallback",source.handlers,["Number(position.timestamp)","Number.isFinite(timestamp)&&timestamp>0?timestamp:Date.now()"]);
-requireAll("location GPS persistence",source.hardeningWorkspace,["locationGps(input)","gpsConfigured: true","latitude,","longitude,"]);
-requireAll("canonical public links",source.hardeningWorkspace,['CANONICAL_APP_ORIGIN = "https://dopamine-mobins-projects-4f428afa.vercel.app"',"function publicAppOrigin","const appOrigin = publicAppOrigin(origin)"]);
+requireAll("location GPS persistence",source.finalWorkspaceStructural,["locationGps(input)","gpsConfigured: true","latitude,","longitude,"]);
+requireAll("canonical public links",source.finalWorkspaceInvitation,['CANONICAL_APP_ORIGIN =','"https://dopamine-mobins-projects-4f428afa.vercel.app"',"inviteUrlObject"]);
+requireAll("legacy workspace consolidation",source.hardeningWorkspace,["CANONICAL_WORKSPACE","aora-v8-final-workspace","authorization: `Bearer ${SERVICE_KEY}`","allowedOrigin(origin)"]);
+forbidAll("legacy workspace consolidation",source.hardeningWorkspace,["APPROVE_CLOCK_REQUEST","CREATE_KIOSK_DEVICE","INVITE_MANAGER"]);
 requireAll("canonical onboarding links",source.pilotOnboarding,['const APP_URL = "https://dopamine-mobins-projects-4f428afa.vercel.app"']);
 requireAll("duration correction consistency",source.geofenceDurationMigration,["aora_recalculate_time_entry_duration","durationMinutes","aora_decide_time_correction_atomic","aora_commit_workspace_state"]);
 requireAll("punch receipts",source.punch,["public.punch_events","primary key (organization_id, event_id)","aora_begin_punch","aora_claim_punch_approval","approval_response_payload"]);
@@ -114,8 +116,8 @@ requireAll("single-pass workspace commit",source.singleProjectionCommit,["create
 forbidAll("single-pass workspace commit",source.singleProjectionCommit,["project_workspace_state"]);
 requireAll("structural action routing",source.pilotWorkspace,["STRUCTURAL_TYPES.has(body.event?.type)","HARDENING_WORKSPACE","CREATE_EMPLOYEE_ACCOUNT","INVITE_MANAGER","TOGGLE_KIOSK_LOCK"]);
 requireAll("legacy manager projection repair",source.pilotWorkspace,["aora_sync_manager_location_access","managerProjectionError","legacy.data?.state"]);
-requireAll("strict manager projection",source.hardeningWorkspace,["manager_location_access","managerLocationIds","kein expliziter Standortzugriff"]);
-forbidAll("strict manager projection",source.hardeningWorkspace,['.eq("slug", WORKSPACE_SLUG)',"ctx.admin.locationIds"]);
+requireAll("strict manager projection",source.finalWorkspaceCore,["manager_location_access","managerLocationIds","kein expliziter Standortzugriff"]);
+forbidAll("strict manager projection",source.finalWorkspaceCore,['.eq("slug", WORKSPACE_SLUG)',"ctx.admin.locationIds"]);
 forbidAll("pilot manager fallback",source.pilotWorkspace,["admin?.locationIds"]);
 forbidAll("rule manager fallback",source.ruleGate,["admin.locationIds"]);
 requireAll("monitoring",source.monitoring,["AORA_SECRET_PATTERN","[REDACTED]","unhandledrejection","reportClientDiagnostic"]);
@@ -125,9 +127,9 @@ requireAll("compliance UI",source.compliance,["Compliance & Korrekturen","reques
 requireAll("mobile correction action",source.complianceCss,["employee-correction-fab","bottom:calc(81px + env(safe-area-inset-bottom,0px))","z-index:60"]);
 requireAll("kiosk manager feedback",source.handlers,["TOGGLE_KIOSK_LOCK","Kiosk-Gerät wurde gesperrt.","Kiosk-Gerät konnte nicht aktualisiert werden."]);
 requireAll("deterministic kiosk lock",source.handlers,["locked:locking","const locking=!Boolean(device.locked)"]);
-requireAll("atomic kiosk lock",source.hardeningWorkspace,['case "TOGGLE_KIOSK_LOCK"','typeof event.locked !== "boolean"',"kiosk.locked","kiosk.unlocked"]);
-requireAll("workspace-bound invitation",source.hardeningWorkspace,['inviteUrl.searchParams.set("workspace", ctx.organization.slug)','inviteUrl.toString()']);
-requireAll("manager kiosk creation",source.hardeningWorkspace,['case "CREATE_KIOSK_DEVICE"','case "ROTATE_KIOSK_ACTIVATION"',"aora_commit_kiosk_activation","activationCode()","kioskActivation"]);
+requireAll("atomic kiosk lock",source.finalWorkspaceStructural,['case "TOGGLE_KIOSK_LOCK"','typeof event.locked !== "boolean"',"kiosk.locked","kiosk.unlocked"]);
+requireAll("workspace-bound invitation",source.finalWorkspaceInvitation,['inviteUrlObject.searchParams.set("workspace", ctx.organization.slug)',"inviteUrlObject.toString()"]);
+requireAll("manager kiosk creation",source.finalWorkspaceStructural,['case "CREATE_KIOSK_DEVICE"','case "ROTATE_KIOSK_ACTIVATION"',"aora_commit_kiosk_activation","activationCode()","kioskActivation"]);
 requireAll("atomic kiosk activation migration",source.kioskActivationMigration,["create or replace function public.aora_commit_kiosk_activation","crypt(p_activation_code, gen_salt('bf'))","update public.app_sessions","revoke all on function public.aora_commit_kiosk_activation","to service_role"]);
 requireAll("relational workforce foundation",source.relationalFoundation,["feature_flags","employee_location_access","shift_series","shift_reservations","task_templates","task_template_items","task_instances","task_assignments","task_answers","push_subscriptions","aora_reserve_open_shift_atomic","aora_verify_relational_backfill","pg_advisory_xact_lock","block_clock_out","legacy-primary-location"]);
 requireAll("relational RLS",source.relationalFoundation,["enable row level security","members read feature flags","members read employee location access","members read shift series","members read shift reservations","members read task templates","members read task instances","members read task assignments","members read task answers"]);
@@ -138,7 +140,7 @@ requireAll("kiosk activation modal",source.modals,["kioskCreateModal","kioskActi
 requireAll("accessible modal lifecycle",source.modals,['role="dialog"','aria-modal="true"','event.key==="Escape"','previousFocus','document.removeEventListener("keydown",onKeydown,true)']);
 requireAll("durable kiosk session restore",source.offline,["restoreOfflineKioskSession","OFFLINE_SESSION_STORE","decryptJson"]);
 requireAll("kiosk and invitation E2E",source.e2e,["CREATE_KIOSK_DEVICE","kioskActivation.activationCode",'searchParams.get("workspace")',"inside/outside geofence enforcement","durationMinutes:505"]);
-forbidAll("single snapshot projection",source.hardeningWorkspace,['service.rpc("project_workspace_state"']);
+forbidAll("single snapshot projection",source.finalWorkspaceStructural,['service.rpc("project_workspace_state"']);
 requireAll("render after action unlock",source.api,["clearPendingPunch(prepared.storageKey);\n    S.busy=false;\n    render();"]);
 forbidAll("legacy polling",source.boot,["setInterval(refreshWorkspace,5000)"]);
 requireAll("security migration",source.security,["revoke all on function public.aora_activate_invitation_atomic","aora_redact_pilot_qa_evidence","[REDACTED]","grant execute on function public.aora_verify_time_entry_chain"]);
