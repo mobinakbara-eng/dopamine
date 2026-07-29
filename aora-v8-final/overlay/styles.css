@@ -46,6 +46,7 @@
 @media(max-width:620px){
   .access-shell{padding:25px 20px 22px}
   .access-portal{min-height:calc(100vh - 47px)}
+  .access-brand{min-height:0}
   .access-brand .aora-logo{width:100px}
   .access-card{margin-top:34px}
   .access-card h2,.access-intro h1{font-size:30px}
