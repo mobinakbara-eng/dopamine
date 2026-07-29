@@ -6,7 +6,7 @@ const env=name=>{const value=process.env[name];if(!value)throw new Error(`Missin
 test("Unified login hides role selection and routes the authenticated account",async({page})=>{
   await page.goto(`/arbeitnehmer/?workspace=${encodeURIComponent(workspace)}`);
 
-  await expect(page.getByRole("heading",{name:"Anmelden"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Willkommen"})).toBeVisible();
   await expect(page.locator(".role-tabs")).toHaveCount(0);
   await expect(page.locator('[data-a="role"]')).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("Mitarbeiter-Zugang");

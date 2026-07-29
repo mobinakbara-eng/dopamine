@@ -4,6 +4,12 @@ let backgroundRefreshRunning=false;
 
 setInterval(()=>{
   document.querySelectorAll("[data-clock]").forEach(node=>{node.textContent=berlin().time});
+  document.querySelectorAll("[data-clock-request-expires]").forEach(node=>{
+    const seconds=Math.max(0,Math.ceil((new Date(node.dataset.clockRequestExpires).getTime()-Date.now())/1000));
+    node.textContent=seconds>0?`noch ${seconds} Sekunden gültig`:"abgelaufen";
+    const approve=node.closest("[data-clock-request-panel]")?.querySelector('[data-a="clock-approve"]');
+    if(approve)approve.disabled=seconds===0;
+  });
 },1000);
 
 async function refreshWorkspace(){
@@ -26,6 +32,16 @@ function invitationCallback(){
   const params=new URLSearchParams(location.search);
   return{invitationId:params.get("invitation"),token:params.get("token")};
 }
+function redirectInvitationToCanonicalOrigin(callback){
+  if(!callback.invitationId||!callback.token||location.origin===CFG.canonicalOrigin)return false;
+  if(location.protocol!=="https:"||!location.hostname.endsWith(".vercel.app"))return false;
+  const target=new URL(location.href);
+  const canonical=new URL(CFG.canonicalOrigin);
+  target.protocol=canonical.protocol;
+  target.host=canonical.host;
+  location.replace(target.toString());
+  return true;
+}
 function clearInvitationCallback(){
   const url=new URL(location.href);
   url.searchParams.delete("invitation");
@@ -39,9 +55,9 @@ async function boot(){
     const accessRole=accessRoleFromPath();
     setAccessRole(accessRole);
     const callback=invitationCallback();
+    if(redirectInvitationToCanonicalOrigin(callback))return;
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
-      clearInvitationCallback();
       renderInvitationSetup(info,callback.invitationId,callback.token);
       return;
     }

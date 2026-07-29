@@ -12,6 +12,7 @@ function invitationDeliveryModal(delivery){
     </div>
     <p class="delivery-copy">Der Link ist einmalig, läuft nach sieben Tagen ab und wird nach der Kontoaktivierung unbrauchbar. Aora speichert nur den Hash des Tokens.</p>
     <div class="field"><label>Einladungslink</label><input class="input mono" id="delivery-link" value="${esc(delivery.inviteUrl)}" readonly></div>
+    <p class="access-note">Aora versendet keine Nachricht im Hintergrund. „E-Mail öffnen“ startet Ihr lokales E-Mail-Programm mit dem vorbereiteten Text; alternativ können Sie den Link sicher kopieren.</p>
     <div class="delivery-actions">
       <a class="btn" href="${esc(invitationMailto(delivery))}">E-Mail öffnen ${I.arrow}</a>
       <button class="btn outline" id="copy-delivery-link">Link kopieren</button>

@@ -147,9 +147,14 @@ async function logout(){
 }
 
 async function loadState(quiet=false){
+  const requestedSessionToken=String(S.session?.token||"");
+  if(!requestedSessionToken)return;
   if(!quiet)renderLoading();
   try{
     const data=await workspace({action:"load"});
+    // A realtime/focus refresh can finish after logout or a second login.
+    // Never let that stale response restore or replace the newer screen/session.
+    if(String(S.session?.token||"")!==requestedSessionToken)return;
     S.state=data.state;
     S.revision=data.revision;
     S.session={...S.session,...data.session,token:S.session.token};
@@ -167,6 +172,7 @@ async function loadState(quiet=false){
     if(menuWasOpen)document.getElementById("aside")?.classList.add("open");
     if(S.accessRole==="kiosk"&&typeof syncOfflinePunchQueue==="function")syncOfflinePunchQueue().catch(()=>{});
   }catch(error){
+    if(String(S.session?.token||"")!==requestedSessionToken)return;
     if(error.status===401||error.status===403){
       const rejectedSession=S.session;
       if(rejectedSession?.role==="kiosk"&&typeof unbindOfflinePunchSession==="function"){

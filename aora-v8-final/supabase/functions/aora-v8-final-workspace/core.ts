@@ -295,10 +295,89 @@ function eventLocationIds(state: any, event: any): string[] {
   return [...values];
 }
 
+function validGeofenceCoordinate(value: number, minimum: number, maximum: number) {
+  return Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+function configuredGeofencePosition(location: any) {
+  const latitude = Number(location?.gps?.lat ?? location?.latitude);
+  const longitude = Number(location?.gps?.lng ?? location?.longitude);
+  if (
+    !validGeofenceCoordinate(latitude, -90, 90) ||
+    !validGeofenceCoordinate(longitude, -180, 180) ||
+    (latitude === 0 && longitude === 0)
+  ) return null;
+  return { latitude, longitude };
+}
+
+function geofenceDistanceMeters(fromLatitude: number, fromLongitude: number, toLatitude: number, toLongitude: number) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const earthRadius = 6_371_000;
+  const latitudeDelta = radians(toLatitude - fromLatitude);
+  const longitudeDelta = radians(toLongitude - fromLongitude);
+  const value = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(fromLatitude)) * Math.cos(radians(toLatitude)) *
+    Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+export function enforceApprovalGeofence(ctx: any, event: any) {
+  if (event?.type !== "APPROVE_CLOCK_REQUEST") return;
+  const request = ctx.state.clockRequests.find((item: any) =>
+    item.id === event.id &&
+    item.employeeId === ctx.session.subject_id &&
+    item.status === "pending"
+  );
+  if (!request) {
+    throw Object.assign(new Error("Die Kiosk-Anfrage ist nicht mehr aktiv."), { status: 409 });
+  }
+  const location = ctx.state.locations.find((item: any) =>
+    item.id === request.locationId && item.active !== false
+  );
+  const configured = configuredGeofencePosition(location);
+  if (!configured) {
+    throw Object.assign(new Error("GPS fuer diesen Laden ist noch nicht eingerichtet. Bitte den Inhaber kontaktieren."), { status: 409 });
+  }
+  const position = event.position || {};
+  const latitude = Number(position.lat);
+  const longitude = Number(position.lng);
+  const accuracy = Number(position.accuracy);
+  const capturedAt = Date.parse(String(position.capturedAt || ""));
+  if (
+    !validGeofenceCoordinate(latitude, -90, 90) ||
+    !validGeofenceCoordinate(longitude, -180, 180) ||
+    !Number.isFinite(accuracy) ||
+    accuracy < 0 ||
+    !Number.isFinite(capturedAt) ||
+    Math.abs(Date.now() - capturedAt) > 120_000
+  ) {
+    throw Object.assign(new Error("Der aktuelle GPS-Standort konnte nicht sicher bestaetigt werden."), { status: 422 });
+  }
+  const maxAccuracy = Math.max(10, Number(ctx.state.settings?.maxGpsAccuracy || 80));
+  if (accuracy > maxAccuracy) {
+    throw Object.assign(new Error(`GPS ist zu ungenau (${Math.round(accuracy)} m).`), { status: 422 });
+  }
+  const radius = Math.min(1000, Math.max(25, Number(
+    location.geofenceRadius || ctx.state.settings?.defaultGeofenceRadius || 100,
+  )));
+  const distance = Math.round(geofenceDistanceMeters(
+    configured.latitude,
+    configured.longitude,
+    latitude,
+    longitude,
+  ));
+  if (distance > radius) {
+    throw Object.assign(new Error(
+      `Ausserhalb des Standorts (${distance} m entfernt, erlaubt: ${Math.round(radius)} m).`,
+    ), { status: 403 });
+  }
+}
+
 export function guardLegacyEvent(ctx: any, event: any) {
   if (!event?.type) {
     throw Object.assign(new Error("Aktion fehlt."), { status: 400 });
   }
+  enforceApprovalGeofence(ctx, event);
   if (ctx.accessRole === "owner" || ctx.accessRole !== "manager") return event;
 
   const blocked = new Set([
@@ -436,11 +515,20 @@ export async function sendInvite(
   invitation: any,
   accessRole: "manager" | "employee",
 ) {
-  const redirectOrigin = origin && allowedOrigin(origin)
-    ? origin
-    : "https://aora-workforce.vercel.app";
+  let redirectOrigin =
+    "https://dopamine-mobins-projects-4f428afa.vercel.app";
+  if (origin && allowedOrigin(origin)) {
+    const parsed = new globalThis.URL(origin);
+    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+      redirectOrigin = parsed.origin;
+    }
+  }
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
-  const redirectTo = `${redirectOrigin}/${route}?email_login=1&invitation=${encodeURIComponent(invitation.id)}`;
+  const redirectUrl = new globalThis.URL(`/${route}`, redirectOrigin);
+  redirectUrl.searchParams.set("workspace", ctx.organization.slug);
+  redirectUrl.searchParams.set("email_login", "1");
+  redirectUrl.searchParams.set("invitation", invitation.id);
+  const redirectTo = redirectUrl.toString();
   const { error } = await service.auth.signInWithOtp({
     email: invitation.email,
     options: { emailRedirectTo: redirectTo, shouldCreateUser: true },

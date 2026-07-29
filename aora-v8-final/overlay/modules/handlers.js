@@ -7,7 +7,15 @@ function secureCurrentPosition(){
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      position=>resolve({lat:position.coords.latitude,lng:position.coords.longitude,accuracy:position.coords.accuracy,capturedAt:new Date(position.timestamp).toISOString()}),
+      position=>{
+        const timestamp=Number(position.timestamp);
+        resolve({
+          lat:position.coords.latitude,
+          lng:position.coords.longitude,
+          accuracy:position.coords.accuracy,
+          capturedAt:new Date(Number.isFinite(timestamp)&&timestamp>0?timestamp:Date.now()).toISOString()
+        });
+      },
       ()=>reject(new Error("Standort konnte nicht bestätigt werden. Bitte Standortzugriff erlauben und erneut versuchen.")),
       {enableHighAccuracy:true,timeout:12000,maximumAge:0}
     );

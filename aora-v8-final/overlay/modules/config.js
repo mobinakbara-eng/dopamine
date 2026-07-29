@@ -33,6 +33,7 @@ function setAccessRole(accessRole){
 }
 const initialAccessRole=accessRoleFromPath();
 const CFG={
+  canonicalOrigin:"https://dopamine-mobins-projects-4f428afa.vercel.app",
   url:"https://xqgkawskftzurbujrpex.supabase.co",
   publishableKey:"sb_publishable_DA_L16_qVM9opFpQcYz16g_kTBwFpKZ",
   slug:selectedWorkspace,

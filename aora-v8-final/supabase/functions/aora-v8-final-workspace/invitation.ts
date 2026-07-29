@@ -4,6 +4,9 @@ import {
 } from "./core.ts";
 import { allowedOrigin } from "./origin.ts";
 
+const CANONICAL_APP_ORIGIN =
+  "https://dopamine-mobins-projects-4f428afa.vercel.app";
+
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
@@ -37,11 +40,19 @@ export async function issueInvitationToken(
     }, { onConflict: "organization_id,invitation_id" });
   if (error) throw error;
 
-  const appOrigin = origin && allowedOrigin(origin)
-    ? origin
-    : "http://localhost:3000";
+  let appOrigin = CANONICAL_APP_ORIGIN;
+  if (origin && allowedOrigin(origin)) {
+    const parsed = new globalThis.URL(origin);
+    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+      appOrigin = parsed.origin;
+    }
+  }
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
-  const inviteUrl = `${appOrigin}/${route}?invitation=${encodeURIComponent(invitation.id)}&token=${encodeURIComponent(token)}`;
+  const inviteUrlObject = new globalThis.URL(`/${route}`, appOrigin);
+  inviteUrlObject.searchParams.set("workspace", ctx.organization.slug);
+  inviteUrlObject.searchParams.set("invitation", invitation.id);
+  inviteUrlObject.searchParams.set("token", token);
+  const inviteUrl = inviteUrlObject.toString();
   const roleLabel = accessRole === "manager" ? "Manager / Arbeitgeber" : "Mitarbeiter";
   const subject = `Einladung zu ${ctx.state.company?.name || "AoraAI Workforce"}`;
   const body = [

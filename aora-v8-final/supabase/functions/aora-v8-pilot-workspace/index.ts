@@ -109,6 +109,61 @@ function allowedLocations(ctx: any) {
   if (ctx.session.location_id) return new Set<string>([String(ctx.session.location_id)]);
   return new Set<string>();
 }
+function validCoordinate(value: number, minimum: number, maximum: number) {
+  return Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+function configuredLocationPosition(location: any) {
+  const latitude = Number(location?.gps?.lat ?? location?.latitude);
+  const longitude = Number(location?.gps?.lng ?? location?.longitude);
+  const valid = validCoordinate(latitude, -90, 90) && validCoordinate(longitude, -180, 180);
+  const configured = location?.gpsConfigured === true || (valid && !(latitude === 0 && longitude === 0));
+  return valid && configured ? { latitude, longitude } : null;
+}
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const earthRadius = 6_371_000;
+  const deltaLat = radians(lat2 - lat1);
+  const deltaLng = radians(lng2 - lng1);
+  const value = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(radians(lat1)) * Math.cos(radians(lat2)) * Math.sin(deltaLng / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+function enforceApprovalGeofence(ctx: any, event: any) {
+  if (event?.type !== "APPROVE_CLOCK_REQUEST") return;
+  const request = ctx.state.clockRequests.find((item: any) =>
+    item.id === event.id && item.employeeId === ctx.session.subject_id && item.status === "pending"
+  );
+  if (!request) throw Object.assign(new Error("Die Kiosk-Anfrage ist nicht mehr aktiv."), { status: 409 });
+  const location = ctx.state.locations.find((item: any) => item.id === request.locationId && item.active !== false);
+  const configured = configuredLocationPosition(location);
+  if (!configured) {
+    throw Object.assign(new Error("GPS für diesen Laden ist noch nicht eingerichtet. Der Inhaber muss den Standort unter „Läden → Bearbeiten“ speichern."), { status: 409 });
+  }
+  const position = event.position || {};
+  const latitude = Number(position.lat);
+  const longitude = Number(position.lng);
+  const accuracy = Number(position.accuracy);
+  const capturedAt = Date.parse(String(position.capturedAt || ""));
+  if (
+    !validCoordinate(latitude, -90, 90) ||
+    !validCoordinate(longitude, -180, 180) ||
+    !Number.isFinite(accuracy) ||
+    accuracy < 0 ||
+    !Number.isFinite(capturedAt) ||
+    Math.abs(Date.now() - capturedAt) > 120_000
+  ) {
+    throw Object.assign(new Error("Der aktuelle GPS-Standort konnte nicht sicher bestätigt werden. Bitte Standortzugriff aktivieren und erneut versuchen."), { status: 422 });
+  }
+  const maxAccuracy = Math.max(10, Number(ctx.state.settings?.maxGpsAccuracy || 80));
+  if (accuracy > maxAccuracy) {
+    throw Object.assign(new Error(`GPS ist zu ungenau (${Math.round(accuracy)} m). Benötigt werden höchstens ${Math.round(maxAccuracy)} m.`), { status: 422 });
+  }
+  const radius = Math.min(1000, Math.max(25, Number(location.geofenceRadius || ctx.state.settings?.defaultGeofenceRadius || 100)));
+  const distance = Math.round(haversineMeters(configured.latitude, configured.longitude, latitude, longitude));
+  if (distance > radius) {
+    throw Object.assign(new Error(`Ausserhalb des Standorts (${distance} m entfernt, erlaubt: ${Math.round(radius)} m).`), { status: 403 });
+  }
+}
 function scopeManagerState(ctx: any, sourceInput: any) {
   const source = normalize(sourceInput);
   if (ctx.accessRole === "owner") return source;
@@ -254,6 +309,7 @@ Deno.serve(async (request: Request) => {
     const ctx = await loadContext(token);
 
     if (body.action === "apply" && ["APPROVE_CLOCK_REQUEST", "DENY_CLOCK_REQUEST"].includes(body.event?.type)) {
+      enforceApprovalGeofence(ctx, body.event);
       const handled = await idempotentDecision(ctx, body, origin);
       if (handled) return handled;
     }

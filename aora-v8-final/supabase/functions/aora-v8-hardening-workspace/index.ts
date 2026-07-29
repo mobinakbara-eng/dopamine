@@ -6,6 +6,7 @@ const URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LEGACY_WORKSPACE = `${URL}/functions/v1/workspace`;
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
+const CANONICAL_APP_ORIGIN = "https://dopamine-mobins-projects-4f428afa.vercel.app";
 const TEAM_PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const MAX_BODY_BYTES = 2_500_000;
 const EXACT_ORIGINS = new Set([
@@ -54,6 +55,98 @@ function activationCode() {
     }
   }
   return value;
+}
+function locationGps(input: any, fallback: any = null) {
+  const latitude = Number(input?.latitude ?? input?.gps?.lat ?? fallback?.gps?.lat ?? fallback?.latitude);
+  const longitude = Number(input?.longitude ?? input?.gps?.lng ?? fallback?.gps?.lng ?? fallback?.longitude);
+  if (
+    !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+    !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+    (latitude === 0 && longitude === 0)
+  ) {
+    throw Object.assign(new Error("Gültige GPS-Koordinaten für den Laden sind erforderlich."), { status: 400 });
+  }
+  return {
+    latitude,
+    longitude,
+    gps: { lat: latitude, lng: longitude },
+    gpsConfigured: true,
+  };
+}
+
+function geofenceCoordinate(value: number, minimum: number, maximum: number) {
+  return Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+function geofenceLocation(location: any) {
+  const latitude = Number(location?.gps?.lat ?? location?.latitude);
+  const longitude = Number(location?.gps?.lng ?? location?.longitude);
+  if (
+    !geofenceCoordinate(latitude, -90, 90) ||
+    !geofenceCoordinate(longitude, -180, 180) ||
+    (latitude === 0 && longitude === 0)
+  ) return null;
+  return { latitude, longitude };
+}
+function geofenceDistance(fromLatitude: number, fromLongitude: number, toLatitude: number, toLongitude: number) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const earthRadius = 6_371_000;
+  const latitudeDelta = radians(toLatitude - fromLatitude);
+  const longitudeDelta = radians(toLongitude - fromLongitude);
+  const value = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(fromLatitude)) * Math.cos(radians(toLatitude)) *
+    Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+function enforceApprovalGeofence(ctx: any, event: any) {
+  if (event?.type !== "APPROVE_CLOCK_REQUEST") return;
+  const clockRequest = ctx.state.clockRequests.find((item: any) =>
+    item.id === event.id &&
+    item.employeeId === ctx.session.subject_id &&
+    item.status === "pending"
+  );
+  if (!clockRequest) {
+    throw Object.assign(new Error("Die Kiosk-Anfrage ist nicht mehr aktiv."), { status: 409 });
+  }
+  const location = ctx.state.locations.find((item: any) =>
+    item.id === clockRequest.locationId && item.active !== false
+  );
+  const configured = geofenceLocation(location);
+  if (!configured) {
+    throw Object.assign(new Error("GPS fuer diesen Laden ist noch nicht eingerichtet. Bitte den Inhaber kontaktieren."), { status: 409 });
+  }
+  const position = event.position || {};
+  const latitude = Number(position.lat);
+  const longitude = Number(position.lng);
+  const accuracy = Number(position.accuracy);
+  const capturedAt = Date.parse(String(position.capturedAt || ""));
+  if (
+    !geofenceCoordinate(latitude, -90, 90) ||
+    !geofenceCoordinate(longitude, -180, 180) ||
+    !Number.isFinite(accuracy) ||
+    accuracy < 0 ||
+    !Number.isFinite(capturedAt) ||
+    Math.abs(Date.now() - capturedAt) > 120_000
+  ) {
+    throw Object.assign(new Error("Der aktuelle GPS-Standort konnte nicht sicher bestaetigt werden."), { status: 422 });
+  }
+  const maxAccuracy = Math.max(10, Number(ctx.state.settings?.maxGpsAccuracy || 80));
+  if (accuracy > maxAccuracy) {
+    throw Object.assign(new Error(`GPS ist zu ungenau (${Math.round(accuracy)} m).`), { status: 422 });
+  }
+  const radius = Math.min(1000, Math.max(25, Number(
+    location.geofenceRadius || ctx.state.settings?.defaultGeofenceRadius || 100,
+  )));
+  const distance = Math.round(geofenceDistance(
+    configured.latitude,
+    configured.longitude,
+    latitude,
+    longitude,
+  ));
+  if (distance > radius) {
+    throw Object.assign(new Error(
+      `Ausserhalb des Standorts (${distance} m entfernt, erlaubt: ${Math.round(radius)} m).`,
+    ), { status: 403 });
+  }
 }
 
 function allowedOrigin(origin: string | null) {
@@ -314,6 +407,18 @@ async function persist(ctx: any, state: any) {
   return revision;
 }
 
+function publicAppOrigin(origin: string | null) {
+  if (origin && allowedOrigin(origin)) {
+    try {
+      const url = new globalThis.URL(origin);
+      if (["localhost", "127.0.0.1"].includes(url.hostname)) return url.origin;
+    } catch {
+      // Fall through to the stable public application origin.
+    }
+  }
+  return CANONICAL_APP_ORIGIN;
+}
+
 async function persistKioskActivation(ctx: any, state: any, activation: any) {
   const changedAt = now();
   const revision = Number(ctx.snapshot.revision) + 1;
@@ -403,7 +508,7 @@ async function issueInvitationToken(ctx: any, invitation: any, accessRole: "mana
   }, { onConflict: "organization_id,invitation_id" });
   if (error) throw error;
 
-  const appOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
+  const appOrigin = publicAppOrigin(origin);
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
   const inviteUrl = new globalThis.URL(`/${route}`, appOrigin);
   inviteUrl.searchParams.set("workspace", ctx.organization.slug);
@@ -461,12 +566,14 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       )) {
         throw Object.assign(new Error("Dieser Laden existiert bereits."), { status: 409 });
       }
+      const gps = locationGps(input);
       const location = {
         id: id("loc"), name, city, address: String(input.address || "").trim(),
         country: String(input.country || "Deutschland").trim(),
         timezone: String(input.timezone || state.company.timezone || "Europe/Berlin"),
         costCenter: String(input.costCenter || "").trim(),
         geofenceRadius: Math.min(1000, Math.max(25, Number(input.geofenceRadius || 100))),
+        ...gps,
         active: true, createdAt: now(), createdBy: ctx.admin.id,
       };
       state.locations.push(location);
@@ -481,6 +588,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       const current = state.locations.find((item: any) => item.id === event.id);
       if (!current) throw Object.assign(new Error("Laden wurde nicht gefunden."), { status: 404 });
       const patch = event.patch || {};
+      const gps = locationGps(patch, current);
       const allowedPatch = {
         name: patch.name == null ? current.name : String(patch.name).trim(),
         city: patch.city == null ? current.city : String(patch.city).trim(),
@@ -489,6 +597,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
         timezone: patch.timezone == null ? current.timezone : String(patch.timezone),
         costCenter: patch.costCenter == null ? current.costCenter : String(patch.costCenter).trim(),
         geofenceRadius: patch.geofenceRadius == null ? current.geofenceRadius : Math.min(1000, Math.max(25, Number(patch.geofenceRadius))),
+        ...gps,
       };
       if (allowedPatch.name.length < 2 || allowedPatch.city.length < 2) {
         throw Object.assign(new Error("Name und Stadt sind erforderlich."), { status: 400 });
@@ -752,7 +861,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
   const { data: finalSnapshot, error: finalError } = await service.from("workspace_snapshots")
     .select("state,revision").eq("organization_id", ctx.organization.id).single();
   if (finalError || !finalSnapshot) throw finalError || new Error("Finaler Snapshot fehlt.");
-  const appOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
+  const appOrigin = publicAppOrigin(origin);
   const kioskUrl = kioskActivation
     ? `${appOrigin}/kiosk/dashboard/?workspace=${encodeURIComponent(ctx.organization.slug)}`
     : null;
@@ -808,6 +917,7 @@ Deno.serve(async (request) => {
     }
     if (body.action !== "apply") return reply({ error: "Unbekannte Aktion." }, 400, origin);
 
+    enforceApprovalGeofence(ctx, body.event);
     if (STRUCTURAL_TYPES.has(body.event?.type)) {
       const data = await applyStructural(ctx, body.event, Number(body.expectedRevision), origin);
       return reply({ ...data, session }, 200, origin);

@@ -1,12 +1,53 @@
 "use strict";
 
 function modal(html){
+  const previousFocus=document.activeElement;
   const backdrop=document.createElement("div");
   backdrop.className="modal-backdrop";
-  backdrop.innerHTML=`<section class="modal">${html}</section>`;
+  backdrop.innerHTML=`<section class="modal" role="dialog" aria-modal="true" tabindex="-1">${html}</section>`;
+  const dialog=backdrop.querySelector(".modal");
+  const nativeRemove=backdrop.remove.bind(backdrop);
+  let closed=false;
+  const focusable=()=>[...dialog.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(node=>!node.hidden&&node.getAttribute("aria-hidden")!=="true");
+  const close=()=>{
+    if(closed)return;
+    closed=true;
+    document.removeEventListener("keydown",onKeydown,true);
+    nativeRemove();
+    if(previousFocus instanceof HTMLElement&&previousFocus.isConnected)previousFocus.focus();
+  };
+  const onKeydown=event=>{
+    if(event.key==="Escape"){
+      event.preventDefault();
+      close();
+      return;
+    }
+    if(event.key!=="Tab")return;
+    const nodes=focusable();
+    if(!nodes.length){
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first=nodes[0],last=nodes[nodes.length-1];
+    if(event.shiftKey&&document.activeElement===first){
+      event.preventDefault();
+      last.focus();
+    }else if(!event.shiftKey&&document.activeElement===last){
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  backdrop.remove=close;
   document.body.appendChild(backdrop);
+  document.addEventListener("keydown",onKeydown,true);
   backdrop.addEventListener("click",event=>{
-    if(event.target===backdrop||event.target.closest('[data-a="close"]'))backdrop.remove();
+    if(event.target===backdrop||event.target.closest('[data-a="close"]'))close();
+  });
+  queueMicrotask(()=>{
+    const target=dialog.querySelector("[autofocus]")||focusable()[0]||dialog;
+    target.focus();
   });
   return backdrop;
 }
@@ -160,6 +201,8 @@ function profileModal(){
 
 function locationModal(location=null){
   const edit=Boolean(location);
+  const savedLatitude=location?.gpsConfigured===true||Number(location?.latitude)||Number(location?.gps?.lat)?Number(location?.gps?.lat??location?.latitude):"";
+  const savedLongitude=location?.gpsConfigured===true||Number(location?.longitude)||Number(location?.gps?.lng)?Number(location?.gps?.lng??location?.longitude):"";
   const backdrop=modal(`${modalHeader("Inhaber",edit?"Laden bearbeiten":"Neuen Laden anlegen")}<form class="form-grid">
     <div class="field full"><label>Name des Ladens</label><input class="input" name="name" value="${esc(location?.name||"")}" required maxlength="80" placeholder="z. B. Maxim Wilmersdorf"></div>
     <div class="field"><label>Stadt</label><input class="input" name="city" value="${esc(location?.city||"Berlin")}" required maxlength="80"></div>
@@ -167,13 +210,36 @@ function locationModal(location=null){
     <div class="field full"><label>Adresse</label><input class="input" name="address" value="${esc(location?.address||"")}" maxlength="160" placeholder="Straße, Hausnummer, PLZ"></div>
     <div class="field"><label>Kostenstelle</label><input class="input" name="costCenter" value="${esc(location?.costCenter||"")}" maxlength="40"></div>
     <div class="field"><label>Geofence-Radius</label><input class="input" name="geofenceRadius" type="number" min="20" max="1000" value="${location?.geofenceRadius||100}"></div>
+    <div class="field"><label>Breitengrad</label><input class="input" name="latitude" type="number" step="any" min="-90" max="90" value="${savedLatitude}" required></div>
+    <div class="field"><label>Längengrad</label><input class="input" name="longitude" type="number" step="any" min="-180" max="180" value="${savedLongitude}" required></div>
+    <div class="field full"><button class="btn outline" type="button" id="capture-geofence-position">Aktuellen Standort dieses Ladens übernehmen</button><small id="geofence-position-status">GPS wird beim Einstempeln gegen diese Position geprüft.</small></div>
     <div class="field full"><label>Zeitzone</label><input class="input" name="timezone" value="${esc(location?.timezone||"Europe/Berlin")}" required></div>
     <div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">${edit?"Änderungen speichern":"Laden anlegen"}</button></div>
   </form>`);
+  backdrop.querySelector("#capture-geofence-position").addEventListener("click",()=>{
+    const button=backdrop.querySelector("#capture-geofence-position");
+    const status=backdrop.querySelector("#geofence-position-status");
+    if(!navigator.geolocation)return toast("Dieses Gerät unterstützt keine Standortbestimmung.","error");
+    button.disabled=true;status.textContent="Standort wird bestimmt …";
+    navigator.geolocation.getCurrentPosition(position=>{
+      backdrop.querySelector('[name="latitude"]').value=String(position.coords.latitude);
+      backdrop.querySelector('[name="longitude"]').value=String(position.coords.longitude);
+      status.textContent=`Standort übernommen · Genauigkeit ca. ${Math.round(position.coords.accuracy)} m`;
+      button.disabled=false;
+    },()=>{
+      status.textContent="Standort konnte nicht bestimmt werden.";
+      button.disabled=false;
+      toast("Bitte Standortzugriff erlauben und erneut versuchen.","error");
+    },{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+  });
   backdrop.querySelector("form").addEventListener("submit",async event=>{
     event.preventDefault();
     const values=Object.fromEntries(new FormData(event.currentTarget));
     values.geofenceRadius=Number(values.geofenceRadius||100);
+    values.latitude=Number(values.latitude);
+    values.longitude=Number(values.longitude);
+    values.gpsConfigured=true;
+    if(!Number.isFinite(values.latitude)||!Number.isFinite(values.longitude)||(values.latitude===0&&values.longitude===0))return toast("Bitte einen gültigen Ladenstandort übernehmen.","error");
     try{
       await apply(edit?{type:"UPDATE_LOCATION",id:location.id,patch:values}:{type:"ADD_LOCATION",location:values});
       backdrop.remove();

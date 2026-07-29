@@ -5,6 +5,58 @@
 .login-success{margin:18px 0 4px;padding:13px 14px;border:1px solid #000;border-radius:12px;background:#f4f4f4;font-size:11px;line-height:1.55}
 .access-divider{display:flex;align-items:center;gap:12px;margin:21px 0 4px;color:#999;font-size:9px;text-transform:uppercase;letter-spacing:.08em}
 .access-divider:before,.access-divider:after{content:"";height:1px;background:#ddd;flex:1}
+.access-shell{min-height:100vh;display:block;background:#fff;color:#000;padding:max(70px,8vh) 24px 28px}
+.access-portal{width:min(520px,100%);min-height:calc(100vh - max(68px,10vh) - 28px);margin:0 auto;display:flex;flex-direction:column}
+.access-brand{background:transparent;color:#000;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px}
+.access-brand .aora-logo{color:#000;width:145px}
+.access-brand .caps{color:#000;font-size:10px;letter-spacing:.22em}
+.access-panel{display:contents}
+.access-card{width:100%;margin:62px 0 0;background:transparent;border-radius:0;padding:0}
+.access-card h2,.access-intro h1{font:700 clamp(31px,4vw,39px)/1.08 var(--display);letter-spacing:-.045em;text-align:center}
+.access-intro p{max-width:500px;margin:12px auto 0;color:#3f3f3f;font-size:15px;line-height:1.55;text-align:center}
+.access-card form{margin-top:30px}
+.access-card .field{margin-top:17px;gap:8px}
+.access-card .field label{font-size:14px}
+.access-card .input,.access-card .select{min-height:60px;border:2px solid #000;border-radius:13px;padding:0 17px;font-size:16px;background:#fff}
+.access-card .input::placeholder{color:#777}
+.access-password-control{position:relative}
+.access-password-control .input{padding-right:58px}
+.access-password-toggle{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:46px;height:46px;border:0;border-radius:10px;background:#fff;color:#000;display:grid;place-items:center}
+.access-password-toggle:hover{background:#f1f1f1}
+.access-password-toggle .material-symbols-rounded{font-size:24px}
+.access-forgot{display:inline-block;margin-top:10px;color:#000;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.access-feedback{min-height:18px;margin:5px 0 -4px;color:#9d1515;font-size:13px;line-height:1.45}
+.access-submit{width:100%;min-height:62px;margin-top:14px;border-radius:999px;font-size:17px}
+.access-submit .icon{margin-left:4px}
+.access-trust{display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start;margin-top:28px;padding-bottom:25px;border-bottom:1px solid #000}
+.access-trust .material-symbols-rounded{font-size:27px}
+.access-trust p{font-size:13px;line-height:1.55;color:#303030}
+.access-secondary{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-top:23px}
+.access-links{display:flex;align-items:center;gap:13px;font-size:13px}
+.access-links a{color:#000;text-decoration:none}
+.access-links a:hover{text-decoration:underline;text-underline-offset:3px}
+.access-secondary .btn{min-height:50px;white-space:nowrap}
+.access-secondary .material-symbols-rounded{font-size:20px}
+.access-footer{margin-top:auto;padding-top:54px;text-align:center;color:#555;font-size:11px}
+.access-empty-state{margin-top:28px;border:1px solid #000;border-radius:14px;padding:24px;text-align:center}
+.access-empty-state>.material-symbols-rounded{font-size:34px}
+.access-empty-state strong{display:block;margin-top:10px;font-size:15px}
+.access-empty-state p{margin-top:7px;color:#555;font-size:13px;line-height:1.55}
+.access-card .login-success{font-size:13px;margin-top:22px}
+@media(max-width:620px){
+  .access-shell{padding:25px 20px 22px}
+  .access-portal{min-height:calc(100vh - 47px)}
+  .access-brand{min-height:0}
+  .access-brand .aora-logo{width:100px}
+  .access-card{margin-top:34px}
+  .access-card h2,.access-intro h1{font-size:30px}
+  .access-intro p{font-size:14px}
+  .access-card .input,.access-card .select{min-height:56px}
+  .access-submit{min-height:56px}
+  .access-secondary{align-items:stretch;flex-direction:column}
+  .access-secondary .btn{width:100%}
+  .access-footer{padding-top:40px}
+}
 .owner-hero{background:#000;color:#fff;border-radius:20px;padding:31px;display:flex;align-items:flex-end;justify-content:space-between;gap:30px;margin-bottom:18px}
 .owner-hero h1{font:700 clamp(29px,3vw,48px)/1 var(--display);letter-spacing:-.05em;max-width:700px;margin-top:12px}
 .owner-hero p{color:#aaa;font-size:12px;line-height:1.7;max-width:650px;margin-top:14px}

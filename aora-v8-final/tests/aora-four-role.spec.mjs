@@ -45,11 +45,20 @@ async function triggerAccessRejection(page,action,expectedStatus,trigger){
   return body;
 }
 async function triggerWorkspaceEvent(page,eventType,trigger){
+  const {response,body}=await observeWorkspaceEvent(page,eventType,trigger);
+  if(response.status()!==200)throw new Error(`Workspace ${eventType} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return body;
+}
+async function observeWorkspaceEvent(page,eventType,trigger){
   const responsePromise=page.waitForResponse(response=>isWorkspaceEvent(response.request(),eventType),{timeout:30000});
   await trigger();
   const response=await responsePromise;
   const body=await response.json().catch(()=>({}));
-  if(response.status()!==200)throw new Error(`Workspace ${eventType} HTTP ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
+  return{response,body};
+}
+async function triggerWorkspaceRejection(page,eventType,expectedStatus,trigger){
+  const {response,body}=await observeWorkspaceEvent(page,eventType,trigger);
+  if(response.status()!==expectedStatus)throw new Error(`Workspace ${eventType} expected HTTP ${expectedStatus}, received ${response.status()}: ${String(body?.error||"unknown error").slice(0,300)}`);
   return body;
 }
 async function observeComplianceAction(page,action,trigger){
@@ -104,9 +113,12 @@ async function openAndCloseModal(page,selector,heading){
   await button.click();
   const modal=page.locator(".modal-backdrop .modal").last();
   await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute("role","dialog");
+  await expect(modal).toHaveAttribute("aria-modal","true");
   if(heading)await expect(modal).toContainText(heading);
-  await modal.locator('[data-a="close"]').first().click();
+  await page.keyboard.press("Escape");
   await expect(modal).toBeHidden();
+  await expect(button).toBeFocused();
 }
 async function downloadComplianceExport(page,format){
   const downloadPromise=page.waitForEvent("download",{timeout:30000});
@@ -120,7 +132,7 @@ async function downloadComplianceExport(page,format){
 test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
   test.beforeAll(()=>env("AORA_WORKSPACE_SLUG"));
 
-  test("Owner: every navigation view, responsive shell, modals, exports and verified backup",async({page})=>{
+  test("Owner: every navigation view, responsive shell, modals, exports and verified backup",async({page,browser,baseURL})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"owner",env("AORA_OWNER_EMAIL"),env("AORA_OWNER_PASSWORD"));
     const views=await visitAdminViews(page);
@@ -138,6 +150,14 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     expect(generatedInvite.searchParams.get("workspace")).toBe(workspace);
     expect(generatedInvite.pathname).toBe("/arbeitgeber/");
     await expect(page.locator("#delivery-link")).toHaveValue(inviteResult.delivery.inviteUrl);
+    const inviteContext=await browser.newContext();
+    const generatedInvitePage=await inviteContext.newPage();
+    const localGeneratedInvite=new URL(`${generatedInvite.pathname}${generatedInvite.search}`,baseURL).toString();
+    await generatedInvitePage.goto(localGeneratedInvite);
+    await expect(generatedInvitePage.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible({timeout:30000});
+    await generatedInvitePage.reload();
+    await expect(generatedInvitePage.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible({timeout:30000});
+    await inviteContext.close();
     await page.locator(".modal-backdrop .modal").last().locator('[data-a="close"]').first().click();
     const options=page.locator("#loc-select option");
     if(await options.count()>1){const first=await options.nth(0).getAttribute("value");const second=await options.nth(1).getAttribute("value");await page.locator("#loc-select").selectOption(second);await expect(page.locator("#loc-select")).toHaveValue(second);await page.locator("#loc-select").selectOption(first)}
@@ -224,16 +244,44 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await manager.locator('.admin-nav [data-view="leave"]').click();
     const leaveRow=manager.locator(".leave-row").filter({hasText:futureStart}).first();await expect(leaveRow).toBeVisible();await leaveRow.locator('[data-decision="approved"]').click();await expect.poll(()=>manager.locator(".leave-row").filter({hasText:futureStart}).first().innerText(),{timeout:30000}).toContain("approved");
     await manager.locator('.admin-nav [data-view="compliance"]').click();await expect(manager.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
-    const correctionRow=manager.locator(".compliance-row").filter({hasText:correctionReason()}).first();await expect(correctionRow).toBeVisible();manager.once("dialog",dialog=>dialog.accept("Agent QA approved"));await correctionRow.locator('[data-decision="approved"]').click();await expect.poll(()=>manager.locator(".compliance-row").filter({hasText:correctionReason()}).first().innerText(),{timeout:30000}).toContain("Genehmigt");
+    const correctionRow=manager.locator(".compliance-row").filter({hasText:correctionReason()}).first();await expect(correctionRow).toBeVisible();manager.once("dialog",dialog=>dialog.accept("Agent QA approved"));await observeComplianceAction(manager,"decideCorrection",()=>correctionRow.locator('[data-decision="approved"]').click());await expect.poll(()=>manager.locator(".compliance-row").filter({hasText:correctionReason()}).first().innerText(),{timeout:30000}).toContain("Genehmigt");
+    await expect.poll(()=>manager.evaluate(()=>{const entry=(S.state.timeEntries||[]).find(item=>item.end);return{breakMinutes:entry?.breakMinutes,durationMinutes:entry?.durationMinutes}}),{timeout:30000}).toEqual({breakMinutes:5,durationMinutes:505});
     expect(managerErrors()).toEqual([]);await context.close();
   });
 
-  test("Kiosk: online shell, encrypted offline queue and online resync",async({page,context})=>{
+  test("Kiosk: encrypted offline queue, resync and inside/outside geofence enforcement",async({page,context,browser})=>{
     await page.setViewportSize({width:1024,height:768});const getErrors=diagnostics(page,{allowOffline:true});
     await kioskLogin(page);await assertHealthy(page);await assertNoHorizontalOverflow(page);
     const people=page.locator('[data-a="select-person"]');await expect(people.first()).toBeVisible();await people.first().click();await context.setOffline(true);await page.locator('[data-a="transition"]').first().click();
     await expect.poll(()=>page.evaluate(()=>inspectOfflineQueue()),{timeout:15000}).toEqual(expect.arrayContaining([expect.objectContaining({status:"pending",hasCiphertext:true,hasPlaintextPayload:false})]));
     await context.setOffline(false);await page.evaluate(()=>syncOfflinePunchQueue());await expect.poll(()=>page.evaluate(()=>inspectOfflineQueue()),{timeout:30000}).toEqual([]);
+
+    const employeeContext=await browser.newContext({permissions:["geolocation"],geolocation:{latitude:52.52,longitude:13.405,accuracy:20}});
+    const employee=await employeeContext.newPage();const employeeErrors=diagnostics(employee);
+    await passwordLogin(employee,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
+    await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
+    const clockIn=await triggerWorkspaceEvent(employee,"APPROVE_CLOCK_REQUEST",()=>employee.locator('[data-a="clock-approve"]').click());
+    const approvedIn=clockIn.state.clockRequests.find(item=>item.status==="approved");
+    expect(approvedIn?.verification?.result).toBe("passed");
+    expect(clockIn.state.timeEntries.some(item=>item.status==="live"&&item.source==="secure_kiosk")).toBe(true);
+
+    await page.reload();await expect(page.locator(".kiosk-app")).toBeVisible({timeout:30000});
+    await page.locator('[data-a="select-person"]').first().click();
+    await page.locator('[data-a="transition"][data-target="pause"]').click();
+    await employee.reload();await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
+    await employeeContext.setGeolocation({latitude:52.62,longitude:13.405,accuracy:20});
+    const outside=await triggerWorkspaceRejection(employee,"APPROVE_CLOCK_REQUEST",403,()=>employee.locator('[data-a="clock-approve"]').click());
+    expect(String(outside.error||"")).toContain("Ausserhalb des Standorts");
+    await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible();
+
+    await employeeContext.setGeolocation({latitude:52.52,longitude:13.405,accuracy:20});
+    const pause=await triggerWorkspaceEvent(employee,"APPROVE_CLOCK_REQUEST",()=>employee.locator('[data-a="clock-approve"]').click());
+    expect(pause.state.timeEntries.some(item=>item.status==="paused")).toBe(true);
+    expect(employeeErrors().filter(item=>
+      !item.includes("console:Failed to load resource: the server responded with a status of 403")&&
+      !(item.includes("network:net::ERR_ABORTED:")&&item.includes("/functions/v1/aora-v8-pilot-workspace-rules"))
+    )).toEqual([]);
+    await employeeContext.close();
     expect(getErrors().filter(item=>!item.includes("ERR_INTERNET_DISCONNECTED"))).toEqual([]);
   });
 

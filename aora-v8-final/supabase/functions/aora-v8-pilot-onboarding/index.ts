@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const APP_URL = Deno.env.get("AORA_APP_URL") || "https://aora-v8-hardening.vercel.app";
+const APP_URL = "https://dopamine-mobins-projects-4f428afa.vercel.app";
 const service = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
 const PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
@@ -109,6 +109,13 @@ Deno.serve(async (request: Request) => {
     if (managerName.length < 2) fail("Managername fehlt.");
 
     const radius = Math.max(20, Math.min(1000, Number(location.geofenceRadius || 100)));
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+    if (
+      !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+      (latitude === 0 && longitude === 0)
+    ) fail("Gültige GPS-Koordinaten für den Standort sind erforderlich.");
     const organizationSlug = `${slugify(companyName)}-${randomHex(3)}`;
     const part = randomHex(4);
     const locationId = `loc_${part}`;
@@ -125,7 +132,12 @@ Deno.serve(async (request: Request) => {
       company: { name: companyName, businessType: clean(company.businessType, 80), billingEmail, timezone, language, address: company.address || {} },
       settings: { timezone, language, maxDailyMinutes: 600, requiredBreakMinutes: 30, geofenceRadius: radius },
       meta: { variant: "aora-8.1.0-pilot", tenantSource: "session", revision: 1, createdAt: now },
-      locations: [{ id: locationId, name: locationName, city: clean(location.city, 80), address: location.address || {}, costCenter: clean(location.costCenter, 60), openingHours: location.openingHours || {}, gps: { lat: Number(location.latitude || 0), lng: Number(location.longitude || 0) }, geofenceRadius: radius, active: true }],
+      locations: [{
+        id: locationId, name: locationName, city: clean(location.city, 80), address: location.address || {},
+        costCenter: clean(location.costCenter, 60), openingHours: location.openingHours || {},
+        latitude, longitude, gps: { lat: latitude, lng: longitude }, gpsConfigured: true,
+        geofenceRadius: radius, active: true,
+      }],
       admins: [{ id: managerId, name: managerName, email: managerEmail, role: "Manager", scope: "manager", locationIds: [locationId], active: true, status: "pending", createdAt: now }],
       employees: [],
       kioskDevices: [{ id: deviceId, name: clean(kiosk.name || "Kiosk 1", 120), locationId, active: true, locked: false, activationCodeHash: await sha256(activationCode), activationVersion: 1, createdAt: now }],
