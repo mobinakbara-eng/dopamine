@@ -144,7 +144,7 @@ forbidAll("single snapshot projection",source.finalWorkspaceStructural,['service
 requireAll("render after action unlock",source.api,["clearPendingPunch(prepared.storageKey);\n    S.busy=false;\n    render();"]);
 forbidAll("legacy polling",source.boot,["setInterval(refreshWorkspace,5000)"]);
 requireAll("security migration",source.security,["revoke all on function public.aora_activate_invitation_atomic","aora_redact_pilot_qa_evidence","[REDACTED]","grant execute on function public.aora_verify_time_entry_chain"]);
-requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercontent.com","aora-staging-ci","agent/aora-unified-production","agent/aora-relational-foundation","agent/aora-access-hardening","agent/aora-workforce-features",'ALLOWED_BASES=new Set(["agent/aora-v8-final","main"])',"aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant"]);
+requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercontent.com","aora-staging-ci","agent/aora-unified-production","agent/aora-relational-foundation","agent/aora-access-hardening","agent/aora-workforce-features","const ALLOWED_BASES=new Set([","aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant"]);
 requireAll("OIDC CI migration",source.ciMigration,["aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant","github-oidc-ci","grant execute on function public.aora_bootstrap_ci_tenant"]);
 requireAll("OIDC workflow",source.ciWorkflow,["id-token: write","ACTIONS_ID_TOKEN_REQUEST_URL","audience=aora-staging-ci","::add-mask::","Cleanup isolated staging tenant","AORA_INVITATION_URL","playwright-report.json"]);
 forbidAll("stored CI secrets",source.ciWorkflow,["secrets.AORA_OWNER","secrets.AORA_MANAGER","secrets.AORA_EMPLOYEE","secrets.AORA_KIOSK","secrets.AORA_ONBOARDING"]);
