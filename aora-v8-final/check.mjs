@@ -114,6 +114,8 @@ requireAll("production foreign-key indexes",source.productionIndexes,["billing_e
 requireAll("durable manager projection",source.managerProjection,["not exists (","access_row.manager_id","access_row.location_id","on conflict(organization_id,manager_id,location_id) do update"]);
 requireAll("single-pass workspace commit",source.singleProjectionCommit,["create or replace function public.aora_commit_workspace_state","update public.workspace_snapshots","aora_record_workspace_event"]);
 forbidAll("single-pass workspace commit",source.singleProjectionCommit,["project_workspace_state"]);
+requireAll("canonical single-pass workspace write",source.finalWorkspaceCore,["aora_commit_workspace_state","p_expected_revision:","p_event_type: eventType"]);
+forbidAll("canonical single-pass workspace write",source.finalWorkspaceCore,['service.rpc("project_workspace_state"']);
 requireAll("structural action routing",source.pilotWorkspace,["STRUCTURAL_TYPES.has(body.event?.type)","HARDENING_WORKSPACE","CREATE_EMPLOYEE_ACCOUNT","INVITE_MANAGER","TOGGLE_KIOSK_LOCK"]);
 requireAll("legacy manager projection repair",source.pilotWorkspace,["aora_sync_manager_location_access","managerProjectionError","legacy.data?.state"]);
 requireAll("strict manager projection",source.finalWorkspaceCore,["manager_location_access","managerLocationIds","kein expliziter Standortzugriff"]);

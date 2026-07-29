@@ -462,7 +462,12 @@ export async function callLegacy(body: any) {
   return data;
 }
 
-export async function persist(ctx: any, state: any) {
+export async function persist(
+  ctx: any,
+  state: any,
+  eventType = "WORKSPACE_UPDATE",
+  eventPayload: any = {},
+) {
   const changedAt = now();
   const revision = Number(ctx.snapshot.revision) + 1;
   state.meta = {
@@ -472,30 +477,24 @@ export async function persist(ctx: any, state: any) {
     variant: "isolated-v8-final",
   };
 
-  const { data: updated, error: updateError } = await service
-    .from("workspace_snapshots")
-    .update({ state, revision, updated_at: changedAt })
-    .eq("organization_id", ctx.organization.id)
-    .eq("revision", ctx.snapshot.revision)
-    .select("revision")
-    .maybeSingle();
-  if (updateError || !updated) {
-    throw Object.assign(
-      new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."),
-      { status: 409 },
-    );
-  }
-
-  const { error: projectionError } = await service.rpc("project_workspace_state", {
+  const { data: committedRevision, error: commitError } = await service.rpc("aora_commit_workspace_state", {
     p_organization_id: ctx.organization.id,
+    p_expected_revision: Number(ctx.snapshot.revision),
     p_state: state,
+    p_actor_role: ctx.accessRole,
+    p_actor_id: ctx.admin?.id || ctx.session.subject_id,
+    p_event_type: eventType,
+    p_event_payload: eventPayload && typeof eventPayload === "object" ? eventPayload : {},
   });
-  if (projectionError) throw projectionError;
-  await service.from("workspace_changes").upsert({
-    organization_id: ctx.organization.id,
-    revision,
-    changed_at: changedAt,
-  });
+  if (commitError || Number(committedRevision) !== revision) {
+    if (String(commitError?.message || "").includes("revision_conflict")) {
+      throw Object.assign(
+        new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."),
+        { status: 409 },
+      );
+    }
+    throw commitError || new Error("Workspace konnte nicht gespeichert werden.");
+  }
   return revision;
 }
 

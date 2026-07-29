@@ -703,7 +703,7 @@ export async function applyStructural(
 
   const revision = kioskActivation
     ? await persistKioskActivation(ctx, state, kioskActivation)
-    : await persist(ctx, state);
+    : await persist(ctx, state, event.type, event);
   if (revokeTokenId) await revokeInvitationToken(ctx, revokeTokenId);
   const delivery = invitation && inviteRole
     ? await issueInvitationToken(
