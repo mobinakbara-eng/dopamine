@@ -5,7 +5,7 @@ accessShell=function(card){
     <main class="access-portal">
       <header class="access-brand">${logo}<div class="caps">AoraAI Workforce</div></header>
       <section class="access-card">${card}</section>
-      <footer class="access-footer">© ${new Date().getFullYear()} AoraAI · Sichere Workforce-Anmeldung</footer>
+      <footer class="access-footer">© ${new Date().getFullYear()} AoraAI. Alle Rechte vorbehalten.</footer>
     </main>
   </div>`;
 };
@@ -73,16 +73,17 @@ renderLogin=function(message=""){
   }
 
   app.innerHTML=accessShell(`
-    <div class="access-intro"><h1>Willkommen</h1><p>Mit Ihren Zugangsdaten öffnen wir automatisch den richtigen Arbeitsbereich.</p></div>
+    <div class="access-intro"><h1>Willkommen</h1><p>Melden Sie sich bei Ihrem AoraAI Workforce Konto an.</p></div>
     ${message?`<div class="login-success">${esc(message)}</div>`:""}
     <form id="password-login" aria-describedby="password-login-feedback">
       <div class="field"><label>E-Mail-Adresse</label><input class="input" name="email" type="email" inputmode="email" autocomplete="email" required placeholder="name@firma.de" autofocus></div>
       <div class="field"><label>Passwort</label><div class="access-password-control"><input class="input" name="password" type="password" autocomplete="current-password" required minlength="10"><button type="button" class="access-password-toggle" aria-label="Passwort anzeigen" aria-pressed="false"><span class="material-symbols-rounded" aria-hidden="true">visibility</span></button></div></div>
+      <a class="access-forgot" href="mailto:mobinakbara@gmail.com?subject=AoraAI%20Passwort%20zur%C3%BCcksetzen">Passwort vergessen?</a>
       <p class="access-feedback" id="password-login-feedback" role="status" aria-live="polite"></p>
       <button class="btn access-submit" type="submit">Anmelden ${I.arrow}</button>
     </form>
     <div class="access-trust"><span class="material-symbols-rounded" aria-hidden="true">verified_user</span><p>Automatische Rollenweiterleitung nach erfolgreicher Anmeldung. Ihre Sitzung wird sicher und nur in diesem Browser-Tab gespeichert.</p></div>
-    <div class="access-secondary"><span>Gemeinsam genutztes Gerät?</span><a class="btn outline" href="${esc(accessPath("kiosk"))}">Kiosk aktivieren <span class="material-symbols-rounded" aria-hidden="true">desktop_windows</span></a></div>`);
+    <div class="access-secondary"><nav class="access-links" aria-label="Hilfe"><a href="mailto:mobinakbara@gmail.com?subject=AoraAI%20Support">Support</a><span aria-hidden="true">|</span><a href="mailto:mobinakbara@gmail.com?subject=AoraAI%20Datenschutz">Datenschutz</a></nav><a class="btn outline" href="${esc(accessPath("kiosk"))}">Kiosk aktivieren <span class="material-symbols-rounded" aria-hidden="true">desktop_windows</span></a></div>`);
 
   document.querySelector(".access-password-toggle")?.addEventListener("click",event=>{
     const button=event.currentTarget;
