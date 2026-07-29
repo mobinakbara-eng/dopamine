@@ -161,7 +161,7 @@ function enforceApprovalGeofence(ctx: any, event: any) {
   const radius = Math.min(1000, Math.max(25, Number(location.geofenceRadius || ctx.state.settings?.defaultGeofenceRadius || 100)));
   const distance = Math.round(haversineMeters(configured.latitude, configured.longitude, latitude, longitude));
   if (distance > radius) {
-    throw Object.assign(new Error(`Außerhalb des Standorts (${distance} m entfernt, erlaubt: ${Math.round(radius)} m).`), { status: 403 });
+    throw Object.assign(new Error(`Ausserhalb des Standorts (${distance} m entfernt, erlaubt: ${Math.round(radius)} m).`), { status: 403 });
   }
 }
 function scopeManagerState(ctx: any, sourceInput: any) {

@@ -260,7 +260,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await employee.reload();await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
     await employeeContext.setGeolocation({latitude:52.62,longitude:13.405,accuracy:20});
     const outside=await triggerWorkspaceRejection(employee,"APPROVE_CLOCK_REQUEST",403,()=>employee.locator('[data-a="clock-approve"]').click());
-    expect(String(outside.error||"")).toContain("Außerhalb des Standorts");
+    expect(String(outside.error||"")).toContain("Ausserhalb des Standorts");
     await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible();
 
     await employeeContext.setGeolocation({latitude:52.52,longitude:13.405,accuracy:20});
