@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const APP_URL = Deno.env.get("AORA_APP_URL") || "https://aora-v8-hardening.vercel.app";
+const APP_URL = "https://dopamine-mobins-projects-4f428afa.vercel.app";
 const service = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
 const PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";

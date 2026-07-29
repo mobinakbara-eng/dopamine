@@ -6,6 +6,7 @@ const URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LEGACY_WORKSPACE = `${URL}/functions/v1/workspace`;
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
+const CANONICAL_APP_ORIGIN = "https://dopamine-mobins-projects-4f428afa.vercel.app";
 const TEAM_PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const MAX_BODY_BYTES = 2_500_000;
 const EXACT_ORIGINS = new Set([
@@ -406,6 +407,18 @@ async function persist(ctx: any, state: any) {
   return revision;
 }
 
+function publicAppOrigin(origin: string | null) {
+  if (origin && allowedOrigin(origin)) {
+    try {
+      const url = new globalThis.URL(origin);
+      if (["localhost", "127.0.0.1"].includes(url.hostname)) return url.origin;
+    } catch {
+      // Fall through to the stable public application origin.
+    }
+  }
+  return CANONICAL_APP_ORIGIN;
+}
+
 async function persistKioskActivation(ctx: any, state: any, activation: any) {
   const changedAt = now();
   const revision = Number(ctx.snapshot.revision) + 1;
@@ -495,7 +508,7 @@ async function issueInvitationToken(ctx: any, invitation: any, accessRole: "mana
   }, { onConflict: "organization_id,invitation_id" });
   if (error) throw error;
 
-  const appOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
+  const appOrigin = publicAppOrigin(origin);
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
   const inviteUrl = new globalThis.URL(`/${route}`, appOrigin);
   inviteUrl.searchParams.set("workspace", ctx.organization.slug);
@@ -848,7 +861,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
   const { data: finalSnapshot, error: finalError } = await service.from("workspace_snapshots")
     .select("state,revision").eq("organization_id", ctx.organization.id).single();
   if (finalError || !finalSnapshot) throw finalError || new Error("Finaler Snapshot fehlt.");
-  const appOrigin = origin && allowedOrigin(origin) ? origin : DEFAULT_ORIGIN;
+  const appOrigin = publicAppOrigin(origin);
   const kioskUrl = kioskActivation
     ? `${appOrigin}/kiosk/dashboard/?workspace=${encodeURIComponent(ctx.organization.slug)}`
     : null;

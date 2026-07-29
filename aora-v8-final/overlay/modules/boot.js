@@ -32,6 +32,16 @@ function invitationCallback(){
   const params=new URLSearchParams(location.search);
   return{invitationId:params.get("invitation"),token:params.get("token")};
 }
+function redirectInvitationToCanonicalOrigin(callback){
+  if(!callback.invitationId||!callback.token||location.origin===CFG.canonicalOrigin)return false;
+  if(location.protocol!=="https:"||!location.hostname.endsWith(".vercel.app"))return false;
+  const target=new URL(location.href);
+  const canonical=new URL(CFG.canonicalOrigin);
+  target.protocol=canonical.protocol;
+  target.host=canonical.host;
+  location.replace(target.toString());
+  return true;
+}
 function clearInvitationCallback(){
   const url=new URL(location.href);
   url.searchParams.delete("invitation");
@@ -45,6 +55,7 @@ async function boot(){
     const accessRole=accessRoleFromPath();
     setAccessRole(accessRole);
     const callback=invitationCallback();
+    if(redirectInvitationToCanonicalOrigin(callback))return;
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
       renderInvitationSetup(info,callback.invitationId,callback.token);

@@ -18,10 +18,10 @@ const required=[
 ];
 for(const path of required)await exists(path);
 const index=await readFile(resolve(dist,"index.html"),"utf8");
-requireAll("index",index,["styles.css?v=819","offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","modules/config.js?v=814","modules/realtime.js?v=814","modules/runtime-hardening.js?v=818","modules/accessibility-hardening.js?v=817","modules/monitoring.js?v=813","modules/compliance.js?v=813","modules/offline-punch.js?v=818","modules/api.js?v=820","modules/unified-login.js?v=819","modules/employee-hardening.js?v=819","modules/modals.js?v=819","modules/invitation-delivery.js?v=819","modules/boot.js?v=819"]);
+requireAll("index",index,["styles.css?v=819","offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","modules/config.js?v=821","modules/realtime.js?v=814","modules/runtime-hardening.js?v=818","modules/accessibility-hardening.js?v=817","modules/monitoring.js?v=813","modules/compliance.js?v=813","modules/offline-punch.js?v=818","modules/api.js?v=820","modules/unified-login.js?v=819","modules/employee-hardening.js?v=819","modules/modals.js?v=819","modules/invitation-delivery.js?v=819","modules/boot.js?v=821"]);
 for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){const shell=await readFile(resolve(dist,route,"index.html"),"utf8");if(shell!==index)throw new Error(`Route shell differs: ${route}`)}
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
-requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','workspaceFunction:"aora-v8-pilot-workspace-rules"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','complianceFunction:"aora-v8-pilot-compliance"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
+requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"','canonicalOrigin:"https://dopamine-mobins-projects-4f428afa.vercel.app"','workspaceFunction:"aora-v8-pilot-workspace-rules"','kioskWorkspaceFunction:"aora-v8-pilot-kiosk"','complianceFunction:"aora-v8-pilot-compliance"','realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast"','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
 const api=await readFile(resolve(dist,"modules/api.js"),"utf8");
 requireAll("API",api,["preparePunchEvent","enqueueOfflinePunch","resolveOfflinePunch","idempotentReplay","text/plain;charset=UTF-8"]);
 const offline=await readFile(resolve(dist,"modules/offline-punch.js"),"utf8");

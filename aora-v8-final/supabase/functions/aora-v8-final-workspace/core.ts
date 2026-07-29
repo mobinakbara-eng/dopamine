@@ -515,11 +515,20 @@ export async function sendInvite(
   invitation: any,
   accessRole: "manager" | "employee",
 ) {
-  const redirectOrigin = origin && allowedOrigin(origin)
-    ? origin
-    : "https://aora-workforce.vercel.app";
+  let redirectOrigin =
+    "https://dopamine-mobins-projects-4f428afa.vercel.app";
+  if (origin && allowedOrigin(origin)) {
+    const parsed = new globalThis.URL(origin);
+    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+      redirectOrigin = parsed.origin;
+    }
+  }
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
-  const redirectTo = `${redirectOrigin}/${route}?email_login=1&invitation=${encodeURIComponent(invitation.id)}`;
+  const redirectUrl = new globalThis.URL(`/${route}`, redirectOrigin);
+  redirectUrl.searchParams.set("workspace", ctx.organization.slug);
+  redirectUrl.searchParams.set("email_login", "1");
+  redirectUrl.searchParams.set("invitation", invitation.id);
+  const redirectTo = redirectUrl.toString();
   const { error } = await service.auth.signInWithOtp({
     email: invitation.email,
     options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
