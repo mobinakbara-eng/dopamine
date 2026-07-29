@@ -22,6 +22,10 @@ test("WCAG runtime hardening labels forms, dialogs, focus and responsive navigat
   await page.keyboard.press("Tab");
   await expect(password).toBeFocused();
   await page.keyboard.press("Tab");
+  await expect(page.locator(".access-password-toggle")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".access-forgot")).toBeFocused();
+  await page.keyboard.press("Tab");
   const submit=page.locator('#password-login button[type="submit"]');
   await expect(submit).toBeFocused();
   const focusStyle=await submit.evaluate(node=>getComputedStyle(node).outlineStyle);
