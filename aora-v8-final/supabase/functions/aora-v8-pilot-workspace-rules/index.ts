@@ -14,6 +14,8 @@ const EXACT_ORIGINS = new Set([
 ]);
 const SHIFT_EVENTS = new Set(["ADD_SHIFT", "UPDATE_SHIFT"]);
 const service = createClient(URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+const RULE_SUMMARY_TTL_MS = 15_000;
+const ruleSummaryCache = new Map<string, { expiresAt: number; value: Promise<any> }>();
 
 function allowedOrigin(origin: string | null) {
   if (!origin) return true;
@@ -127,10 +129,28 @@ async function loadContext(token: string) {
   return { token, session, organization, snapshot, state, admin, accessRole, managerLocations };
 }
 async function workRuleSummary(organizationId: string) {
-  const { data: set } = await service.from("work_rule_sets").select("id,name,version,effective_from,effective_to,timezone").eq("organization_id", organizationId).eq("active", true).order("version", { ascending: false }).limit(1).maybeSingle();
-  if (!set) return null;
-  const { data: rules } = await service.from("work_rules").select("rule_type,threshold_minutes,severity,parameters").eq("rule_set_id", set.id).eq("active", true).order("rule_type");
-  return { ...set, rules: rules || [] };
+  const now = Date.now();
+  const cached = ruleSummaryCache.get(organizationId);
+  if (cached && cached.expiresAt > now) return await cached.value;
+  if (ruleSummaryCache.size >= 100) {
+    const oldestKey = ruleSummaryCache.keys().next().value;
+    if (oldestKey) ruleSummaryCache.delete(oldestKey);
+  }
+  const value = (async () => {
+    const { data: set, error: setError } = await service.from("work_rule_sets").select("id,name,version,effective_from,effective_to,timezone").eq("organization_id", organizationId).eq("active", true).order("version", { ascending: false }).limit(1).maybeSingle();
+    if (setError) throw setError;
+    if (!set) return null;
+    const { data: rules, error: rulesError } = await service.from("work_rules").select("rule_type,threshold_minutes,severity,parameters").eq("rule_set_id", set.id).eq("active", true).order("rule_type");
+    if (rulesError) throw rulesError;
+    return { ...set, rules: rules || [] };
+  })();
+  ruleSummaryCache.set(organizationId, { expiresAt: now + RULE_SUMMARY_TTL_MS, value });
+  try {
+    return await value;
+  } catch (error) {
+    ruleSummaryCache.delete(organizationId);
+    throw error;
+  }
 }
 function normalizeShift(input: any) {
   const shift = input && typeof input === "object" ? input : {};

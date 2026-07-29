@@ -96,6 +96,7 @@ forbidAll("offline queue",source.offline,["localStorage.setItem","payload:event"
 requireAll("service worker",source.sw,["aora-punch-sync","offline_punch_queue","device_keys","device_sessions","aora-v8-pilot-kiosk","AORA_PUNCH_SYNCED","text/plain;charset=UTF-8"]);
 requireAll("rule schema",source.rules,["work_rule_sets","work_rules","work_rule_evaluations","aora_evaluate_shift_rules","SHIFT_OVERLAP","MIN_REST_BETWEEN_SHIFTS","DST_TRANSITION","rule_set_version"]);
 requireAll("rule gate",source.ruleGate,["SHIFT_EVENTS","evaluateShift","aora_evaluate_shift_rules","Bestätigung und Begründung erforderlich.","ruleSetVersion","ruleEvaluationId"]);
+requireAll("bounded rule-summary cache",source.ruleGate,["RULE_SUMMARY_TTL_MS = 15_000","ruleSummaryCache = new Map","ruleSummaryCache.size >= 100","ruleSummaryCache.delete(organizationId)"]);
 requireAll("rule UI",source.ruleUi,["Backend-Prüfung aktiv","evaluateShift","shiftRuleDialog","Ausnahme mit Begründung","Arbeitszeitregeln","Regelset Version"]);
 requireAll("realtime client",source.realtime,["workspace-change","aoraSha256Hex","realtimeFallbackMs","SUBSCRIBED","connectWorkspaceRealtime","disconnectWorkspaceRealtime","__aoraLastRealtimeEvent"]);
 requireAll("runtime tenant and broadcast routing",source.runtime,["workspaceSlug:CFG.slug","downloadCompliance","connectWorkspaceRealtime","disconnectWorkspaceRealtime","notifyWorkspaceRealtime","realtimeBroadcastFunction","text/plain;charset=UTF-8",'AORA_COMPLIANCE_FUNCTION="aora-v8-pilot-compliance-proxy"']);
@@ -149,6 +150,7 @@ requireAll("security migration",source.security,["revoke all on function public.
 requireAll("OIDC CI bootstrap",source.ciBootstrap,["token.actions.githubusercontent.com","aora-staging-ci","agent/aora-unified-production","agent/aora-relational-foundation","agent/aora-access-hardening","agent/aora-workforce-features","const ALLOWED_BASES=new Set([","aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant"]);
 requireAll("OIDC CI migration",source.ciMigration,["aora_bootstrap_ci_tenant","aora_cleanup_ci_tenant","github-oidc-ci","grant execute on function public.aora_bootstrap_ci_tenant"]);
 requireAll("OIDC workflow",source.ciWorkflow,["id-token: write","ACTIONS_ID_TOKEN_REQUEST_URL","audience=aora-staging-ci","::add-mask::","Cleanup isolated staging tenant","AORA_INVITATION_URL","playwright-report.json"]);
+requireAll("resilient CI cleanup",source.ciWorkflow,["--retry 4","--retry-all-errors","--retry-delay 2"]);
 forbidAll("stored CI secrets",source.ciWorkflow,["secrets.AORA_OWNER","secrets.AORA_MANAGER","secrets.AORA_EMPLOYEE","secrets.AORA_KIOSK","secrets.AORA_ONBOARDING"]);
 requireAll("expanded browser E2E",source.e2e,["every navigation view","exports and verified backup","all scoped views","every tab","submit and approve leave plus time correction","encrypted offline queue","Invitation: reject breached password","assertNoHorizontalOverflow","triggerAccessRejection","Password123!","AORA_INVITATION_URL"]);
 forbidAll("employee identity",source.employee,["S.state.employees?.[0]","S.state.employees[0]"]);

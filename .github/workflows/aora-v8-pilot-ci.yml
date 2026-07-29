@@ -167,11 +167,11 @@ jobs:
           oidc_token=$(jq -er '.value' <<<"$oidc_json")
           echo "::add-mask::$oidc_token"
           payload=$(jq -cn --arg workspaceSlug "$AORA_WORKSPACE_SLUG" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
-          curl --fail-with-body -sS \
-            -X POST "$AORA_CI_BOOTSTRAP_URL" \
-            -H "Authorization: Bearer $oidc_token" \
-            -H 'content-type: application/json' \
-            --data "$payload" >/dev/null
+          curl --fail-with-body --retry 4 --retry-all-errors --retry-delay 2 -sS \
+              -X POST "$AORA_CI_BOOTSTRAP_URL" \
+              -H "Authorization: Bearer $oidc_token" \
+              -H 'content-type: application/json' \
+              --data "$payload" >/dev/null
 
   release-gate:
     name: Aora pilot release gate
