@@ -36,6 +36,7 @@ const paths=[
   "supabase/migrations/202607281200_aora_manager_projection_durability.sql",
   "supabase/migrations/202607281300_aora_single_projection_commit.sql",
   "supabase/migrations/202607291000_aora_manager_kiosk_activation.sql",
+  "supabase/migrations/20260729004408_fix_geofence_and_time_duration_consistency.sql",
   "tests/offline-crypto.mjs","tests/aora-four-role.spec.mjs","playwright.config.mjs","../.github/workflows/aora-v8-pilot-ci.yml"
 ];
 for(const path of paths)await access(resolve(root,path)).catch(()=>{throw new Error(`Missing pilot source: ${path}`)});
@@ -47,7 +48,7 @@ const source={
   tenant:await read("supabase/migrations/202607280011_aora_pilot_tenant_location_isolation.sql"),punch:await read("supabase/migrations/202607280012_aora_pilot_punch_idempotency.sql"),rules:await read("supabase/migrations/202607280013_aora_pilot_work_rule_engine.sql"),
   security:await read("supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql"),ciMigration:await read("supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql"),
   realtimeMigration:await read("supabase/migrations/202607280900_aora_realtime_rest_bridge.sql"),cleanupMigration:await read("supabase/migrations/202607280910_aora_ci_ledger_cleanup_exception.sql"),
-  unifiedMigration:await read("supabase/migrations/202607281000_aora_unified_login_projection_sessions.sql"),productionIndexes:await read("supabase/migrations/202607281100_aora_production_fk_indexes.sql"),managerProjection:await read("supabase/migrations/202607281200_aora_manager_projection_durability.sql"),singleProjectionCommit:await read("supabase/migrations/202607281300_aora_single_projection_commit.sql"),kioskActivationMigration:await read("supabase/migrations/202607291000_aora_manager_kiosk_activation.sql"),
+  unifiedMigration:await read("supabase/migrations/202607281000_aora_unified_login_projection_sessions.sql"),productionIndexes:await read("supabase/migrations/202607281100_aora_production_fk_indexes.sql"),managerProjection:await read("supabase/migrations/202607281200_aora_manager_projection_durability.sql"),singleProjectionCommit:await read("supabase/migrations/202607281300_aora_single_projection_commit.sql"),kioskActivationMigration:await read("supabase/migrations/202607291000_aora_manager_kiosk_activation.sql"),geofenceDurationMigration:await read("supabase/migrations/20260729004408_fix_geofence_and_time_duration_consistency.sql"),
   ciBootstrap:await read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),realtimeBroadcast:await read("supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts"),
   pilotMonitor:await read("supabase/functions/aora-v8-pilot-monitor/index.ts"),complianceProxy:await read("supabase/functions/aora-v8-pilot-compliance-proxy/index.ts"),pilotOnboarding:await read("supabase/functions/aora-v8-pilot-onboarding/index.ts"),
   ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),e2e:await read("tests/aora-four-role.spec.mjs"),
@@ -70,6 +71,9 @@ requireAll("breached-password protection",source.pilotAccess,["assertPasswordNot
 forbidAll("dynamic access",source.pilotAccess,['const WORKSPACE="aora-v8-hardening-demo"','const URL = Deno.env.get("SUPABASE_URL")','new URL(origin)','`${PWNED_PASSWORDS_RANGE_URL}/${hash}`']);
 requireAll("tenant workspace",source.pilotWorkspace,['tenantSource: "session"','eq("id", session.organization_id)',"Kein Zugriff auf diesen Standort.","state.kioskDevices.find"]);
 forbidAll("tenant workspace",source.pilotWorkspace,['.eq("slug", PRIMARY_PILOT_SLUG)']);
+requireAll("server geofence enforcement",source.pilotWorkspace,["configuredLocationPosition","enforceApprovalGeofence","Math.abs(Date.now() - capturedAt) > 120_000","Außerhalb des Standorts","maxGpsAccuracy"]);
+requireAll("location GPS persistence",source.hardeningWorkspace,["locationGps(input)","gpsConfigured: true","latitude,","longitude,"]);
+requireAll("duration correction consistency",source.geofenceDurationMigration,["aora_recalculate_time_entry_duration","durationMinutes","aora_decide_time_correction_atomic","aora_commit_workspace_state"]);
 requireAll("punch receipts",source.punch,["public.punch_events","primary key (organization_id, event_id)","aora_begin_punch","aora_claim_punch_approval","approval_response_payload"]);
 requireAll("pilot kiosk",source.pilotKiosk,["aora_begin_punch","clientEventId","clock_${eventId}","x-aora-punch-replay","idempotentReplay"]);
 requireAll("punch client",source.api,["preparePunchEvent","crypto.randomUUID()","enqueueOfflinePunch","markOfflinePunchPending","resolveOfflinePunch","idempotentReplay","text/plain;charset=UTF-8"]);
@@ -116,7 +120,7 @@ requireAll("atomic kiosk activation migration",source.kioskActivationMigration,[
 requireAll("manager kiosk UI",source.admin,['data-a="kiosk-create-modal"','data-a="rotate-kiosk"',"Noch kein Kiosk-Gerät vorhanden"]);
 requireAll("kiosk activation modal",source.modals,["kioskCreateModal","kioskActivationResultModal","Zugangsdaten kopieren","CREATE_KIOSK_DEVICE"]);
 requireAll("durable kiosk session restore",source.offline,["restoreOfflineKioskSession","OFFLINE_SESSION_STORE","decryptJson"]);
-requireAll("kiosk and invitation E2E",source.e2e,["CREATE_KIOSK_DEVICE","kioskActivation.activationCode",'searchParams.get("workspace")']);
+requireAll("kiosk and invitation E2E",source.e2e,["CREATE_KIOSK_DEVICE","kioskActivation.activationCode",'searchParams.get("workspace")',"inside/outside geofence enforcement","durationMinutes:505"]);
 forbidAll("single snapshot projection",source.hardeningWorkspace,['service.rpc("project_workspace_state"']);
 requireAll("render after action unlock",source.api,["clearPendingPunch(prepared.storageKey);\n    S.busy=false;\n    render();"]);
 forbidAll("legacy polling",source.boot,["setInterval(refreshWorkspace,5000)"]);

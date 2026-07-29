@@ -55,6 +55,23 @@ function activationCode() {
   }
   return value;
 }
+function locationGps(input: any, fallback: any = null) {
+  const latitude = Number(input?.latitude ?? input?.gps?.lat ?? fallback?.gps?.lat ?? fallback?.latitude);
+  const longitude = Number(input?.longitude ?? input?.gps?.lng ?? fallback?.gps?.lng ?? fallback?.longitude);
+  if (
+    !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+    !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+    (latitude === 0 && longitude === 0)
+  ) {
+    throw Object.assign(new Error("Gültige GPS-Koordinaten für den Laden sind erforderlich."), { status: 400 });
+  }
+  return {
+    latitude,
+    longitude,
+    gps: { lat: latitude, lng: longitude },
+    gpsConfigured: true,
+  };
+}
 
 function allowedOrigin(origin: string | null) {
   if (!origin) return true;
@@ -461,12 +478,14 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       )) {
         throw Object.assign(new Error("Dieser Laden existiert bereits."), { status: 409 });
       }
+      const gps = locationGps(input);
       const location = {
         id: id("loc"), name, city, address: String(input.address || "").trim(),
         country: String(input.country || "Deutschland").trim(),
         timezone: String(input.timezone || state.company.timezone || "Europe/Berlin"),
         costCenter: String(input.costCenter || "").trim(),
         geofenceRadius: Math.min(1000, Math.max(25, Number(input.geofenceRadius || 100))),
+        ...gps,
         active: true, createdAt: now(), createdBy: ctx.admin.id,
       };
       state.locations.push(location);
@@ -481,6 +500,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
       const current = state.locations.find((item: any) => item.id === event.id);
       if (!current) throw Object.assign(new Error("Laden wurde nicht gefunden."), { status: 404 });
       const patch = event.patch || {};
+      const gps = locationGps(patch, current);
       const allowedPatch = {
         name: patch.name == null ? current.name : String(patch.name).trim(),
         city: patch.city == null ? current.city : String(patch.city).trim(),
@@ -489,6 +509,7 @@ async function applyStructural(ctx: any, event: any, expectedRevision: number, o
         timezone: patch.timezone == null ? current.timezone : String(patch.timezone),
         costCenter: patch.costCenter == null ? current.costCenter : String(patch.costCenter).trim(),
         geofenceRadius: patch.geofenceRadius == null ? current.geofenceRadius : Math.min(1000, Math.max(25, Number(patch.geofenceRadius))),
+        ...gps,
       };
       if (allowedPatch.name.length < 2 || allowedPatch.city.length < 2) {
         throw Object.assign(new Error("Name und Stadt sind erforderlich."), { status: 400 });

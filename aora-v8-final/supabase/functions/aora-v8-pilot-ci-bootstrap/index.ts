@@ -130,7 +130,10 @@ async function bootstrap(identity:any){
     company:{name:"Aora CI "+identity.runId,businessType:"QA",billingEmail:ownerEmail,timezone:"Europe/Berlin",language:"de"},
     settings:{timezone:"Europe/Berlin",language:"de",maxDailyMinutes:600,requiredBreakMinutes:30,geofenceRadius:100,clockPolicy:"warn"},
     meta:{variant:"aora-8.1.0-pilot",tenantSource:"github-oidc-ci",revision:1,createdAt:now,ciRunId:identity.runId,ciRunAttempt:Number(identity.runAttempt),workflowRef:identity.workflowRef,eventName:identity.eventName},
-    locations:[{id:locationId,name:"CI Berlin",city:"Berlin",address:"Teststraße 1",costCenter:"CI",active:true,geofenceRadius:100}],
+    locations:[{
+      id:locationId,name:"CI Berlin",city:"Berlin",address:"Teststraße 1",costCenter:"CI",active:true,
+      latitude:52.52,longitude:13.405,gps:{lat:52.52,lng:13.405},gpsConfigured:true,geofenceRadius:100,
+    }],
     admins:[
       {id:ownerId,name:"CI Owner",email:ownerEmail,role:"Inhaber",scope:"owner",locationIds:[locationId],active:true,status:"active",createdAt:now},
       {id:managerId,name:"CI Manager",email:managerEmail,role:"Manager",scope:"manager",locationIds:[locationId],active:true,status:"active",createdAt:now},
