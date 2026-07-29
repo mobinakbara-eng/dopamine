@@ -77,6 +77,7 @@ requireAll("duration correction consistency",source.geofenceDurationMigration,["
 requireAll("punch receipts",source.punch,["public.punch_events","primary key (organization_id, event_id)","aora_begin_punch","aora_claim_punch_approval","approval_response_payload"]);
 requireAll("pilot kiosk",source.pilotKiosk,["aora_begin_punch","clientEventId","clock_${eventId}","x-aora-punch-replay","idempotentReplay"]);
 requireAll("punch client",source.api,["preparePunchEvent","crypto.randomUUID()","enqueueOfflinePunch","markOfflinePunchPending","resolveOfflinePunch","idempotentReplay","text/plain;charset=UTF-8"]);
+requireAll("stale session response guard",source.api,["requestedSessionToken","String(S.session?.token||\"\")!==requestedSessionToken"]);
 requireAll("offline queue",source.offline,["indexedDB.open","offline_punch_queue","device_keys","device_sessions",'name:"AES-GCM"',"extractable:false","ciphertext","additionalData","inspectOfflineQueue","serviceWorker.register"]);
 forbidAll("offline queue",source.offline,["localStorage.setItem","payload:event","employeeId:event.employeeId","transition:event.target"]);
 requireAll("service worker",source.sw,["aora-punch-sync","offline_punch_queue","device_keys","device_sessions","aora-v8-pilot-kiosk","AORA_PUNCH_SYNCED","text/plain;charset=UTF-8"]);
