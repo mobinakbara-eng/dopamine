@@ -23,7 +23,8 @@ for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){c
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
 requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"',"window.__AORA_RUNTIME_CONFIG__","RUNTIME.supabaseUrl","RUNTIME.supabasePublishableKey",'RUNTIME_FUNCTIONS.workspace','RUNTIME_FUNCTIONS.kiosk','RUNTIME_FUNCTIONS.compliance','RUNTIME_FUNCTIONS.realtimeBroadcast','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
 const runtimeConfig=await readFile(resolve(dist,"runtime-config.js"),"utf8");
-requireAll("runtime config",runtimeConfig,["window.__AORA_RUNTIME_CONFIG__","xqgkawskftzurbujrpex",'"environment":"development"']);
+const expectedEnvironment=process.env.AORA_DEPLOY_ENV||process.env.VERCEL_ENV||"development";
+requireAll("runtime config",runtimeConfig,["window.__AORA_RUNTIME_CONFIG__","xqgkawskftzurbujrpex",`"environment":"${expectedEnvironment}"`]);
 const api=await readFile(resolve(dist,"modules/api.js"),"utf8");
 requireAll("API",api,["preparePunchEvent","enqueueOfflinePunch","resolveOfflinePunch","idempotentReplay","text/plain;charset=UTF-8"]);
 const offline=await readFile(resolve(dist,"modules/offline-punch.js"),"utf8");
