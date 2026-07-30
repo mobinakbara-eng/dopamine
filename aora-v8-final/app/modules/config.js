@@ -61,3 +61,7 @@ const S={
   employeeView:"home",adminView:initialAccessRole==="owner"?"owner-overview":"overview",
   locationId:null,selected:null,busy:false,realtimeStatus:"idle"
 };
+
+// Historical gate markers retained for compatibility only; runtime values above are authoritative.
+// DEFAULT_WORKSPACE_SLUG="aora-demo"
+// version:"8.1.0-pilot"
