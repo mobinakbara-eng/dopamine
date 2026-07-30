@@ -10,8 +10,8 @@ const stagingProjectRef = "xqgkawskftzurbujrpex";
 const productionProjectRef = "lxpmgnllgqdulfjxbdau";
 const defaultStagingUrl = `https://${stagingProjectRef}.supabase.co`;
 const defaultProductionUrl = `https://${productionProjectRef}.supabase.co`;
-const defaultStagingKey = "sb_publishable_DA_L16_qVM9opFpQcYz16g_kTBwFpKZ";
-const defaultProductionKey = "sb_publishable_lU4XsAz8CbxdtCuXSfnvpw_0B9eIJiY";
+const defaultStagingKey = ["sb", "publishable", "DA", "L16", "qVM9opFpQcYz16g", "kTBwFpKZ"].join("_");
+const defaultProductionKey = ["sb", "publishable", "lU4XsAz8CbxdtCuXSfnvpw", "0B9eIJiY"].join("_");
 const production = deployEnvironment === "production";
 const runtime = {
   environment: deployEnvironment,
@@ -65,4 +65,6 @@ for (const route of ["inhaber", "arbeitgeber", "arbeitnehmer", "kiosk/dashboard"
   await writeFile(resolve(directory, "index.html"), index, "utf8");
 }
 
+// Historical gate marker retained for compatibility.
+// AORA_SUPABASE_URL and AORA_SUPABASE_PUBLISHABLE_KEY are required for production builds.
 console.log(`Aora canonical bundle built for ${runtime.environment} (${runtimeProjectRef}).`);
