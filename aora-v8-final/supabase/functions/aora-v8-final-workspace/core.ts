@@ -2,7 +2,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 export const URL = Deno.env.get("SUPABASE_URL")!;
 export const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-export const WORKSPACE_SLUG = "aora-v8-final-demo";
 export const LEGACY_WORKSPACE = `${URL}/functions/v1/workspace`;
 export const service = createClient(URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -105,14 +104,10 @@ export async function context(token: string) {
     .from("organizations")
     .select("id,slug,status")
     .eq("id", session.organization_id)
-    .eq("slug", WORKSPACE_SLUG)
     .eq("status", "active")
     .single();
   if (organizationError || !organization) {
-    throw Object.assign(
-      new Error("Diese Sitzung gehört nicht zur isolierten Aora-V8-Version."),
-      { status: 403 },
-    );
+    throw Object.assign(new Error("Organisation ist nicht aktiv."), { status: 403 });
   }
 
   const { data: snapshot, error: snapshotError } = await service
@@ -141,7 +136,24 @@ export async function context(token: string) {
     });
   }
 
-  return { session, organization, snapshot, state, admin, accessRole };
+  let managerLocationIds: string[] = [];
+  if (accessRole === "manager") {
+    const { data: accessRows, error: accessError } = await service
+      .from("manager_location_access")
+      .select("location_id")
+      .eq("organization_id", organization.id)
+      .eq("manager_id", session.subject_id);
+    if (accessError) throw accessError;
+    managerLocationIds = (accessRows || []).map((row: any) => String(row.location_id));
+    if (!managerLocationIds.length) {
+      throw Object.assign(
+        new Error("Für diesen Manager ist kein expliziter Standortzugriff eingerichtet."),
+        { status: 403 },
+      );
+    }
+  }
+
+  return { session, organization, snapshot, state, admin, accessRole, managerLocationIds };
 }
 
 export function allowedLocations(ctx: any) {
@@ -153,9 +165,7 @@ export function allowedLocations(ctx: any) {
     );
   }
   if (ctx.accessRole === "manager") {
-    return new Set<string>(
-      (ctx.admin.locationIds || [ctx.admin.locationId]).filter(Boolean),
-    );
+    return new Set<string>(ctx.managerLocationIds);
   }
   if (ctx.session.location_id) return new Set<string>([ctx.session.location_id]);
   return new Set<string>();
@@ -452,7 +462,12 @@ export async function callLegacy(body: any) {
   return data;
 }
 
-export async function persist(ctx: any, state: any) {
+export async function persist(
+  ctx: any,
+  state: any,
+  eventType = "WORKSPACE_UPDATE",
+  eventPayload: any = {},
+) {
   const changedAt = now();
   const revision = Number(ctx.snapshot.revision) + 1;
   state.meta = {
@@ -462,30 +477,24 @@ export async function persist(ctx: any, state: any) {
     variant: "isolated-v8-final",
   };
 
-  const { data: updated, error: updateError } = await service
-    .from("workspace_snapshots")
-    .update({ state, revision, updated_at: changedAt })
-    .eq("organization_id", ctx.organization.id)
-    .eq("revision", ctx.snapshot.revision)
-    .select("revision")
-    .maybeSingle();
-  if (updateError || !updated) {
-    throw Object.assign(
-      new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."),
-      { status: 409 },
-    );
-  }
-
-  const { error: projectionError } = await service.rpc("project_workspace_state", {
+  const { data: committedRevision, error: commitError } = await service.rpc("aora_commit_workspace_state", {
     p_organization_id: ctx.organization.id,
+    p_expected_revision: Number(ctx.snapshot.revision),
     p_state: state,
+    p_actor_role: ctx.accessRole,
+    p_actor_id: ctx.admin?.id || ctx.session.subject_id,
+    p_event_type: eventType,
+    p_event_payload: eventPayload && typeof eventPayload === "object" ? eventPayload : {},
   });
-  if (projectionError) throw projectionError;
-  await service.from("workspace_changes").upsert({
-    organization_id: ctx.organization.id,
-    revision,
-    changed_at: changedAt,
-  });
+  if (commitError || Number(committedRevision) !== revision) {
+    if (String(commitError?.message || "").includes("revision_conflict")) {
+      throw Object.assign(
+        new Error("Paralleländerung erkannt. Bitte Ansicht aktualisieren."),
+        { status: 409 },
+      );
+    }
+    throw commitError || new Error("Workspace konnte nicht gespeichert werden.");
+  }
   return revision;
 }
 

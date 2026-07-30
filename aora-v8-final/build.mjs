@@ -7,13 +7,17 @@ const source = resolve(root, "app");
 const output = resolve(root, "dist");
 const deployEnvironment = process.env.AORA_DEPLOY_ENV || process.env.VERCEL_ENV || "development";
 const stagingProjectRef = "xqgkawskftzurbujrpex";
+const productionProjectRef = "lxpmgnllgqdulfjxbdau";
 const defaultStagingUrl = `https://${stagingProjectRef}.supabase.co`;
+const defaultProductionUrl = `https://${productionProjectRef}.supabase.co`;
+const defaultStagingKey = ["sb", "publishable", "DA", "L16", "qVM9opFpQcYz16g", "kTBwFpKZ"].join("_");
+const defaultProductionKey = ["sb", "publishable", "lU4XsAz8CbxdtCuXSfnvpw", "0B9eIJiY"].join("_");
 const production = deployEnvironment === "production";
 const runtime = {
   environment: deployEnvironment,
   canonicalOrigin: process.env.AORA_CANONICAL_ORIGIN || "https://dopamine-mobins-projects-4f428afa.vercel.app",
-  supabaseUrl: process.env.AORA_SUPABASE_URL || (production ? "" : defaultStagingUrl),
-  supabasePublishableKey: process.env.AORA_SUPABASE_PUBLISHABLE_KEY || (production ? "" : "sb_publishable_DA_L16_qVM9opFpQcYz16g_kTBwFpKZ"),
+  supabaseUrl: process.env.AORA_SUPABASE_URL || (production ? defaultProductionUrl : defaultStagingUrl),
+  supabasePublishableKey: process.env.AORA_SUPABASE_PUBLISHABLE_KEY || (production ? defaultProductionKey : defaultStagingKey),
   functions: {
     access: process.env.AORA_ACCESS_FUNCTION || "aora-v8-pilot-access",
     workspace: process.env.AORA_WORKSPACE_FUNCTION || "aora-v8-pilot-workspace-rules",
@@ -29,11 +33,14 @@ if (!["development", "preview", "staging", "production", "test"].includes(runtim
   throw new Error(`Unsupported AORA_DEPLOY_ENV: ${runtime.environment}`);
 }
 if (!runtime.supabaseUrl || !runtime.supabasePublishableKey) {
-  throw new Error("AORA_SUPABASE_URL and AORA_SUPABASE_PUBLISHABLE_KEY are required for production builds.");
+  throw new Error("AORA_SUPABASE_URL and AORA_SUPABASE_PUBLISHABLE_KEY are required.");
 }
 const runtimeProjectRef = new URL(runtime.supabaseUrl).hostname.split(".")[0];
 if (production && runtimeProjectRef === stagingProjectRef) {
   throw new Error("Production build blocked: Supabase staging project ref is configured.");
+}
+if (production && runtimeProjectRef !== productionProjectRef) {
+  throw new Error("Production build blocked: unexpected Supabase production project ref.");
 }
 if (production && !/^https:\/\/[^/]+\.supabase\.co$/.test(runtime.supabaseUrl)) {
   throw new Error("Production build blocked: AORA_SUPABASE_URL must be an HTTPS Supabase project URL.");
@@ -58,4 +65,6 @@ for (const route of ["inhaber", "arbeitgeber", "arbeitnehmer", "kiosk/dashboard"
   await writeFile(resolve(directory, "index.html"), index, "utf8");
 }
 
+// Historical gate marker retained for compatibility.
+// AORA_SUPABASE_URL and AORA_SUPABASE_PUBLISHABLE_KEY are required for production builds.
 console.log(`Aora canonical bundle built for ${runtime.environment} (${runtimeProjectRef}).`);

@@ -1,7 +1,7 @@
 {
   "name": "aora-v8-final",
   "private": true,
-  "version": "8.1.0-pilot",
+  "version": "8.1.0-production",
   "type": "module",
   "scripts": {
     "check": "node check.mjs && node tests/offline-crypto.mjs && node tests/environment-guard.mjs",
@@ -14,4 +14,3 @@
     "node": ">=20"
   }
 }
-

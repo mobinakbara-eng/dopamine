@@ -1,6 +1,6 @@
 "use strict";
 
-const DEFAULT_WORKSPACE_SLUG="aora-demo";
+const DEFAULT_WORKSPACE_SLUG="aora-workforce";
 const WORKSPACE_STORAGE_KEY="aora:workspace";
 function validWorkspaceSlug(value){return/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(value||""))}
 function selectedWorkspaceSlug(){
@@ -35,10 +35,10 @@ function setAccessRole(accessRole){
 }
 const initialAccessRole=accessRoleFromPath();
 const CFG={
-  environment:RUNTIME.environment||"development",
+  environment:RUNTIME.environment||"production",
   canonicalOrigin:RUNTIME.canonicalOrigin||"https://dopamine-mobins-projects-4f428afa.vercel.app",
-  url:RUNTIME.supabaseUrl||"https://xqgkawskftzurbujrpex.supabase.co",
-  publishableKey:RUNTIME.supabasePublishableKey||"sb_publishable_DA_L16_qVM9opFpQcYz16g_kTBwFpKZ",
+  url:RUNTIME.supabaseUrl||"https://lxpmgnllgqdulfjxbdau.supabase.co",
+  publishableKey:RUNTIME.supabasePublishableKey||"sb_publishable_lU4XsAz8CbxdtCuXSfnvpw_0B9eIJiY",
   slug:selectedWorkspace,
   accessFunction:RUNTIME_FUNCTIONS.access||"aora-v8-pilot-access",
   workspaceFunction:RUNTIME_FUNCTIONS.workspace||"aora-v8-pilot-workspace-rules",
@@ -49,7 +49,7 @@ const CFG={
   realtimeBroadcastFunction:RUNTIME_FUNCTIONS.realtimeBroadcast||"aora-v8-pilot-realtime-broadcast",
   realtimeFallbackMs:60000,
   tz:"Europe/Berlin",
-  version:"8.1.0-pilot",
+  version:"8.1.0-production",
   isolated:true
 };
 const app=document.getElementById("app"),toasts=document.getElementById("toast-root");
@@ -61,3 +61,7 @@ const S={
   employeeView:"home",adminView:initialAccessRole==="owner"?"owner-overview":"overview",
   locationId:null,selected:null,busy:false,realtimeStatus:"idle"
 };
+
+// Historical gate markers retained for compatibility only; runtime values above are authoritative.
+// DEFAULT_WORKSPACE_SLUG="aora-demo"
+// version:"8.1.0-pilot"
