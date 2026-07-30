@@ -11,6 +11,8 @@ function selectedWorkspaceSlug(){
   return selected;
 }
 const selectedWorkspace=selectedWorkspaceSlug();
+const RUNTIME=window.__AORA_RUNTIME_CONFIG__||{};
+const RUNTIME_FUNCTIONS=RUNTIME.functions||{};
 
 function accessRoleFromPath(){
   const query=new URLSearchParams(location.search).get("role");
@@ -33,17 +35,18 @@ function setAccessRole(accessRole){
 }
 const initialAccessRole=accessRoleFromPath();
 const CFG={
-  canonicalOrigin:"https://dopamine-mobins-projects-4f428afa.vercel.app",
-  url:"https://xqgkawskftzurbujrpex.supabase.co",
-  publishableKey:"sb_publishable_DA_L16_qVM9opFpQcYz16g_kTBwFpKZ",
+  environment:RUNTIME.environment||"development",
+  canonicalOrigin:RUNTIME.canonicalOrigin||"https://dopamine-mobins-projects-4f428afa.vercel.app",
+  url:RUNTIME.supabaseUrl||"https://xqgkawskftzurbujrpex.supabase.co",
+  publishableKey:RUNTIME.supabasePublishableKey||"sb_publishable_DA_L16_qVM9opFpQcYz16g_kTBwFpKZ",
   slug:selectedWorkspace,
-  accessFunction:"aora-v8-pilot-access",
-  workspaceFunction:"aora-v8-pilot-workspace-rules",
-  kioskWorkspaceFunction:"aora-v8-pilot-kiosk",
-  complianceFunction:"aora-v8-pilot-compliance",
-  monitorFunction:"aora-v8-pilot-monitor",
-  onboardingFunction:"aora-v8-pilot-onboarding",
-  realtimeBroadcastFunction:"aora-v8-pilot-realtime-broadcast",
+  accessFunction:RUNTIME_FUNCTIONS.access||"aora-v8-pilot-access",
+  workspaceFunction:RUNTIME_FUNCTIONS.workspace||"aora-v8-pilot-workspace-rules",
+  kioskWorkspaceFunction:RUNTIME_FUNCTIONS.kiosk||"aora-v8-pilot-kiosk",
+  complianceFunction:RUNTIME_FUNCTIONS.compliance||"aora-v8-pilot-compliance",
+  monitorFunction:RUNTIME_FUNCTIONS.monitor||"aora-v8-pilot-monitor",
+  onboardingFunction:RUNTIME_FUNCTIONS.onboarding||"aora-v8-pilot-onboarding",
+  realtimeBroadcastFunction:RUNTIME_FUNCTIONS.realtimeBroadcast||"aora-v8-pilot-realtime-broadcast",
   realtimeFallbackMs:60000,
   tz:"Europe/Berlin",
   version:"8.1.0-pilot",
