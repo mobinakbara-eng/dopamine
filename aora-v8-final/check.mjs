@@ -37,6 +37,8 @@ const paths=[
   "supabase/migrations/202607281300_aora_single_projection_commit.sql",
   "supabase/migrations/202607291000_aora_manager_kiosk_activation.sql",
   "supabase/migrations/20260729004408_fix_geofence_and_time_duration_consistency.sql",
+  "supabase/migrations/202607292000_aora_relational_workforce_foundation.sql",
+  "supabase/migrations/202607292015_aora_relational_advisor_fixes.sql",
   "tests/offline-crypto.mjs","tests/environment-guard.mjs","tests/aora-four-role.spec.mjs","playwright.config.mjs","../.github/workflows/aora-v8-pilot-ci.yml"
 ];
 for(const path of paths)await access(resolve(root,path)).catch(()=>{throw new Error(`Missing pilot source: ${path}`)});
@@ -49,6 +51,7 @@ const source={
   security:await read("supabase/migrations/202607280700_aora_pilot_security_and_qa_redaction.sql"),ciMigration:await read("supabase/migrations/202607280800_aora_ci_oidc_tenant_bootstrap.sql"),
   realtimeMigration:await read("supabase/migrations/202607280900_aora_realtime_rest_bridge.sql"),cleanupMigration:await read("supabase/migrations/202607280910_aora_ci_ledger_cleanup_exception.sql"),
   unifiedMigration:await read("supabase/migrations/202607281000_aora_unified_login_projection_sessions.sql"),productionIndexes:await read("supabase/migrations/202607281100_aora_production_fk_indexes.sql"),managerProjection:await read("supabase/migrations/202607281200_aora_manager_projection_durability.sql"),singleProjectionCommit:await read("supabase/migrations/202607281300_aora_single_projection_commit.sql"),kioskActivationMigration:await read("supabase/migrations/202607291000_aora_manager_kiosk_activation.sql"),geofenceDurationMigration:await read("supabase/migrations/20260729004408_fix_geofence_and_time_duration_consistency.sql"),
+  relationalFoundation:await read("supabase/migrations/202607292000_aora_relational_workforce_foundation.sql"),relationalAdvisorFixes:await read("supabase/migrations/202607292015_aora_relational_advisor_fixes.sql"),
   ciBootstrap:await read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),realtimeBroadcast:await read("supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts"),
   pilotMonitor:await read("supabase/functions/aora-v8-pilot-monitor/index.ts"),complianceProxy:await read("supabase/functions/aora-v8-pilot-compliance-proxy/index.ts"),pilotOnboarding:await read("supabase/functions/aora-v8-pilot-onboarding/index.ts"),
   ciWorkflow:await read("../.github/workflows/aora-v8-pilot-ci.yml"),e2e:await read("tests/aora-four-role.spec.mjs"),
@@ -122,6 +125,10 @@ requireAll("atomic kiosk lock",source.hardeningWorkspace,['case "TOGGLE_KIOSK_LO
 requireAll("workspace-bound invitation",source.hardeningWorkspace,['inviteUrl.searchParams.set("workspace", ctx.organization.slug)','inviteUrl.toString()']);
 requireAll("manager kiosk creation",source.hardeningWorkspace,['case "CREATE_KIOSK_DEVICE"','case "ROTATE_KIOSK_ACTIVATION"',"aora_commit_kiosk_activation","activationCode()","kioskActivation"]);
 requireAll("atomic kiosk activation migration",source.kioskActivationMigration,["create or replace function public.aora_commit_kiosk_activation","crypt(p_activation_code, gen_salt('bf'))","update public.app_sessions","revoke all on function public.aora_commit_kiosk_activation","to service_role"]);
+requireAll("relational workforce foundation",source.relationalFoundation,["feature_flags","employee_location_access","shift_series","shift_reservations","task_templates","task_template_items","task_instances","task_assignments","task_answers","push_subscriptions","aora_reserve_open_shift_atomic","aora_verify_relational_backfill","pg_advisory_xact_lock","block_clock_out","legacy-primary-location"]);
+requireAll("relational RLS",source.relationalFoundation,["enable row level security","members read feature flags","members read employee location access","members read shift series","members read shift reservations","members read task templates","members read task instances","members read task assignments","members read task answers"]);
+forbidAll("non-destructive relational migration",source.relationalFoundation,["drop table","truncate table","delete from public.workspace_snapshots","delete from public.checklist_templates","delete from public.checklist_assignments"]);
+requireAll("relational advisor fixes",source.relationalAdvisorFixes,["shift_reservations_employee_idx","shift_series_employee_idx","task_answers_assignment_idx","task_instances_template_idx","deny direct push subscription access","deny direct backfill run access"]);
 requireAll("manager kiosk UI",source.admin,['data-a="kiosk-create-modal"','data-a="rotate-kiosk"',"Noch kein Kiosk-Gerät vorhanden"]);
 requireAll("kiosk activation modal",source.modals,["kioskCreateModal","kioskActivationResultModal","Zugangsdaten kopieren","CREATE_KIOSK_DEVICE"]);
 requireAll("accessible modal lifecycle",source.modals,['role="dialog"','aria-modal="true"','event.key==="Escape"','previousFocus','document.removeEventListener("keydown",onKeydown,true)']);
