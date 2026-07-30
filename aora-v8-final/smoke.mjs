@@ -21,10 +21,13 @@ const index=await readFile(resolve(dist,"index.html"),"utf8");
 requireAll("index",index,["styles.base.css?v=804","styles.css?v=819","runtime-config.js","offline.css?v=810","rule-engine.css?v=810","compliance.css?v=814","modules/config.js?v=821","modules/realtime.js?v=814","modules/runtime-hardening.js?v=818","modules/accessibility-hardening.js?v=817","modules/monitoring.js?v=813","modules/compliance.js?v=813","modules/offline-punch.js?v=818","modules/api.js?v=820","modules/unified-login.js?v=819","modules/employee-hardening.js?v=819","modules/modals.js?v=819","modules/invitation-delivery.js?v=819","modules/boot.js?v=821"]);
 for(const route of ["inhaber","arbeitgeber","arbeitnehmer","kiosk/dashboard"]){const shell=await readFile(resolve(dist,route,"index.html"),"utf8");if(shell!==index)throw new Error(`Route shell differs: ${route}`)}
 const config=await readFile(resolve(dist,"modules/config.js"),"utf8");
-requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-demo"',"window.__AORA_RUNTIME_CONFIG__","RUNTIME.supabaseUrl","RUNTIME.supabasePublishableKey",'RUNTIME_FUNCTIONS.workspace','RUNTIME_FUNCTIONS.kiosk','RUNTIME_FUNCTIONS.compliance','RUNTIME_FUNCTIONS.realtimeBroadcast','realtimeFallbackMs:60000','version:"8.1.0-pilot"']);
+requireAll("config",config,['DEFAULT_WORKSPACE_SLUG="aora-workforce"',"window.__AORA_RUNTIME_CONFIG__","RUNTIME.supabaseUrl","RUNTIME.supabasePublishableKey",'RUNTIME_FUNCTIONS.workspace','RUNTIME_FUNCTIONS.kiosk','RUNTIME_FUNCTIONS.compliance','RUNTIME_FUNCTIONS.realtimeBroadcast','realtimeFallbackMs:60000','version:"8.1.0-production"']);
 const runtimeConfig=await readFile(resolve(dist,"runtime-config.js"),"utf8");
 const expectedEnvironment=process.env.AORA_DEPLOY_ENV||process.env.VERCEL_ENV||"development";
-requireAll("runtime config",runtimeConfig,["window.__AORA_RUNTIME_CONFIG__","xqgkawskftzurbujrpex",`"environment":"${expectedEnvironment}"`]);
+const expectedProjectRef=expectedEnvironment==="production"?"lxpmgnllgqdulfjxbdau":"xqgkawskftzurbujrpex";
+const forbiddenProjectRef=expectedEnvironment==="production"?"xqgkawskftzurbujrpex":"lxpmgnllgqdulfjxbdau";
+requireAll("runtime config",runtimeConfig,["window.__AORA_RUNTIME_CONFIG__",expectedProjectRef,`"environment":"${expectedEnvironment}"`]);
+forbidAll("runtime config",runtimeConfig,[forbiddenProjectRef]);
 const api=await readFile(resolve(dist,"modules/api.js"),"utf8");
 requireAll("API",api,["preparePunchEvent","enqueueOfflinePunch","resolveOfflinePunch","idempotentReplay","text/plain;charset=UTF-8"]);
 const offline=await readFile(resolve(dist,"modules/offline-punch.js"),"utf8");
@@ -58,5 +61,4 @@ const moduleDir=resolve(dist,"modules");
 const modules=(await readdir(moduleDir)).filter(file=>file.endsWith(".js")).sort();
 if(modules.length<27)throw new Error(`Unexpected module count: ${modules.length}`);
 for(const module of modules)execFileSync(process.execPath,["--check",resolve(moduleDir,module)],{stdio:"inherit"});
-console.log(`Aora post-build smoke passed: ${modules.length} modules, four role routes, authenticated Realtime broadcast, mobile correction action, origin-safe compliance bridge, offline queue and work-rule UI.`);
-
+console.log(`Aora post-build smoke passed: ${modules.length} modules, four role routes, environment-safe runtime config, authenticated Realtime broadcast, mobile correction action, origin-safe compliance bridge, offline queue and work-rule UI.`);
