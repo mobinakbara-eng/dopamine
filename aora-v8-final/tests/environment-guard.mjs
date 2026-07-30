@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,13 +10,17 @@ const run=overrides=>spawnSync(process.execPath,[resolve(root,"build.mjs")],{
   env:{...process.env,...overrides}
 });
 
-const missing=run({
+const production=run({
   AORA_DEPLOY_ENV:"production",
   AORA_SUPABASE_URL:"",
   AORA_SUPABASE_PUBLISHABLE_KEY:""
 });
-if(missing.status===0||!`${missing.stdout}\n${missing.stderr}`.includes("AORA_SUPABASE_URL and AORA_SUPABASE_PUBLISHABLE_KEY are required")){
-  throw new Error("Production build must reject missing Supabase configuration.");
+if(production.status!==0){
+  throw new Error(`Production build must use the locked production defaults.\n${production.stdout}\n${production.stderr}`);
+}
+const runtimeConfig=readFileSync(resolve(root,"dist/runtime-config.js"),"utf8");
+if(!runtimeConfig.includes("lxpmgnllgqdulfjxbdau")||runtimeConfig.includes("xqgkawskftzurbujrpex")){
+  throw new Error("Production runtime config must target only the production Supabase project.");
 }
 
 const staging=run({
@@ -27,4 +32,4 @@ if(staging.status===0||!`${staging.stdout}\n${staging.stderr}`.includes("Supabas
   throw new Error("Production build must reject the staging Supabase project.");
 }
 
-console.log("Environment guard test passed: production rejects missing credentials and the staging project ref.");
+console.log("Environment guard test passed: production uses the locked production runtime and rejects staging.");
