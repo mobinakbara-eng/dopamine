@@ -1,5 +1,7 @@
 "use strict";
 
+if(typeof CFG!=="undefined")CFG.domainFunction="aora-v8-domain-api-compat";
+
 // The legacy offline module may already have registered /sw.js. Reuse that registration
 // and configure it instead of creating an immediately waiting worker with a second URL.
 if(typeof globalThis.uRegisterWorker==="function"){
