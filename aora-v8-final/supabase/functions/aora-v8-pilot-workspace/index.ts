@@ -6,10 +6,13 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PRIMARY_PILOT_SLUG = "aora-v8-hardening-demo";
 const HARDENING_WORKSPACE = `${URL}/functions/v1/aora-v8-hardening-workspace`;
 const LEGACY_WORKSPACE = `${URL}/functions/v1/workspace`;
-const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
+const DEFAULT_ORIGIN = "https://dopamine-blond.vercel.app";
 const TEAM_PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const MAX_BODY_BYTES = 2_500_000;
 const EXACT_ORIGINS = new Set([
+  DEFAULT_ORIGIN,
+  "https://dopamine-mobins-projects-4f428afa.vercel.app",
+  "https://dopamine-git-main-mobins-projects-4f428afa.vercel.app",
   "https://aora-v8-hardening.vercel.app",
   "https://aora-v8-final.vercel.app",
   "https://aora-workforce.vercel.app",
@@ -131,9 +134,11 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 function enforceApprovalGeofence(ctx: any, event: any) {
   if (event?.type !== "APPROVE_CLOCK_REQUEST") return;
   const request = ctx.state.clockRequests.find((item: any) =>
-    item.id === event.id && item.employeeId === ctx.session.subject_id && item.status === "pending"
+    item.id === event.id && item.employeeId === ctx.session.subject_id
   );
   if (!request) throw Object.assign(new Error("Die Kiosk-Anfrage ist nicht mehr aktiv."), { status: 409 });
+  if (["approved", "denied"].includes(request.status)) return;
+  if (request.status !== "pending") throw Object.assign(new Error("Die Kiosk-Anfrage wird bereits verarbeitet."), { status: 409 });
   const location = ctx.state.locations.find((item: any) => item.id === request.locationId && item.active !== false);
   const configured = configuredLocationPosition(location);
   if (!configured) {

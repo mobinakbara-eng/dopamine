@@ -4,15 +4,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 const URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const UPSTREAM = `${URL}/functions/v1/aora-v8-pilot-workspace`;
-const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
+const INVITATION_TARGET = `${URL}/functions/v1/aora-v8-invitation-patch`;
+const DEFAULT_ORIGIN = "https://dopamine-blond.vercel.app";
 const TEAM_PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const MAX_BODY_BYTES = 2_500_000;
 const EXACT_ORIGINS = new Set([
+  DEFAULT_ORIGIN,
+  "https://dopamine-mobins-projects-4f428afa.vercel.app",
+  "https://dopamine-git-main-mobins-projects-4f428afa.vercel.app",
   "https://aora-v8-hardening.vercel.app",
   "https://aora-v8-final.vercel.app",
   "https://aora-workforce.vercel.app",
 ]);
 const SHIFT_EVENTS = new Set(["ADD_SHIFT", "UPDATE_SHIFT"]);
+const INVITATION_EVENTS = new Set(["INVITE_MANAGER", "CREATE_EMPLOYEE_ACCOUNT", "RESEND_INVITATION", "REVOKE_INVITATION"]);
 const service = createClient(URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const RULE_SUMMARY_TTL_MS = 15_000;
 const ruleSummaryCache = new Map<string, { expiresAt: number; value: Promise<any> }>();
@@ -56,6 +61,21 @@ async function callUpstream(body: unknown, origin: string | null) {
       authorization: `Bearer ${SERVICE_KEY}`,
       apikey: SERVICE_KEY,
       ...(origin && allowedOrigin(origin) ? { "x-aora-request-origin": origin } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  let data: any;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+  return { ok: response.ok, status: response.status, data };
+}
+async function callInvitation(body: unknown) {
+  const response = await fetch(INVITATION_TARGET, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
     },
     body: JSON.stringify(body),
   });
@@ -194,6 +214,11 @@ Deno.serve(async (request: Request) => {
     const body = await request.json();
     const token = String(body.token || "");
     if (token.length !== 64) return reply({ error: "Sitzungstoken fehlt." }, 401, origin);
+
+    if (body.action === "apply" && INVITATION_EVENTS.has(body.event?.type)) {
+      const invitation = await callInvitation(body);
+      return reply(invitation.data, invitation.status, origin);
+    }
 
     if (body.action === "load") {
       const upstream = await callUpstream(body, origin);
