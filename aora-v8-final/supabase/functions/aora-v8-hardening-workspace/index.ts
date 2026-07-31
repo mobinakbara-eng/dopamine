@@ -3,18 +3,20 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CANONICAL_WORKSPACE = `${SUPABASE_URL}/functions/v1/aora-v8-final-workspace`;
-const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
+const DEFAULT_ORIGIN = "https://dopamine-blond.vercel.app";
 const PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const MAX_BODY_BYTES = 2_500_000;
 const EXACT_ORIGINS = new Set([
   DEFAULT_ORIGIN,
+  "https://dopamine-mobins-projects-4f428afa.vercel.app",
+  "https://dopamine-git-main-mobins-projects-4f428afa.vercel.app",
+  "https://aora-v8-hardening.vercel.app",
   "https://aora-v8-final.vercel.app",
   "https://aora-workforce.vercel.app",
-  "https://dopamine-mobins-projects-4f428afa.vercel.app",
 ]);
 
 function allowedOrigin(origin: string | null) {
-  if (!origin) return true;
+  if (!origin || origin === "null") return true;
   try {
     const parsed = new globalThis.URL(origin);
     if (EXACT_ORIGINS.has(parsed.origin)) return true;
@@ -43,6 +45,21 @@ function reply(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: headers(origin) });
 }
 
+function normalizePublicLinks(data: any) {
+  const kioskUrlValue = data?.kioskActivation?.kioskUrl;
+  if (typeof kioskUrlValue === "string") {
+    try {
+      const kioskUrl = new globalThis.URL(kioskUrlValue);
+      kioskUrl.protocol = "https:";
+      kioskUrl.host = "dopamine-blond.vercel.app";
+      data.kioskActivation.kioskUrl = kioskUrl.toString();
+    } catch {
+      data.kioskActivation.kioskUrl = `${DEFAULT_ORIGIN}/kiosk/dashboard/`;
+    }
+  }
+  return data;
+}
+
 Deno.serve(async (request: Request) => {
   const directOrigin = request.headers.get("origin");
   const trustedProxy = request.headers.get("authorization") === `Bearer ${SERVICE_KEY}`
@@ -67,14 +84,15 @@ Deno.serve(async (request: Request) => {
         authorization: `Bearer ${SERVICE_KEY}`,
         apikey: SERVICE_KEY,
         "content-type": "application/json",
-        ...(origin && allowedOrigin(origin) ? { origin } : {}),
       },
       body,
     });
-    return new Response(await upstream.arrayBuffer(), {
-      status: upstream.status,
-      headers: headers(origin),
-    });
+    const text = await upstream.text();
+    try {
+      return reply(normalizePublicLinks(text ? JSON.parse(text) : {}), upstream.status, origin);
+    } catch {
+      return new Response(text, { status: upstream.status, headers: headers(origin) });
+    }
   } catch {
     return reply({ error: "Workspace ist vorübergehend nicht erreichbar." }, 502, origin);
   }
