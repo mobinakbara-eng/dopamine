@@ -62,6 +62,42 @@ test("390px mobile layouts keep controls aligned and overflow contained",async({
   const employeeContext=await browser.newContext(mobile);
   const employee=await employeeContext.newPage();
   await login(employee,"employee",required("AORA_EMPLOYEE_EMAIL"),required("AORA_EMPLOYEE_PASSWORD"));
+
+  await employee.evaluate(()=>{S.employeeView="calendar";render()});
+  await expect(employee.locator(".aora-calendar-page")).toBeVisible({timeout:30000});
+  await expect(employee.locator(".aora-calendar-grid")).toBeVisible();
+  await expect(employee.locator(".aora-cal-sheet")).toBeVisible();
+  await expect(employee.locator(".aora-cal-day")).toHaveCount(42);
+  await expect(employee.locator(".aora-cal-day.is-selected")).toHaveCount(1);
+  await expect(employee.locator(".aora-cal-header-actions .aora-cal-icon-button")).toHaveCount(3);
+  await assertNoPageOverflow(employee);
+  const calendarLayout=await employee.locator(".aora-calendar-page").evaluate(element=>{
+    const pageRect=element.getBoundingClientRect();
+    const grid=element.querySelector(".aora-calendar-grid").getBoundingClientRect();
+    const sheet=element.querySelector(".aora-cal-sheet").getBoundingClientRect();
+    return{
+      viewport:window.innerWidth,
+      pageLeft:pageRect.left,
+      pageRight:pageRect.right,
+      gridLeft:grid.left,
+      gridRight:grid.right,
+      sheetLeft:sheet.left,
+      sheetRight:sheet.right
+    };
+  });
+  expect(calendarLayout.pageLeft).toBeGreaterThanOrEqual(-1);
+  expect(calendarLayout.pageRight).toBeLessThanOrEqual(calendarLayout.viewport+1);
+  expect(calendarLayout.gridLeft).toBeGreaterThanOrEqual(-1);
+  expect(calendarLayout.gridRight).toBeLessThanOrEqual(calendarLayout.viewport+1);
+  expect(calendarLayout.sheetLeft).toBeGreaterThanOrEqual(-1);
+  expect(calendarLayout.sheetRight).toBeLessThanOrEqual(calendarLayout.viewport+1);
+
+  await employee.locator('[data-aora-calendar="filter-menu"]').click();
+  await expect(employee.locator(".aora-cal-filter-popover")).toBeVisible();
+  await employee.locator('[data-aora-calendar="filter-toggle"][data-filter="tasks"]').click();
+  await expect(employee.locator('[data-aora-calendar="filter-toggle"][data-filter="tasks"]')).toHaveAttribute("aria-pressed","false");
+  await employee.locator('[data-aora-calendar="filter-toggle"][data-filter="tasks"]').click();
+
   await employee.evaluate(()=>{S.employeeView="tasks";render()});
   await expect(employee.getByText("Meine Aufgaben")).toBeVisible({timeout:30000});
   await assertNoPageOverflow(employee);

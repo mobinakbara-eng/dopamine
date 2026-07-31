@@ -57,8 +57,10 @@ test("unified Calendar, Schedule, Tasks and clock-out gate pass in the visible p
   const employee=await employeeContext.newPage();
   await login(employee,"employee",required("AORA_EMPLOYEE_EMAIL"),required("AORA_EMPLOYEE_PASSWORD"));
   await employee.locator('.employee-bottom [data-a="employee-view"][data-view="calendar"]').click();
-  await expect(employee.getByText("Dienstplan & Aufgaben")).toBeVisible({timeout:30000});
-  await expect(employee.getByText("12:00–14:00").first()).toBeVisible();
+  await expect(employee.locator(".aora-calendar-page")).toBeVisible({timeout:30000});
+  await expect(employee.locator(".aora-calendar-grid")).toBeVisible();
+  await expect(employee.locator(".aora-cal-sheet")).toBeVisible();
+  await expect(employee.locator(".aora-cal-entry-shift").filter({hasText:/12:00\s*[–-]\s*14:00/}).first()).toBeVisible({timeout:30000});
   await employee.locator('.employee-bottom [data-u="employee-tasks"]').click();
   await expect(employee.getByText("Meine Aufgaben")).toBeVisible({timeout:30000});
   await expect(employee.getByText("Release Opening Checklist").first()).toBeVisible();
