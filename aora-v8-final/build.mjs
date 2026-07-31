@@ -28,7 +28,9 @@ const runtime = {
     compliance: process.env.AORA_COMPLIANCE_FUNCTION || "aora-v8-pilot-compliance",
     monitor: process.env.AORA_MONITOR_FUNCTION || "aora-v8-pilot-monitor",
     onboarding: process.env.AORA_ONBOARDING_FUNCTION || "aora-v8-pilot-onboarding",
-    realtimeBroadcast: process.env.AORA_REALTIME_BROADCAST_FUNCTION || "aora-v8-pilot-realtime-broadcast"
+    realtimeBroadcast: process.env.AORA_REALTIME_BROADCAST_FUNCTION || "aora-v8-pilot-realtime-broadcast",
+    domainPatch: process.env.AORA_DOMAIN_PATCH_FUNCTION || "aora-v8-domain-patch",
+    accountRecovery: process.env.AORA_ACCOUNT_RECOVERY_FUNCTION || "aora-v8-account-recovery"
   }
 };
 
@@ -62,7 +64,7 @@ await writeFile(
 );
 
 const index = await readFile(resolve(output, "index.html"), "utf8");
-for (const route of ["inhaber", "arbeitgeber", "arbeitnehmer", "kiosk/dashboard"]) {
+for (const route of ["inhaber", "arbeitgeber", "arbeitnehmer", "kiosk/dashboard", "reset-password"]) {
   const directory = resolve(output, route);
   await mkdir(directory, { recursive: true });
   await writeFile(resolve(directory, "index.html"), index, "utf8");
