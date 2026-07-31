@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseURL=process.env.AORA_PREVIEW_URL||"http://127.0.0.1:4173";
 const desktop={...devices["Desktop Chrome"]};
+const mobile={...devices["iPhone 13"],viewport:{width:390,height:844}};
 export default defineConfig({
   testDir:"./tests",
   timeout:120000,
@@ -31,8 +32,14 @@ export default defineConfig({
       use:desktop
     },
     {
-      name:"chromium",
+      name:"mobile-layout",
       dependencies:["unified-release"],
+      testMatch:/aora-mobile-layout\.spec\.mjs/,
+      use:mobile
+    },
+    {
+      name:"chromium",
+      dependencies:["mobile-layout"],
       testMatch:/aora-(accessibility|four-role|unified-login)\.spec\.mjs/,
       use:desktop
     }
