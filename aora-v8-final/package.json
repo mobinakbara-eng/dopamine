@@ -4,7 +4,7 @@
   "version": "8.1.0-production",
   "type": "module",
   "scripts": {
-    "check": "node check.mjs && node tests/offline-crypto.mjs && node tests/environment-guard.mjs && node tests/unified-feature-source.mjs",
+    "check": "node check.mjs && node tests/offline-crypto.mjs && node tests/environment-guard.mjs && node tests/unified-feature-source.mjs && node tests/production-hardening-source.mjs && node tests/interaction-contract.mjs",
     "smoke": "node smoke.mjs",
     "build": "npm run check && node build.mjs && node smoke.mjs",
     "test:e2e": "playwright test",
