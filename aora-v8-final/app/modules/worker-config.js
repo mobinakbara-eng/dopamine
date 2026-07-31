@@ -3,8 +3,11 @@
 const aoraLegacyEnsureWorker=typeof globalThis.ensureWorker==="function"?globalThis.ensureWorker:null;
 globalThis.ensureWorker=async function(){
   if(!("serviceWorker"in navigator))return null;
-  const query=new URLSearchParams({supabase:CFG.url,kioskFunction:CFG.kioskWorkspaceFunction});
-  const registration=await navigator.serviceWorker.register(`/sw.js?${query}`,{updateViaCache:"none"});
+  let registration=await navigator.serviceWorker.getRegistration("/");
+  if(!registration){
+    const query=new URLSearchParams({supabase:CFG.url,kioskFunction:CFG.kioskWorkspaceFunction});
+    registration=await navigator.serviceWorker.register(`/sw.js?${query}`,{updateViaCache:"none"});
+  }
   await navigator.serviceWorker.ready;
   const worker=registration.active||registration.waiting||registration.installing||navigator.serviceWorker.controller;
   worker?.postMessage({type:"AORA_CONFIG",supabaseUrl:CFG.url,kioskFunction:CFG.kioskWorkspaceFunction});
