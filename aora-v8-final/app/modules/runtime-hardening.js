@@ -16,8 +16,15 @@ request=async function(functionName,body){
     let data;
     try{data=text?JSON.parse(text):{}}catch{data={error:text}}
     if(!response.ok){
-      const error=new Error(data.error||data.message||`HTTP ${response.status}`);
+      const payload=data?.error;
+      const message=typeof payload==="string"
+        ?payload
+        :payload?.message||data?.message||`HTTP ${response.status}`;
+      const error=new Error(message);
       error.status=response.status;
+      error.code=typeof payload==="object"?payload?.code:null;
+      error.details=typeof payload==="object"?payload?.details:null;
+      error.requestId=data?.request_id||data?.requestId||null;
       error.data=data;
       throw error;
     }

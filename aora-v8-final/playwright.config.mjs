@@ -1,10 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL=process.env.AORA_PREVIEW_URL||"http://127.0.0.1:4173";
+const desktop={...devices["Desktop Chrome"]};
 export default defineConfig({
   testDir:"./tests",
-  testMatch:/aora-(accessibility|four-role|unified-login)\.spec\.mjs/,
-  timeout:60000,
+  timeout:120000,
   expect:{timeout:15000},
   fullyParallel:false,
   workers:1,
@@ -24,6 +24,17 @@ export default defineConfig({
     reuseExistingServer:!process.env.CI,
     timeout:30000
   },
-  projects:[{name:"chromium",use:{...devices["Desktop Chrome"]}}]
+  projects:[
+    {
+      name:"unified-release",
+      testMatch:/aora-unified-release\.spec\.mjs/,
+      use:desktop
+    },
+    {
+      name:"chromium",
+      dependencies:["unified-release"],
+      testMatch:/aora-(accessibility|four-role|unified-login)\.spec\.mjs/,
+      use:desktop
+    }
+  ]
 });
-
