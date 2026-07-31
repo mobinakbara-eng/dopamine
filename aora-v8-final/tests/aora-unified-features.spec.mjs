@@ -44,8 +44,8 @@ test.describe.serial("Aora unified workforce feature gates",()=>{
 
   test("Calendar V2, Schedule Board, Task Automation, clock-out gate and service worker work together",async({browser,baseURL})=>{
     const suffix=Date.now().toString(36);
-    const date=berlinDate(3);
-    const dueAt=new Date(Date.now()+3*86400000+18*3600000).toISOString();
+    const date=berlinDate(21);
+    const dueAt=new Date(Date.now()+21*86400000+18*3600000).toISOString();
     const templateId=`task_template_e2e_${suffix}`;
 
     const ownerContext=await createContext(browser,baseURL);
@@ -70,7 +70,10 @@ test.describe.serial("Aora unified workforce feature gates",()=>{
         category:"opening",clockoutPolicy:"MANAGER_OVERRIDE",reviewRequired:false,active:true,version:1,
         items:[{id:"item_done",type:"checkbox",required:true,label:"Öffnung geprüft"}]
       }});
-      const shift=await uCall("createShift",{shift:{locationId,employeeId,date,start:"09:00",end:"17:00",breakMinutes:30,status:"published",version:1}});
+      const shift=await uCall("createShift",{
+        shift:{locationId,employeeId,date,start:"12:00",end:"14:00",breakMinutes:0,status:"published",version:1},
+        ruleOverride:{confirmed:true,reason:"Automatisierter Release-Gate-Test"}
+      });
       const task=await uCall("createManualTask",{locationId,templateId,employeeIds:[employeeId],date,dueAt},true);
       return{locationId,employeeId,shiftId:shift.shiftId,taskId:task.taskIds[0]};
     },{templateId,date,dueAt});
@@ -79,7 +82,7 @@ test.describe.serial("Aora unified workforce feature gates",()=>{
 
     await manager.locator('.admin-nav [data-a="admin-view"][data-view="schedule"]').click();
     await expect(manager.getByText("Weekly Planning Board")).toBeVisible({timeout:30000});
-    await expect(manager.getByText("09:00–17:00").first()).toBeVisible();
+    await expect(manager.getByText("12:00–14:00").first()).toBeVisible();
     await expect(manager.locator(".u-schedule-board")).toBeVisible();
 
     await manager.locator('.admin-nav [data-a="admin-view"][data-view="tasks"]').click();
@@ -99,7 +102,7 @@ test.describe.serial("Aora unified workforce feature gates",()=>{
 
     await employee.locator('.employee-bottom [data-a="employee-view"][data-view="calendar"]').click();
     await expect(employee.getByText("Dienstplan & Aufgaben")).toBeVisible({timeout:30000});
-    await expect(employee.getByText("09:00–17:00").first()).toBeVisible();
+    await expect(employee.getByText("12:00–14:00").first()).toBeVisible();
     await expect(employee.locator(".u-calendar-shell")).toBeVisible();
 
     await employee.locator('.employee-bottom [data-u="employee-tasks"]').click();
