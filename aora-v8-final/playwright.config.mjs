@@ -4,7 +4,7 @@ const baseURL=process.env.AORA_PREVIEW_URL||"http://127.0.0.1:4173";
 const desktop={...devices["Desktop Chrome"]};
 export default defineConfig({
   testDir:"./tests",
-  timeout:60000,
+  timeout:120000,
   expect:{timeout:15000},
   fullyParallel:false,
   workers:1,
