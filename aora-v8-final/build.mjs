@@ -13,9 +13,12 @@ const defaultProductionUrl = `https://${productionProjectRef}.supabase.co`;
 const defaultStagingKey = ["sb", "publishable", "DA", "L16", "qVM9opFpQcYz16g", "kTBwFpKZ"].join("_");
 const defaultProductionKey = ["sb", "publishable", "lU4XsAz8CbxdtCuXSfnvpw", "0B9eIJiY"].join("_");
 const production = deployEnvironment === "production";
+const defaultCanonicalOrigin = production
+  ? "https://dopamine-blond.vercel.app"
+  : "https://dopamine-mobins-projects-4f428afa.vercel.app";
 const runtime = {
   environment: deployEnvironment,
-  canonicalOrigin: process.env.AORA_CANONICAL_ORIGIN || "https://dopamine-mobins-projects-4f428afa.vercel.app",
+  canonicalOrigin: process.env.AORA_CANONICAL_ORIGIN || defaultCanonicalOrigin,
   supabaseUrl: process.env.AORA_SUPABASE_URL || (production ? defaultProductionUrl : defaultStagingUrl),
   supabasePublishableKey: process.env.AORA_SUPABASE_PUBLISHABLE_KEY || (production ? defaultProductionKey : defaultStagingKey),
   functions: {
