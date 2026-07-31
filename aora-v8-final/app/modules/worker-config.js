@@ -1,7 +1,7 @@
 "use strict";
 
-const aoraLegacyEnsureWorker=typeof ensureWorker==="function"?ensureWorker:null;
-ensureWorker=async function(){
+const aoraLegacyEnsureWorker=typeof globalThis.ensureWorker==="function"?globalThis.ensureWorker:null;
+globalThis.ensureWorker=async function(){
   if(!("serviceWorker"in navigator))return null;
   const query=new URLSearchParams({supabase:CFG.url,kioskFunction:CFG.kioskWorkspaceFunction});
   const registration=await navigator.serviceWorker.register(`/sw.js?${query}`,{updateViaCache:"none"});
@@ -10,11 +10,11 @@ ensureWorker=async function(){
   worker?.postMessage({type:"AORA_CONFIG",supabaseUrl:CFG.url,kioskFunction:CFG.kioskWorkspaceFunction});
   return registration;
 };
-const aoraLegacyBindOfflinePunchSession=typeof bindOfflinePunchSession==="function"?bindOfflinePunchSession:null;
+const aoraLegacyBindOfflinePunchSession=typeof globalThis.bindOfflinePunchSession==="function"?globalThis.bindOfflinePunchSession:null;
 if(aoraLegacyBindOfflinePunchSession){
-  bindOfflinePunchSession=async function(session){
+  globalThis.bindOfflinePunchSession=async function(session){
     const result=await aoraLegacyBindOfflinePunchSession(session);
-    const registration=await ensureWorker();
+    const registration=await globalThis.ensureWorker();
     const worker=registration?.active||registration?.waiting||registration?.installing||navigator.serviceWorker.controller;
     worker?.postMessage({type:"AORA_CONFIG",supabaseUrl:CFG.url,kioskFunction:CFG.kioskWorkspaceFunction});
     return result;
@@ -28,7 +28,11 @@ if("serviceWorker"in navigator){
     if(event.data?.type==="AORA_NOTIFICATION_OPEN"&&event.data.url){
       const url=new URL(event.data.url,location.origin);
       history.pushState({},"",`${url.pathname}${url.search}`);
-      if(url.searchParams.get("task")){S.employeeView="tasks";S.u&&(S.u.tasks.selected=url.searchParams.get("task"));render()}
+      if(url.searchParams.get("task")){
+        S.employeeView="tasks";
+        if(S.u)S.u.tasks.selected=url.searchParams.get("task");
+        render();
+      }
     }
   });
 }
