@@ -33,14 +33,6 @@ async function derive(password:string,salt:string,iterations=ITERATIONS){
   const key=await crypto.subtle.importKey("raw",encoder.encode(password),"PBKDF2",false,["deriveBits"]);
   return hex(new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:fromHex(salt),iterations},key,256)));
 }
-function same(left:unknown,right:unknown){
-  const a=String(left||"").toLowerCase();
-  const b=String(right||"").toLowerCase();
-  if(a.length!==b.length)return false;
-  let difference=0;
-  for(let index=0;index<a.length;index++)difference|=a.charCodeAt(index)^b.charCodeAt(index);
-  return difference===0;
-}
 function allowedOrigin(origin:string|null){
   if(!origin||EXACT_ORIGINS.has(origin))return true;
   try{
@@ -84,7 +76,6 @@ async function consumeRateLimit(request:Request,scope:string,identifier:string,l
   if(result.error)throw new ApiError(500,"rate_limit_failed",result.error.message);
   const row=Array.isArray(result.data)?result.data[0]:result.data;
   if(!row?.allowed)throw new ApiError(429,"rate_limited",`Zu viele Anfragen. Bitte in ${Number(row?.retry_after_seconds||60)} Sekunden erneut versuchen.`);
-  return bucket;
 }
 async function organizationFor(slug:string){
   const normalized=slug.trim().toLowerCase();
@@ -127,8 +118,9 @@ async function assertPasswordSafe(password:string){
       signal:controller.signal
     });
     if(!response.ok)throw new ApiError(503,"password_check_unavailable","Die sichere Passwortprüfung ist vorübergehend nicht verfügbar.");
-    const compromised=(await response.text()).split(/\r?\n/).some(line=>line.split(":")[0]?.trim()===hash.slice(5));
-    if(compromised)throw new ApiError(400,"compromised_password","Dieses Passwort ist aus bekannten Datenlecks bekannt.");
+    if((await response.text()).split(/\r?\n/).some(line=>line.split(":")[0]?.trim()===hash.slice(5))){
+      throw new ApiError(400,"compromised_password","Dieses Passwort ist aus bekannten Datenlecks bekannt.");
+    }
   }catch(error){
     if(error instanceof ApiError)throw error;
     throw new ApiError(503,"password_check_unavailable","Die sichere Passwortprüfung ist vorübergehend nicht verfügbar.");
@@ -151,9 +143,10 @@ async function requestReset(request:Request,body:any){
   const requesterHash=await sha256(`${clientIp(request)}:${request.headers.get("user-agent")||""}`);
   const existing=await service.from("password_reset_requests").select("id,status").eq("organization_id",organization.id).eq("email",email).in("status",["pending","approved"]).maybeSingle();
   if(existing.data){
-    await service.from("password_reset_requests").update({status:"pending",requested_at:new Date().toISOString(),approved_at:null,approved_by:null,token_hash:null,expires_at:null,requester_hash,last_error:null}).eq("id",existing.data.id);
+    const updated=await service.from("password_reset_requests").update({status:"pending",requested_at:new Date().toISOString(),approved_at:null,approved_by:null,token_hash:null,expires_at:null,requester_hash:requesterHash,last_error:null}).eq("id",existing.data.id);
+    if(updated.error)throw new ApiError(500,"request_failed",updated.error.message);
   }else{
-    const inserted=await service.from("password_reset_requests").insert({organization_id:organization.id,subject_role:credential.data.subject_role,subject_id:credential.data.subject_id,email,requester_hash,status:"pending"});
+    const inserted=await service.from("password_reset_requests").insert({organization_id:organization.id,subject_role:credential.data.subject_role,subject_id:credential.data.subject_id,email,requester_hash:requesterHash,status:"pending"});
     if(inserted.error)throw new ApiError(500,"request_failed",inserted.error.message);
   }
   return{accepted:true};
@@ -169,7 +162,7 @@ async function requestSupport(request:Request,body:any){
   await consumeRateLimit(request,"support",`${slug}:${email}`,5,900);
   const organization=await organizationFor(slug);
   const requesterHash=await sha256(`${clientIp(request)}:${request.headers.get("user-agent")||""}`);
-  const inserted=await service.from("support_requests").insert({organization_id:organization.id,email,subject,message,requester_hash,status:"open"}).select("id").single();
+  const inserted=await service.from("support_requests").insert({organization_id:organization.id,email,subject,message,requester_hash:requesterHash,status:"open"}).select("id").single();
   if(inserted.error)throw new ApiError(500,"support_request_failed",inserted.error.message);
   return{accepted:true,requestId:inserted.data.id};
 }
@@ -191,26 +184,15 @@ async function approveReset(body:any){
   const reset=await service.from("password_reset_requests").select("*").eq("organization_id",ctx.organization.id).eq("id",requestId).in("status",["pending","approved"]).maybeSingle();
   if(reset.error||!reset.data)throw new ApiError(404,"request_not_found","Reset-Anfrage wurde nicht gefunden.");
   const rawToken=randomHex(32);
-  const tokenHash=await sha256(rawToken);
   const expiresAt=new Date(Date.now()+30*60*1000).toISOString();
-  const updated=await service.from("password_reset_requests").update({status:"approved",approved_at:new Date().toISOString(),approved_by:ctx.session.subject_id,token_hash:tokenHash,expires_at:expiresAt,last_error:null}).eq("id",requestId);
+  const updated=await service.from("password_reset_requests").update({status:"approved",approved_at:new Date().toISOString(),approved_by:ctx.session.subject_id,token_hash:await sha256(rawToken),expires_at:expiresAt,last_error:null}).eq("id",requestId);
   if(updated.error)throw new ApiError(500,"approval_failed",updated.error.message);
   const resetUrl=new URL("reset-password/",DEFAULT_ORIGIN+"/");
   resetUrl.searchParams.set("workspace",ctx.organization.slug);
   resetUrl.searchParams.set("request",requestId);
   resetUrl.searchParams.set("token",rawToken);
   const name=await accountName(ctx.organization.id,reset.data.subject_role,reset.data.subject_id);
-  return{
-    requestId,
-    expiresAt,
-    delivery:{
-      name,
-      email:reset.data.email,
-      resetUrl:resetUrl.toString(),
-      subject:"AoraAI Passwort zurücksetzen",
-      body:`Hallo ${name},\n\nüber diesen einmaligen Link kannst du dein AoraAI-Passwort innerhalb von 30 Minuten neu setzen:\n\n${resetUrl.toString()}\n\nFalls du die Anfrage nicht gestellt hast, ignoriere diese Nachricht.`
-    }
-  };
+  return{requestId,expiresAt,delivery:{name,email:reset.data.email,resetUrl:resetUrl.toString(),subject:"AoraAI Passwort zurücksetzen",body:`Hallo ${name},\n\nüber diesen einmaligen Link kannst du dein AoraAI-Passwort innerhalb von 30 Minuten neu setzen:\n\n${resetUrl.toString()}\n\nFalls du die Anfrage nicht gestellt hast, ignoriere diese Nachricht.`}};
 }
 async function cancelReset(body:any){
   const ctx=await ownerContext(String(body.token||""));
@@ -232,11 +214,11 @@ async function resetPassword(request:Request,body:any){
   const password=String(body.password||"");
   if(!/^[0-9a-f]{64}$/i.test(token))throw new ApiError(401,"invalid_reset_token","Reset-Link ist ungültig oder abgelaufen.");
   await consumeRateLimit(request,"password-reset-complete",requestId,10,900);
+  const resetContext=await service.from("password_reset_requests").select("organization_id").eq("id",requestId).maybeSingle();
+  if(resetContext.error||!resetContext.data)throw new ApiError(401,"invalid_reset_token","Reset-Link ist ungültig oder abgelaufen.");
   await assertPasswordSafe(password);
-  const tokenHash=await sha256(token);
   const salt=randomHex(16);
-  const passwordHash=await derive(password,salt);
-  const completed=await service.rpc("aora_complete_password_reset",{p_request_id:requestId,p_token_hash:tokenHash,p_salt:salt,p_password_hash:passwordHash,p_iterations:ITERATIONS});
+  const completed=await service.rpc("aora_complete_password_reset",{p_request_id:requestId,p_token_hash:await sha256(token),p_salt:salt,p_password_hash:await derive(password,salt),p_iterations:ITERATIONS});
   if(completed.error){
     const message=String(completed.error.message||"");
     if(/expired|not_active|invalid|not_found/.test(message))throw new ApiError(401,"invalid_reset_token","Reset-Link ist ungültig oder abgelaufen.");
@@ -245,7 +227,7 @@ async function resetPassword(request:Request,body:any){
   const account=completed.data?.[0];
   let accessRole=account?.subject_role==="employee"?"employee":"manager";
   if(account?.subject_role==="admin"){
-    const admin=await service.from("admins").select("payload").eq("id",account.subject_id).maybeSingle();
+    const admin=await service.from("admins").select("payload").eq("organization_id",resetContext.data.organization_id).eq("id",account.subject_id).maybeSingle();
     if(admin.data?.payload?.scope==="owner")accessRole="owner";
   }
   return{completed:true,accessRole};
