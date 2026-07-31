@@ -1,0 +1,39 @@
+name: Disable Vercel Authentication
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/disable-vercel-auth.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disable-vercel-authentication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ACCESS_TOKEN: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+    steps:
+      - name: Disable Vercel Authentication for dopamine
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="${VERCEL_TOKEN:-${VERCEL_ACCESS_TOKEN:-}}"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::No VERCEL_TOKEN or VERCEL_ACCESS_TOKEN repository secret is configured."
+            exit 1
+          fi
+
+          RESPONSE="$(curl --silent --show-error --fail-with-body \
+            --request PATCH \
+            --url 'https://api.vercel.com/v9/projects/prj_h9M0ibokgd3REbVVVRkqkTBd2kgE?teamId=team_pN5AjcGql5Ur448rO3HlIe3D' \
+            --header "Authorization: Bearer ${TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data '{"ssoProtection":null}')"
+
+          echo "$RESPONSE" | jq '{id, name, ssoProtection}'
