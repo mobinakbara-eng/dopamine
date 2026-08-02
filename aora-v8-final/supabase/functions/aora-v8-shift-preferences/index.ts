@@ -40,6 +40,13 @@ function reply(body: unknown, status = 200, origin: string | null = null) {
 function fail(message: string, status = 400, data: Record<string, unknown> = {}): never {
   throw Object.assign(new Error(message), { status, data });
 }
+function errorMessage(error: any, fallback = "Interner Fehler.") {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object") {
+    return String(error.message || error.error_description || error.details || error.hint || fallback);
+  }
+  return error == null ? fallback : String(error);
+}
 function asDate(value: unknown) {
   const text = String(value || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) fail("Datum ist ungültig.");
@@ -192,7 +199,7 @@ async function decidePreference(ctx: any, body: any) {
       p_actor_type: ctx.accessRole,
       p_actor_id: ctx.session.subject_id,
     });
-    if (evaluated.error) throw evaluated.error;
+    if (evaluated.error) fail(errorMessage(evaluated.error, "Arbeitszeitregeln konnten nicht geprüft werden."), 500, { code: evaluated.error.code || null });
     evaluation = evaluated.data;
     if (!evaluation?.valid) fail(evaluation?.requiresConfirmation ? "Bestätigung einer Arbeitszeitregel ist erforderlich." : "Der Schichtwunsch verletzt eine blockierende Arbeitszeitregel.", evaluation?.requiresConfirmation ? 428 : 422, { ruleEvaluation: evaluation });
     shift = {
@@ -215,11 +222,11 @@ async function decidePreference(ctx: any, body: any) {
     p_shift: shift,
   });
   if (decided.error) {
-    const message = String(decided.error.message || "");
+    const message = errorMessage(decided.error, "Schichtwunsch konnte nicht entschieden werden.");
     if (message.includes("revision_conflict")) fail("Daten wurden auf einem anderen Gerät geändert. Bitte erneut versuchen.", 409, { conflict: true });
     if (message.includes("shift_overlap")) fail("Die Schicht überschneidet sich mit einer bestehenden Schicht.", 409);
     if (message.includes("already_decided")) fail("Der Schichtwunsch wurde bereits entschieden.", 409);
-    throw decided.error;
+    fail(message, 500, { code: decided.error.code || null });
   }
   const result = Array.isArray(decided.data) ? decided.data[0] : decided.data;
   return { revision: Number(result?.revision), resultingShiftId: result?.resulting_shift_id || null, ruleEvaluation: evaluation };
@@ -242,7 +249,8 @@ Deno.serve(async (request: Request) => {
     } else return reply({ error: "Unbekannte Aktion." }, 400, origin);
     return reply({ preferences: await loadPreferences(ctx) }, 200, origin);
   } catch (error: any) {
-    console.warn("aora-shift-preference-rejected", { status: error?.status || 500, message: error?.message || String(error) });
-    return reply({ error: error instanceof Error ? error.message : String(error), ...(error?.data || {}) }, Number(error?.status || 500), origin);
+    const message = errorMessage(error);
+    console.warn("aora-shift-preference-rejected", { status: error?.status || 500, message });
+    return reply({ error: message, ...(error?.data || {}) }, Number(error?.status || 500), origin);
   }
 });
