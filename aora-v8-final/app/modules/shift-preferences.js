@@ -2,283 +2,280 @@
 
 (() => {
   const FUNCTION_NAME = "aora-v8-shift-preferences";
-  const store = S.u.shiftPreferences ||= {
-    items: [],
-    loading: false,
-    loaded: false,
-    error: null,
-    modal: null,
-    managerWeek: null
-  };
-
-  const employeeCalendar = typeof globalThis.uCalendarPage === "function" ? globalThis.uCalendarPage : null;
-  const managerSchedule = typeof globalThis.schedulePage === "function" ? globalThis.schedulePage : null;
-  const html = (value) => typeof esc === "function"
-    ? esc(value == null ? "" : String(value))
-    : String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-  const icon = (name) => `<span class="material-symbols-rounded" aria-hidden="true">${name}</span>`;
+  const originalEmployeeCalendar = typeof globalThis.uCalendarPage === "function" ? globalThis.uCalendarPage : null;
+  const originalAdminView = typeof globalThis.adminView === "function" ? globalThis.adminView : null;
   const currentDate = () => typeof berlin === "function" ? berlin().date : new Date().toISOString().slice(0, 10);
-  const add = (date, days) => typeof addDays === "function"
-    ? addDays(date, days)
-    : (() => { const value = new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); })();
-  const weekStart = (date = currentDate()) => {
-    if (typeof startWeek === "function" && date === currentDate()) return startWeek();
-    const value = new Date(`${date}T12:00:00Z`);
-    const day = value.getUTCDay() || 7;
-    value.setUTCDate(value.getUTCDate() - day + 1);
-    return value.toISOString().slice(0, 10);
-  };
-  const dateLabel = (date, options = {}) => {
-    if (typeof fd === "function") return fd(date, options);
-    return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", ...(options.weekday ? { weekday: "short" } : {}), timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
-  };
-  const employeeById = (id) => typeof emp === "function" ? emp(id) : (S.state?.employees || []).find((item) => item.id === id);
-  const locationById = (id) => typeof loc === "function" ? loc(id) : (S.state?.locations || []).find((item) => item.id === id);
+  const employeeId = () => String(S.session?.subjectId || S.session?.employeeId || "");
+  const icon = (name) => `<span class="material-symbols-rounded" aria-hidden="true">${name}</span>`;
+  const statusLabel = (status) => ({ pending: "Offen", accepted: "Übernommen", rejected: "Abgelehnt", cancelled: "Zurückgezogen" })[status] || status || "Offen";
   const minutes = (start, end, breakMinutes = 0) => {
-    if (typeof mins === "function") return mins(start, end, breakMinutes);
-    const [sh, sm] = String(start).split(":").map(Number);
-    const [eh, em] = String(end).split(":").map(Number);
-    return Math.max(0, eh * 60 + em - sh * 60 - sm - Number(breakMinutes || 0));
+    try { return mins(start, end, breakMinutes); }
+    catch {
+      const [sh, sm] = String(start || "00:00").split(":").map(Number);
+      const [eh, em] = String(end || "00:00").split(":").map(Number);
+      return Math.max(0, eh * 60 + em - sh * 60 - sm - Number(breakMinutes || 0));
+    }
   };
-  const duration = (value) => typeof fm === "function" ? fm(value) : `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")} Std.`;
+  const duration = (value) => typeof fm === "function"
+    ? fm(value)
+    : `${Math.floor(Number(value || 0) / 60)}:${String(Number(value || 0) % 60).padStart(2, "0")} Std.`;
 
-  function canUseFeature() {
-    return Boolean(S.session?.token && ["employee", "manager", "owner"].includes(S.accessRole));
+  function normalizePreference(item) {
+    const payload = item?.payload && typeof item.payload === "object" ? item.payload : item || {};
+    return {
+      id: String(item?.id || payload.id || ""),
+      shiftId: item?.shiftId ?? item?.shift_id ?? payload.shiftId ?? null,
+      employeeId: String(item?.employeeId ?? item?.employee_id ?? payload.employeeId ?? ""),
+      locationId: String(item?.locationId ?? item?.location_id ?? payload.locationId ?? ""),
+      requestType: String(item?.requestType ?? item?.request_type ?? payload.requestType ?? ""),
+      date: String(item?.date ?? payload.date ?? ""),
+      start: String(item?.start ?? payload.start ?? "").slice(0, 5),
+      end: String(item?.end ?? payload.end ?? "").slice(0, 5),
+      breakMinutes: Number(item?.breakMinutes ?? payload.breakMinutes ?? 0),
+      note: String(item?.note ?? payload.note ?? ""),
+      status: String(item?.status ?? payload.status ?? "pending"),
+      reason: String(item?.reason ?? payload.reason ?? ""),
+      createdAt: item?.createdAt ?? item?.created_at ?? payload.createdAt ?? null
+    };
+  }
+
+  function sourceRows() {
+    if (["manager", "owner"].includes(S.accessRole) && Array.isArray(S.u?.schedule?.data?.shiftRequests)) {
+      return S.u.schedule.data.shiftRequests;
+    }
+    return Array.isArray(S.state?.shiftRequests) ? S.state.shiftRequests : [];
+  }
+
+  function preferences() {
+    return sourceRows().map(normalizePreference).filter((item) => item.id && item.requestType === "shift_preference");
+  }
+
+  function ownPreferences(date) {
+    const id = employeeId();
+    return preferences()
+      .filter((item) => item.employeeId === id && item.date === date)
+      .sort((a, b) => `${a.start}${a.createdAt || ""}`.localeCompare(`${b.start}${b.createdAt || ""}`));
+  }
+
+  function managerPreferences() {
+    return preferences()
+      .filter((item) => item.status === "pending" && item.locationId === String(S.locationId || ""))
+      .sort((a, b) => `${a.date}${a.start}`.localeCompare(`${b.date}${b.start}`));
   }
 
   async function preferenceRequest(action, payload = {}) {
     return request(FUNCTION_NAME, {
       action,
       token: S.session?.token,
-      expectedRevision: S.revision,
+      idempotencyKey: crypto.randomUUID(),
       ...payload
     });
   }
 
-  async function ensurePreferences(force = false) {
-    if (!canUseFeature() || store.loading || (store.loaded && !force)) return;
-    store.loading = true;
-    store.error = null;
-    try {
-      const data = await preferenceRequest("load");
-      store.items = Array.isArray(data.preferences) ? data.preferences : [];
-      store.loaded = true;
-    } catch (error) {
-      store.error = error?.message || "Schichtwünsche konnten nicht geladen werden.";
-    } finally {
-      store.loading = false;
-      if (typeof render === "function" && (S.employeeView === "calendar" || S.adminView === "schedule")) render();
-    }
-  }
-
-  function preferenceStatus(item) {
-    return ({ pending: "Offen", accepted: "Übernommen", rejected: "Abgelehnt", cancelled: "Zurückgezogen" })[item.status] || item.status || "Offen";
-  }
-
-  function preferenceForEmployee(date) {
-    const employeeId = S.session?.subjectId || S.session?.employeeId;
-    return store.items
-      .filter((item) => item.employeeId === employeeId && item.date === date)
-      .sort((a, b) => `${a.start}${a.createdAt || ""}`.localeCompare(`${b.start}${b.createdAt || ""}`));
-  }
-
-  function employeePreferenceCard(item) {
+  function employeeCard(item) {
     const pending = item.status === "pending";
-    return `<article class="sp-employee-card is-${html(item.status || "pending")}">
-      <div class="sp-card-icon">${icon("event_upcoming")}</div>
-      <div class="sp-card-copy">
-        <strong>Schichtwunsch</strong>
-        <span>${html(item.start)} – ${html(item.end)} · ${html(locationById(item.locationId)?.name || "Standort")}</span>
-        <small>${html(preferenceStatus(item))}${item.note ? ` · ${html(item.note)}` : ""}</small>
-      </div>
-      <div class="sp-card-side"><b>${duration(minutes(item.start, item.end, item.breakMinutes))}</b>${pending ? `<button data-sp-action="cancel" data-id="${html(item.id)}">Zurückziehen</button>` : ""}</div>
+    return `<article class="aora-cal-entry aora-cal-entry-shift" data-sp-preference-card="${esc(item.id)}">
+      <div class="aora-cal-entry-icon">${icon("event_upcoming")}</div>
+      <div class="aora-cal-entry-copy"><strong>Schichtwunsch</strong><span>${esc(item.start)} – ${esc(item.end)} · ${esc(loc(item.locationId)?.name || "Standort")}</span><small>${esc(statusLabel(item.status))}${item.note ? ` · ${esc(item.note)}` : ""}</small></div>
+      <div class="aora-cal-entry-value">${duration(minutes(item.start, item.end, item.breakMinutes))}</div>
+      ${pending ? `<div class="u-actions"><button class="u-btn secondary" data-sp-action="cancel" data-id="${esc(item.id)}">Zurückziehen</button></div>` : ""}
     </article>`;
   }
 
-  function createButton(date) {
-    return `<button class="sp-request-button" data-sp-action="open-create" data-date="${html(date)}">${icon("add_circle")}<span>Schicht wünschen</span></button>`;
-  }
-
-  function augmentEmployeeCalendar(markup) {
-    const date = S.u.calendar?.selected || currentDate();
-    const cards = preferenceForEmployee(date).map(employeePreferenceCard).join("");
-    const actionPattern = /<button class="aora-cal-add" data-u="availability" data-date="[^"]+"[^>]*>[\s\S]*?<\/button>/;
-    let output = markup.replace(actionPattern, (availabilityButton) => `<div class="sp-calendar-actions">${availabilityButton}${createButton(date)}</div>`);
-    output = output.replace('<div class="aora-cal-entry-list">', `<div class="aora-cal-entry-list">${cards}`);
-    if (store.loading) output = output.replace('<div class="aora-cal-entry-list">', '<div class="aora-cal-entry-list"><div class="sp-inline-state">Schichtwünsche werden geladen …</div>');
-    if (store.error) output = output.replace('<div class="aora-cal-entry-list">', `<div class="aora-cal-entry-list"><button class="sp-inline-error" data-sp-action="reload">${html(store.error)} · erneut versuchen</button>`);
-    return output + modalMarkup();
-  }
-
-  function weekDays(start) {
-    return Array.from({ length: 7 }, (_, index) => add(start, index));
-  }
-
-  function managerPreferences() {
-    return store.items.filter((item) => item.status === "pending" && item.locationId === S.locationId);
-  }
-
-  function shiftCard(shift) {
-    return `<button class="sp-shift-card" data-a="shift-modal" data-id="${html(shift.id)}" title="Schicht bearbeiten">
-      <strong>${html(shift.start)}–${html(shift.end)}</strong><span>${duration(minutes(shift.start, shift.end, shift.breakMinutes))}</span>
-    </button>`;
-  }
-
-  function ghostCard(item) {
-    return `<button class="sp-ghost-card" data-sp-action="open-decision" data-id="${html(item.id)}" aria-label="Schichtwunsch von ${html(employeeById(item.employeeId)?.name || "Mitarbeiter")} prüfen">
-      <span class="sp-ghost-label">Wunsch</span><strong>${html(item.start)}–${html(item.end)}</strong>${item.note ? `<small>${html(item.note)}</small>` : ""}
-    </button>`;
-  }
-
-  function managerSchedulePage() {
-    queueMicrotask(() => ensurePreferences());
-    const start = store.managerWeek || (store.managerWeek = weekStart());
-    const days = weekDays(start);
-    const employees = (S.state?.employees || []).filter((item) => item.active !== false && item.locationId === S.locationId);
-    const shifts = (S.state?.shifts || []).filter((item) => item.locationId === S.locationId && item.date >= days[0] && item.date <= days[6]);
-    const preferences = managerPreferences().filter((item) => item.date >= days[0] && item.date <= days[6]);
-    const weekEnd = days[6];
-    const cells = employees.map((employee) => `<div class="sp-planner-row">
-      <div class="sp-person-cell"><span class="sp-avatar">${html(employee.initials || String(employee.name || "?").split(/\s+/).map((part) => part[0]).join("").slice(0, 2))}</span><div><strong>${html(employee.name)}</strong><small>${html(employee.role || "Mitarbeiter")}</small></div></div>
-      ${days.map((date) => `<div class="sp-day-cell" data-date="${date}" data-employee="${html(employee.id)}">
-        ${shifts.filter((item) => item.employeeId === employee.id && item.date === date).map(shiftCard).join("")}
-        ${preferences.filter((item) => item.employeeId === employee.id && item.date === date).map(ghostCard).join("")}
-        ${!shifts.some((item) => item.employeeId === employee.id && item.date === date) && !preferences.some((item) => item.employeeId === employee.id && item.date === date) ? '<span class="sp-empty-cell">–</span>' : ""}
-      </div>`).join("")}
-    </div>`).join("");
-    const allRows = (S.state?.shifts || []).filter((item) => item.locationId === S.locationId).sort((a, b) => `${a.date}${a.start}`.localeCompare(`${b.date}${b.start}`));
-    const tableRows = allRows.map((item) => `<tr><td>${html(dateLabel(item.date, { weekday: true }))}</td><td>${html(employeeById(item.employeeId)?.name || "–")}</td><td>${html(item.start)}–${html(item.end)}</td><td>${Number(item.breakMinutes || 0)} Min.</td><td>${html(item.status || "draft")}</td></tr>`).join("");
-    return `<section class="sp-schedule-page">
-      <header class="sp-planner-head"><div><span class="caps">Aora Dienstplanung</span><h1>Dienstplan</h1><p>Feste Schichten und Vorschläge des Teams in einer Ansicht.</p></div><div class="sp-planner-actions"><button class="btn outline" data-sp-action="week-prev" aria-label="Vorherige Woche">${icon("chevron_left")}</button><button class="btn outline" data-sp-action="week-today">Heute</button><button class="btn outline" data-sp-action="week-next" aria-label="Nächste Woche">${icon("chevron_right")}</button><button class="btn" data-a="shift-modal">Neue Schicht</button></div></header>
-      <div class="sp-planner-summary"><div><strong>${html(dateLabel(start))} – ${html(dateLabel(weekEnd))}</strong><span>${preferences.length} offene Schichtwünsche</span></div><div class="sp-legend"><span><i class="is-shift"></i>Geplante Schicht</span><span><i class="is-preference"></i>Schichtwunsch</span></div></div>
-      ${store.error ? `<button class="sp-inline-error" data-sp-action="reload">${html(store.error)} · erneut versuchen</button>` : ""}
-      <div class="sp-planner-scroll"><div class="sp-planner-grid">
-        <div class="sp-planner-header"><div>Mitarbeiter</div>${days.map((date) => `<div class="${date === currentDate() ? "is-today" : ""}"><span>${html(dateLabel(date, { weekday: true }).split(",")[0])}</span><strong>${html(date.slice(8, 10))}</strong></div>`).join("")}</div>
-        ${cells || '<div class="sp-empty-planner">Für diesen Standort sind keine aktiven Mitarbeiter vorhanden.</div>'}
-      </div></div>
-      <details class="sp-schedule-list"><summary>Listenansicht aller Schichten</summary><div class="table-wrap"><table><thead><tr><th>Datum</th><th>Mitarbeiter</th><th>Zeit</th><th>Pause</th><th>Status</th></tr></thead><tbody>${tableRows || '<tr><td colspan="5">Keine Schichten vorhanden.</td></tr>'}</tbody></table></div></details>
-      ${modalMarkup()}
-    </section>`;
-  }
-
-  function modalMarkup() {
-    if (!store.modal) return "";
-    if (store.modal.type === "create") {
-      const date = store.modal.date || currentDate();
-      return `<div class="sp-modal-backdrop"><section class="sp-modal" role="dialog" aria-modal="true" aria-labelledby="sp-create-title"><button class="sp-modal-close" data-sp-action="close" aria-label="Schließen">${icon("close")}</button><div class="sp-modal-icon">${icon("event_upcoming")}</div><h2 id="sp-create-title">Schichtwunsch abgeben</h2><p>Der Wunsch ist noch keine feste Schicht. Dein Manager kann ihn übernehmen oder ablehnen.</p><form data-sp-form="create"><label>Datum<input name="date" type="date" min="${currentDate()}" value="${html(date)}" required></label><div class="sp-form-row"><label>Beginn<input name="start" type="time" value="09:00" required></label><label>Ende<input name="end" type="time" value="17:00" required></label><label>Pause<input name="breakMinutes" type="number" min="0" max="180" step="5" value="30" required></label></div><label>Notiz (optional)<textarea name="note" maxlength="240" placeholder="z. B. Frühschicht bevorzugt"></textarea></label><div class="sp-modal-actions"><button type="button" class="btn outline" data-sp-action="close">Abbrechen</button><button type="submit" class="btn">Wunsch senden</button></div></form></section></div>`;
+  function decorateEmployeeCalendar() {
+    if (S.accessRole !== "employee" || S.employeeView !== "calendar") return;
+    const selected = S.u.calendar?.selected || currentDate();
+    const sheetHead = document.querySelector(".aora-cal-sheet-head");
+    const nativeAvailability = sheetHead?.querySelector('[data-u="availability"]');
+    if (nativeAvailability && !sheetHead.querySelector('[data-sp-action="create"]')) {
+      let actions = nativeAvailability.parentElement?.classList.contains("aora-cal-header-actions") ? nativeAvailability.parentElement : null;
+      if (!actions) {
+        actions = document.createElement("div");
+        actions.className = "aora-cal-header-actions";
+        nativeAvailability.before(actions);
+        actions.append(nativeAvailability);
+      }
+      nativeAvailability.title = "Verfügbarkeit festlegen";
+      const trigger = document.createElement("button");
+      trigger.className = "aora-cal-add";
+      trigger.type = "button";
+      trigger.dataset.spAction = "create";
+      trigger.dataset.date = selected;
+      trigger.setAttribute("aria-label", "Schichtwunsch für diesen Tag abgeben");
+      trigger.title = "Schicht wünschen";
+      trigger.innerHTML = icon("event_upcoming");
+      actions.append(trigger);
     }
-    const item = store.items.find((candidate) => candidate.id === store.modal.id);
-    if (!item) return "";
-    const employee = employeeById(item.employeeId);
-    return `<div class="sp-modal-backdrop"><section class="sp-modal" role="dialog" aria-modal="true" aria-labelledby="sp-decision-title"><button class="sp-modal-close" data-sp-action="close" aria-label="Schließen">${icon("close")}</button><div class="sp-modal-icon is-ghost">${icon("event_upcoming")}</div><span class="caps">Schichtwunsch</span><h2 id="sp-decision-title">${html(employee?.name || "Mitarbeiter")}</h2><p>${html(dateLabel(item.date, { weekday: true }))} · ${html(locationById(item.locationId)?.name || "Standort")}</p><form data-sp-form="decision" data-id="${html(item.id)}"><div class="sp-form-row"><label>Beginn<input name="start" type="time" value="${html(item.start)}" required></label><label>Ende<input name="end" type="time" value="${html(item.end)}" required></label><label>Pause<input name="breakMinutes" type="number" min="0" max="180" step="5" value="${Number(item.breakMinutes || 0)}" required></label></div>${item.note ? `<div class="sp-note"><strong>Notiz</strong><span>${html(item.note)}</span></div>` : ""}<label>Entscheidungsnotiz (optional)<textarea name="reason" maxlength="240" placeholder="Wird dem Mitarbeiter angezeigt"></textarea></label><div class="sp-modal-actions sp-decision-actions"><button type="button" class="btn outline danger" data-sp-action="reject" data-id="${html(item.id)}">Ablehnen</button><button type="submit" class="btn">In Dienstplan übernehmen</button></div></form></section></div>`;
+
+    const list = document.querySelector(".aora-cal-entry-list");
+    if (!list) return;
+    list.querySelectorAll("[data-sp-preference-card]").forEach((node) => node.remove());
+    const cards = ownPreferences(selected).map(employeeCard).join("");
+    if (cards) list.insertAdjacentHTML("afterbegin", cards);
   }
 
-  async function refreshAfterMutation(data, message) {
-    if (Array.isArray(data?.preferences)) store.items = data.preferences;
-    store.loaded = true;
-    store.modal = null;
-    if (data?.revision !== undefined && typeof loadState === "function") await loadState(true);
-    await ensurePreferences(true);
-    if (typeof toast === "function") toast(message, "success");
+  function managerItem(item) {
+    const employee = emp(item.employeeId);
+    return `<article class="u-item-card" data-sp-preference-manager="${esc(item.id)}">
+      <h3>${esc(employee?.name || "Mitarbeiter")}</h3>
+      <p>${esc(fd(item.date, { weekday: true }))} · ${esc(item.start)}–${esc(item.end)} · ${Number(item.breakMinutes || 0)} Min. Pause${item.note ? ` · ${esc(item.note)}` : ""}</p>
+      <div class="u-actions"><button class="u-btn secondary" data-sp-action="review" data-id="${esc(item.id)}">Prüfen</button></div>
+    </article>`;
+  }
+
+  function managerBoardPanel() {
+    const rows = managerPreferences();
+    return `<section class="u-day-detail" data-sp-preferences-panel><h2>Schichtwünsche</h2>${rows.map(managerItem).join("") || (typeof uEmpty === "function" ? uEmpty("Keine offenen Schichtwünsche für diesen Standort.") : '<div class="empty">Keine offenen Schichtwünsche für diesen Standort.</div>')}</section>`;
+  }
+
+  function legacyManagerPanel() {
+    const rows = managerPreferences();
+    return `<article class="dashboard-card" data-sp-preferences-panel>
+      <div class="dashboard-card-head"><h2>Schichtwünsche <small>${rows.length}</small></h2><span class="status-chip${rows.length ? " black" : ""}">${rows.length ? "Prüfung offen" : "Aktuell"}</span></div>
+      <div class="dashboard-body">${rows.map((item) => {
+        const employee = emp(item.employeeId);
+        return `<div class="duty-row"><div class="initial-bar">${esc(employee?.initials || initials(employee?.name || "Mitarbeiter"))}</div><div class="row-copy"><strong>${esc(employee?.name || "Mitarbeiter")}</strong><small>${esc(fd(item.date, { weekday: true }))} · ${esc(item.start)}–${esc(item.end)} · ${Number(item.breakMinutes || 0)} Min. Pause${item.note ? ` · ${esc(item.note)}` : ""}</small></div><span class="status-chip">Wunsch</span><div class="leave-actions"><button class="btn outline" data-sp-action="review" data-id="${esc(item.id)}">Prüfen</button></div></div>`;
+      }).join("") || '<div class="empty">Keine offenen Schichtwünsche für diesen Standort.</div>'}</div>
+    </article>`;
+  }
+
+  function decorateManagerSchedule() {
+    if (!["manager", "owner"].includes(S.accessRole) || S.adminView !== "schedule") return;
+    const ids = new Set(managerPreferences().map((item) => item.id));
+    document.querySelectorAll('[data-u="request-decision"][data-id]').forEach((button) => {
+      if (ids.has(String(button.dataset.id || ""))) button.closest(".u-item-card")?.remove();
+    });
+    const shell = document.querySelector(".u-schedule-shell");
+    if (!shell) return;
+    shell.querySelector("[data-sp-preferences-panel]")?.remove();
+    shell.insertAdjacentHTML("beforeend", managerBoardPanel());
+  }
+
+  function openCreateModal(date) {
+    const currentEmployee = S.state?.employees?.find((item) => String(item.id) === employeeId());
+    const locationId = currentEmployee?.primaryLocationId || currentEmployee?.locationId || S.session?.locationId;
+    const dialog = modal(`${modalHeader("Kalender", "Schichtwunsch abgeben")}<form class="form-grid">
+      <div class="field"><label>Datum</label><input class="input" name="date" type="date" min="${currentDate()}" value="${esc(date || currentDate())}" required></div>
+      <div class="field"><label>Standort</label><input class="input" value="${esc(loc(locationId)?.name || "Hauptstandort")}" disabled></div>
+      <div class="field"><label>Beginn</label><input class="input" name="start" type="time" value="09:00" required></div>
+      <div class="field"><label>Ende</label><input class="input" name="end" type="time" value="17:00" required></div>
+      <div class="field full"><label>Pause</label><input class="input" name="breakMinutes" type="number" min="0" max="180" step="5" value="30" required></div>
+      <div class="field full"><label>Notiz (optional)</label><textarea class="textarea" name="note" maxlength="240" placeholder="z. B. Frühschicht bevorzugt"></textarea></div>
+      <div class="field full exception-summary"><strong>Noch keine feste Schicht</strong><p>Der Wunsch wird erst nach Bestätigung durch deinen Manager in den Dienstplan übernommen.</p></div>
+      <div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">Wunsch senden</button></div>
+    </form>`);
+    dialog.querySelector("form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (S.busy) return;
+      S.busy = true;
+      const submit = event.currentTarget.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      try {
+        const values = new FormData(event.currentTarget);
+        const data = await preferenceRequest("create", { preference: {
+          date: String(values.get("date") || ""),
+          start: String(values.get("start") || ""),
+          end: String(values.get("end") || ""),
+          breakMinutes: Number(values.get("breakMinutes") || 0),
+          note: String(values.get("note") || "").trim()
+        } });
+        dialog.remove();
+        await refresh(data, "Schichtwunsch wurde gesendet.");
+      } catch (error) {
+        if (submit) submit.disabled = false;
+        toast(error?.message || "Schichtwunsch konnte nicht gesendet werden.", "error");
+      } finally { S.busy = false; }
+    });
+  }
+
+  function openReviewModal(id) {
+    const item = preferences().find((candidate) => candidate.id === id);
+    if (!item) return toast("Schichtwunsch wurde nicht gefunden.", "error");
+    const employee = emp(item.employeeId);
+    const dialog = modal(`${modalHeader("Dienstplan", "Schichtwunsch prüfen")}<form class="form-grid">
+      <div class="field full exception-summary"><strong>${esc(employee?.name || "Mitarbeiter")}</strong><p>${esc(fd(item.date, { weekday: true }))} · ${esc(loc(item.locationId)?.name || "Standort")}${item.note ? ` · ${esc(item.note)}` : ""}</p></div>
+      <div class="field"><label>Beginn</label><input class="input" name="start" type="time" value="${esc(item.start)}" required></div>
+      <div class="field"><label>Ende</label><input class="input" name="end" type="time" value="${esc(item.end)}" required></div>
+      <div class="field full"><label>Pause</label><input class="input" name="breakMinutes" type="number" min="0" max="180" step="5" value="${Number(item.breakMinutes || 0)}" required></div>
+      <div class="field full"><label>Notiz an Mitarbeiter (optional)</label><textarea class="textarea" name="reason" maxlength="240"></textarea></div>
+      <div class="field full actions"><button type="button" class="btn light" data-sp-action="reject" data-id="${esc(item.id)}">Ablehnen</button><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">In Dienstplan übernehmen</button></div>
+    </form>`);
+    const form = dialog.querySelector("form");
+    form?.addEventListener("submit", async (event) => { event.preventDefault(); await decide(dialog, item, event.currentTarget, "accepted"); });
+    dialog.querySelector('[data-sp-action="reject"]')?.addEventListener("click", async () => { await decide(dialog, item, form, "rejected"); });
+  }
+
+  async function decide(dialog, item, form, decision) {
+    if (S.busy || !form) return;
+    S.busy = true;
+    form.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    try {
+      const values = new FormData(form);
+      const data = await preferenceRequest("decide", {
+        id: item.id,
+        decision,
+        reason: String(values.get("reason") || "").trim(),
+        shift: decision === "accepted" ? {
+          start: String(values.get("start") || item.start),
+          end: String(values.get("end") || item.end),
+          breakMinutes: Number(values.get("breakMinutes") || item.breakMinutes || 0)
+        } : null
+      });
+      dialog.remove();
+      await refresh(data, decision === "accepted" ? "Schicht wurde in den Dienstplan übernommen." : "Schichtwunsch wurde abgelehnt.");
+    } catch (error) {
+      form.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+      toast(error?.message || "Entscheidung konnte nicht gespeichert werden.", "error");
+    } finally { S.busy = false; }
+  }
+
+  async function cancelPreference(id) {
+    if (S.busy) return;
+    S.busy = true;
+    try { await refresh(await preferenceRequest("cancel", { id }), "Schichtwunsch wurde zurückgezogen."); }
+    catch (error) { toast(error?.message || "Schichtwunsch konnte nicht zurückgezogen werden.", "error"); }
+    finally { S.busy = false; }
+  }
+
+  async function refresh(data, message) {
+    if (typeof loadState === "function") await loadState(true);
+    if (["manager", "owner"].includes(S.accessRole) && typeof uEnsureSchedule === "function") await uEnsureSchedule(true);
+    toast(message);
     if (typeof render === "function") render();
+    queueMicrotask(decorateEmployeeCalendar);
+    queueMicrotask(decorateManagerSchedule);
+    return data;
   }
 
-  async function createPreference(form) {
-    const values = new FormData(form);
-    const payload = {
-      date: String(values.get("date") || ""),
-      start: String(values.get("start") || ""),
-      end: String(values.get("end") || ""),
-      breakMinutes: Number(values.get("breakMinutes") || 0),
-      note: String(values.get("note") || "").trim()
-    };
-    const data = await preferenceRequest("create", { preference: payload });
-    await refreshAfterMutation(data, "Schichtwunsch wurde gesendet.");
-  }
-
-  async function decidePreference(form) {
-    const item = store.items.find((candidate) => candidate.id === form.dataset.id);
-    if (!item) throw new Error("Schichtwunsch wurde nicht gefunden.");
-    const values = new FormData(form);
-    const shift = {
-      employeeId: item.employeeId,
-      locationId: item.locationId,
-      date: item.date,
-      start: String(values.get("start") || item.start),
-      end: String(values.get("end") || item.end),
-      breakMinutes: Number(values.get("breakMinutes") || item.breakMinutes || 0),
-      status: "draft"
-    };
-    const data = await preferenceRequest("decide", { id: item.id, decision: "accepted", reason: String(values.get("reason") || "").trim(), shift });
-    await refreshAfterMutation(data, "Schichtwunsch wurde in den Dienstplan übernommen.");
-  }
-
-  async function rejectPreference(id, reason = "") {
-    const data = await preferenceRequest("decide", { id, decision: "rejected", reason });
-    await refreshAfterMutation(data, "Schichtwunsch wurde abgelehnt.");
-  }
-
-  if (employeeCalendar) {
-    globalThis.uCalendarPage = function shiftPreferenceEmployeeCalendar() {
-      queueMicrotask(() => ensurePreferences());
-      const markup = employeeCalendar();
-      return S.accessRole === "employee" ? augmentEmployeeCalendar(markup) : markup;
+  if (originalEmployeeCalendar) {
+    globalThis.uCalendarPage = function shiftPreferenceCalendarPage() {
+      const markup = originalEmployeeCalendar();
+      queueMicrotask(decorateEmployeeCalendar);
+      return markup;
     };
   }
-  if (managerSchedule) globalThis.schedulePage = managerSchedulePage;
+
+  if (originalAdminView) {
+    globalThis.adminView = function shiftPreferenceAdminView() {
+      const markup = originalAdminView();
+      if (!["manager", "owner"].includes(S.accessRole) || S.adminView !== "schedule") return markup;
+      const scheduleBoard = typeof uFlag === "function" && uFlag("schedule_board_v2");
+      if (scheduleBoard) {
+        queueMicrotask(decorateManagerSchedule);
+        return markup;
+      }
+      return `${markup}${legacyManagerPanel()}`;
+    };
+  }
 
   document.addEventListener("click", async (event) => {
-    if (event.target.classList?.contains("sp-modal-backdrop")) {
-      store.modal = null;
-      render();
-      return;
-    }
     const control = event.target.closest?.("[data-sp-action]");
     if (!control) return;
     const action = control.dataset.spAction;
-    try {
-      if (action === "open-create") store.modal = { type: "create", date: control.dataset.date || currentDate() };
-      else if (action === "open-decision") store.modal = { type: "decision", id: control.dataset.id };
-      else if (action === "close") store.modal = null;
-      else if (action === "reload") await ensurePreferences(true);
-      else if (action === "cancel") {
-        const data = await preferenceRequest("cancel", { id: control.dataset.id });
-        await refreshAfterMutation(data, "Schichtwunsch wurde zurückgezogen.");
-        return;
-      } else if (action === "reject") {
-        const form = control.closest("form");
-        await rejectPreference(control.dataset.id, String(new FormData(form).get("reason") || "").trim());
-        return;
-      } else if (action === "week-prev") store.managerWeek = add(store.managerWeek || weekStart(), -7);
-      else if (action === "week-next") store.managerWeek = add(store.managerWeek || weekStart(), 7);
-      else if (action === "week-today") store.managerWeek = weekStart();
-      else return;
-      render();
-    } catch (error) {
-      if (typeof toast === "function") toast(error?.message || "Aktion fehlgeschlagen.", "error");
-    }
+    if (action === "create") openCreateModal(control.dataset.date || currentDate());
+    else if (action === "review") openReviewModal(String(control.dataset.id || ""));
+    else if (action === "cancel") await cancelPreference(String(control.dataset.id || ""));
   });
 
-  document.addEventListener("submit", async (event) => {
-    const form = event.target.closest?.("[data-sp-form]");
-    if (!form) return;
-    event.preventDefault();
-    if (S.busy) return;
-    S.busy = true;
-    try {
-      if (form.dataset.spForm === "create") await createPreference(form);
-      else if (form.dataset.spForm === "decision") await decidePreference(form);
-    } catch (error) {
-      if (error?.status === 409 && typeof loadState === "function") await loadState(true);
-      if (typeof toast === "function") toast(error?.message || "Aktion fehlgeschlagen.", "error");
-    } finally {
-      S.busy = false;
-    }
-  });
-
-  globalThis.AoraShiftPreferences = Object.freeze({
-    version: "1.0.0",
-    ensure: ensurePreferences,
-    items: () => store.items.slice()
-  });
+  globalThis.AoraShiftPreferences = Object.freeze({ version: "3.0.0", preferences, decorateEmployeeCalendar, decorateManagerSchedule });
 })();
