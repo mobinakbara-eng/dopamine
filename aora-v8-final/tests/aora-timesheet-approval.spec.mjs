@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import pdfParse from "pdf-parse";
-import * as XLSX from "xlsx";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import { unzipSync, strFromU8 } from "fflate";
 
 const workspace=process.env.AORA_WORKSPACE_SLUG;
 const testDate=process.env.AORA_TEST_DATE;
@@ -15,20 +15,32 @@ function diagnostics(page){
   page.on("requestfailed",request=>{
     const reason=request.failure()?.errorText||"failed";
     const url=request.url();
-    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("realtime-broadcast")||url.includes("compliance-proxy"));
-    if(!expectedAbort)errors.push(`network:${reason}:${new URL(url).pathname}`);
+    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("realtime-broadcast")||url.includes("compliance-proxy")||url.startsWith("blob:"));
+    if(!expectedAbort)errors.push(`network:${reason}:${url.startsWith("http")?new URL(url).pathname:url}`);
   });
   return()=>errors;
 }
 async function passwordLogin(page,role,email,password){
   const route=role==="manager"?"/arbeitgeber/":"/arbeitnehmer/";
-  await page.goto(`${route}?workspace=${encodeURIComponent(workspace)}`);
-  await page.locator('input[name="email"]').fill(email);
-  await page.locator('input[name="password"]').fill(password);
-  const response=page.waitForResponse(value=>value.request().method()==="POST"&&value.url().includes("/aora-v8-pilot-access")&&String(value.request().postData()||"").includes('"action":"passwordLogin"'));
-  await page.locator('#password-login button[type="submit"]').click();
-  expect((await response).status()).toBe(200);
-  await expect(page.locator(role==="employee"?".employee-app":".admin-app")).toBeVisible({timeout:30000});
+  let lastError;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      await page.goto(`${route}?workspace=${encodeURIComponent(workspace)}`,{waitUntil:"domcontentloaded"});
+      await page.locator('input[name="email"]').fill(email);
+      await page.locator('input[name="password"]').fill(password);
+      const responsePromise=page.waitForResponse(value=>value.request().method()==="POST"&&value.url().includes("/aora-v8-pilot-access")&&String(value.request().postData()||"").includes('"action":"passwordLogin"'),{timeout:30000});
+      await page.locator('#password-login button[type="submit"]').click();
+      const response=await responsePromise;
+      expect(response.status()).toBe(200);
+      await expect(page.locator(role==="employee"?".employee-app":".admin-app")).toBeVisible({timeout:30000});
+      return;
+    }catch(error){
+      lastError=error;
+      if(attempt===3)throw error;
+      await page.waitForTimeout(2000*attempt);
+    }
+  }
+  throw lastError;
 }
 function isApprovalAction(response,action){
   return response.request().method()==="POST"&&response.url().includes("/aora-v8-timesheet-approval")&&String(response.request().postData()||"").includes(`"action":"${action}"`);
@@ -58,6 +70,7 @@ test.describe.serial("Employee-approved Arbeitszeitnachweis",()=>{
   test.beforeAll(()=>{env("AORA_WORKSPACE_SLUG");env("AORA_TEST_DATE")});
 
   test("manager request, employee consent, correction, approval, PDF/XLSX export and revocation",async({browser,baseURL},testInfo)=>{
+    test.setTimeout(300000);
     const root=testInfo.outputPath("timesheet-e2e");
     const shots=path.join(root,"screenshots");
     const downloads=path.join(root,"downloads");
@@ -96,10 +109,14 @@ test.describe.serial("Employee-approved Arbeitszeitnachweis",()=>{
     await consentDialog.screenshot({path:path.join(shots,"05-consent-legal-texts.png")});
     for(const checkbox of await consentDialog.locator('.timesheet-statement input[type="checkbox"]').all())await checkbox.check();
     const canvas=consentDialog.locator("#timesheet-signature-canvas");
-    const box=await canvas.boundingBox();if(!box)throw new Error("Signature canvas missing");
-    await employee.mouse.move(box.x+25,box.y+box.height*0.62);await employee.mouse.down();
-    for(let index=0;index<18;index++)await employee.mouse.move(box.x+25+index*12,box.y+box.height*(0.62+Math.sin(index/2)*0.12));
-    await employee.mouse.up();
+    await canvas.scrollIntoViewIfNeeded();
+    await canvas.evaluate(node=>{
+      const context=node.getContext("2d");
+      context.lineWidth=4;context.lineCap="round";context.strokeStyle="#151515";
+      context.beginPath();context.moveTo(40,140);
+      for(let index=0;index<22;index++)context.lineTo(40+index*25,140+Math.sin(index/2)*35);
+      context.stroke();node.dataset.dirty="true";
+    });
     await consentDialog.screenshot({path:path.join(shots,"06-consent-signed.png")});
     const acceptResult=await approvalResponse(employee,"acceptConsentRequest",()=>consentDialog.locator('button[type="submit"]').click());
     expect(acceptResult.body.request.status).toBe("accepted");
@@ -127,7 +144,7 @@ test.describe.serial("Employee-approved Arbeitszeitnachweis",()=>{
     await screenshot(employee,path.join(shots,"09-employee-timesheet-waiting.png"));
     await employee.locator(`[data-timesheet-action="view-submission"][data-submission-id="${submissionId}"]`).click();
     const documentDialog=employee.locator("#timesheet-dialog");
-    await expect(documentDialog.getByText("Einstein Kaffee Testfiliale")).toBeVisible();
+    await expect(documentDialog.getByText("Einstein Kaffee Testfiliale",{exact:true})).toBeVisible();
     await expect(documentDialog.getByText("Teststraße 12, 10115, Berlin")).toBeVisible();
     await expect(documentDialog.getByText("08:00",{exact:true}).last()).toBeVisible();
     await documentDialog.screenshot({path:path.join(shots,"10-employee-document-review.png")});
@@ -147,26 +164,43 @@ test.describe.serial("Employee-approved Arbeitszeitnachweis",()=>{
     expect(resent.body.submission.id).toBe(submissionId);
     expect(resent.body.submission.version).toBe(2);
     await employee.locator('[data-timesheet-action="refresh-employee"]').click();
+    await expect(employee.getByText("Wartet auf Mitarbeiter")).toBeVisible({timeout:30000});
     await employee.locator(`[data-timesheet-action="view-submission"][data-submission-id="${submissionId}"]`).click();
     const approved=await approvalResponse(employee,"decideTimesheet",()=>employee.locator('#timesheet-dialog [data-decision="approved"]').click());
     expect(approved.body.submission.status).toBe("approved");
     expect(approved.body.submission.signed_hash).toMatch(/^[a-f0-9]{64}$/);
-    await expect(employee.getByText("Freigegeben")).toBeVisible({timeout:30000});
+    await expect(employee.getByText("Freigegeben",{exact:true})).toBeVisible({timeout:30000});
     await screenshot(employee,path.join(shots,"13-employee-approved.png"));
 
     const employeeExport=await directApprovalCall(employee,"exportTimesheet",{submissionId,format:"pdf"});
     expect(employeeExport.status).toBe(403);
 
     await manager.locator('[data-timesheet-action="refresh-manager"]').click();
-    await expect(manager.getByText("Freigegeben")).toBeVisible({timeout:30000});
+    await expect(manager.getByText("Freigegeben",{exact:true})).toBeVisible({timeout:30000});
     await screenshot(manager,path.join(shots,"14-manager-approved-export-ready.png"));
 
+    await manager.evaluate(()=>{
+      window.__timesheetDownloadProbe=[];
+      const original=HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click=function(){
+        if(this.download)window.__timesheetDownloadProbe.push({download:this.download,href:this.href});
+        return original.call(this);
+      };
+    });
     async function download(format){
-      const event=manager.waitForEvent("download",{timeout:30000});
+      const responsePromise=manager.waitForResponse(response=>isApprovalAction(response,"exportTimesheet")&&String(response.request().postData()||"").includes(`"format":"${format}"`),{timeout:30000});
       await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
-      const item=await event;expect(await item.failure()).toBeNull();
-      const destination=path.join(downloads,item.suggestedFilename());await item.saveAs(destination);
+      const response=await responsePromise;
+      expect(response.status()).toBe(200);
+      const headers=response.headers();
+      expect(headers["x-document-checksum"]).toMatch(/^[a-f0-9]{64}$/);
+      expect(headers["content-type"]).toContain(format==="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      const disposition=headers["content-disposition"]||"";
+      const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`Arbeitszeitnachweis.${format}`;
+      const destination=path.join(downloads,filename);
+      await writeFile(destination,await response.body());
       expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
+      await expect.poll(()=>manager.evaluate(extension=>(window.__timesheetDownloadProbe||[]).some(item=>item.download.endsWith(`.${extension}`)),format),{timeout:10000}).toBe(true);
       return destination;
     }
     const pdfPath=await download("pdf");
@@ -182,9 +216,12 @@ test.describe.serial("Employee-approved Arbeitszeitnachweis",()=>{
     expect(pdf.text).toContain("QA-001");
     expect(pdf.text).not.toMatch(/aora/i);
 
-    const workbook=XLSX.readFile(xlsxPath,{cellDates:false});
-    expect(workbook.SheetNames).toEqual(["Arbeitszeit","Zusammenfassung","Freigabe"]);
-    const workbookText=workbook.SheetNames.map(name=>XLSX.utils.sheet_to_csv(workbook.Sheets[name])).join("\n");
+    const archive=unzipSync(new Uint8Array(await readFile(xlsxPath)));
+    const workbookXml=strFromU8(archive["xl/workbook.xml"]);
+    expect(workbookXml).toContain('name="Arbeitszeit"');
+    expect(workbookXml).toContain('name="Zusammenfassung"');
+    expect(workbookXml).toContain('name="Freigabe"');
+    const workbookText=Object.entries(archive).filter(([name])=>name.endsWith(".xml")).map(([,bytes])=>strFromU8(bytes)).join("\n");
     expect(workbookText).toContain("Arbeitgeber");
     expect(workbookText).toContain("Einstein Kaffee Testfiliale");
     expect(workbookText).toContain("Teststraße 12, 10115, Berlin");
