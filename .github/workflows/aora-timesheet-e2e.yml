@@ -66,7 +66,27 @@ jobs:
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 xlsx@0.18.5
           npx playwright install --with-deps chromium
-          sed -i 's|from "pdf-parse"|from "pdf-parse/lib/pdf-parse.js"|' tests/aora-timesheet-approval.spec.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tests/aora-timesheet-approval.spec.mjs")
+          source = path.read_text()
+          source = source.replace('from "pdf-parse"', 'from "pdf-parse/lib/pdf-parse.js"')
+          old = '''    const box=await canvas.boundingBox();if(!box)throw new Error("Signature canvas missing");
+              await employee.mouse.move(box.x+25,box.y+box.height*0.62);await employee.mouse.down();
+              for(let index=0;index<18;index++)await employee.mouse.move(box.x+25+index*12,box.y+box.height*(0.62+Math.sin(index/2)*0.12));
+              await employee.mouse.up();'''
+          new = '''    await canvas.scrollIntoViewIfNeeded();
+              await canvas.evaluate(node=>{
+                const context=node.getContext("2d");
+                context.lineWidth=4;context.lineCap="round";context.strokeStyle="#151515";
+                context.beginPath();context.moveTo(40,140);
+                for(let index=0;index<22;index++)context.lineTo(40+index*25,140+Math.sin(index/2)*35);
+                context.stroke();node.dataset.dirty="true";
+              });'''
+          if old not in source:
+              raise SystemExit("signature block was not found")
+          path.write_text(source.replace(old,new))
+          PY
 
       - name: Build canonical preview bundle
         run: npm run build
