@@ -1,4 +1,4 @@
-# Final isolated release gate for employee-approved timesheets and the public privacy center
+# Isolated release gate for public privacy pages and document-scoped employee timesheet signatures
 name: Aora Timesheet Approval E2E
 
 on:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   timesheet-e2e:
-    name: Privacy, consent, approval, PDF and Excel gate
+    name: Privacy, unsigned preview, one-time signature, PDF and Excel gate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -65,24 +65,23 @@ jobs:
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 fflate@0.8.2
           npx playwright install --with-deps chromium
-          sed -i 's/status of 409/status of (403|409)/' tests/aora-timesheet-release.spec.mjs
 
       - name: Build canonical preview bundle
         run: npm run build
 
-      - name: Verify public privacy center
+      - name: Verify public privacy center and placeholders
         run: npx playwright test tests/aora-privacy.spec.mjs --project=privacy-public --no-deps
 
-      - name: Run employee-approved timesheet flow
-        run: npx playwright test tests/aora-timesheet-release.spec.mjs --project=timesheet-approval --no-deps
+      - name: Run unsigned preview and document-scoped signature flow
+        run: npx playwright test tests/aora-timesheet-document-signing.spec.mjs --project=timesheet-approval --no-deps
 
       - name: Upload screenshots, PDF, Excel and report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aora-timesheet-e2e-evidence
+          name: aora-document-signing-evidence
           path: |
-            aora-v8-final/test-results/**/timesheet-e2e/**
+            aora-v8-final/test-results/**/document-signing-evidence/**
             aora-v8-final/test-results/**/test-failed-*.png
             aora-v8-final/playwright-report.json
           if-no-files-found: warn
