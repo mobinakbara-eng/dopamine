@@ -6,7 +6,7 @@
 
   function legalHref(path){
     const url=new URL(path,document.baseURI);
-    const workspace=String(globalThis.CFG?.slug||"");
+    const workspace=typeof CFG!=="undefined"?String(CFG.slug||""):String(new URLSearchParams(location.search).get("workspace")||"");
     if(workspace)url.searchParams.set("workspace",workspace);
     return url.pathname+url.search;
   }
