@@ -27,6 +27,11 @@ export default defineConfig({
   },
   projects:[
     {
+      name:"privacy-public",
+      testMatch:/aora-privacy\.spec\.mjs/,
+      use:desktop
+    },
+    {
       name:"unified-release",
       testMatch:/aora-unified-release\.spec\.mjs/,
       use:desktop
