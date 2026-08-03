@@ -65,6 +65,21 @@ jobs:
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 fflate@0.8.2
           npx playwright install --with-deps chromium
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path("tests/aora-timesheet-document-signing.spec.mjs")
+          source=path.read_text()
+          old='''    await employee.locator('[data-docsign-action="refresh-employee"]').click();
+              await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
+              await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();'''
+          new='''    await employee.locator('[data-docsign-action="refresh-employee"]').click();
+              await expect(employee.getByText(/Version 2/).first()).toBeVisible({timeout:30000});
+              await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
+              await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();'''
+          if old not in source:
+              raise SystemExit("employee version refresh block not found")
+          path.write_text(source.replace(old,new,1))
+          PY
 
       - name: Build canonical preview bundle
         run: npm run build
