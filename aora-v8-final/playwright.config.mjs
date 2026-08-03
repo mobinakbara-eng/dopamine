@@ -51,7 +51,7 @@ export default defineConfig({
     {
       name:"timesheet-approval",
       dependencies:["chromium"],
-      testMatch:/aora-timesheet-(approval|release)\.spec\.mjs/,
+      testMatch:/aora-timesheet-(approval|release|document-signing)\.spec\.mjs/,
       use:desktop
     }
   ]
