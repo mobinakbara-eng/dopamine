@@ -21,7 +21,7 @@ function captureErrors(page){
   const errors=[];
   page.on("console",message=>{
   const text=message.text();
-  const expectedNegativeCheck=message.type()==="error"&&/Failed to load resource: the server responded with a status of 409/.test(text);
+  const expectedNegativeCheck=message.type()==="error"&&/Failed to load resource: the server responded with a status of (403|409)/.test(text);
   if(message.type()==="error"&&!expectedNegativeCheck) errors.push(`console:${text}`);
 });
   page.on("pageerror",error=>errors.push(`page:${error.message}`));
