@@ -128,6 +128,20 @@ function displayDate(value: string) {
 function normalizeText(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    return Object.keys(input).sort().reduce<Record<string, unknown>>((result, key) => {
+      result[key] = canonicalJsonValue(input[key]);
+      return result;
+    }, {});
+  }
+  return value;
+}
+function stableStringify(value: unknown) {
+  return JSON.stringify(canonicalJsonValue(value));
+}
 function externalEmployerName(value: unknown) {
   const name = normalizeText(value);
   return !name || /aora/i.test(name) ? "Arbeitgeber" : name;
@@ -624,7 +638,7 @@ Deno.serve(async (request: Request) => {
       const signature = await activeSignature(ctx, employeeId);
       if (!signature || !(await hasActiveRequiredRecords(ctx, employeeId))) fail("Der Mitarbeiter muss zuerst die Erklärungen bestätigen und eine aktive Unterschrift hinterlegen.", 409);
       const snapshot = canonicalSnapshot(ctx, employee, locationId, from, to);
-      const snapshotHash = await sha256Text(JSON.stringify(snapshot));
+      const snapshotHash = await sha256Text(stableStringify(snapshot));
       const period = `${from}:${to}`;
       const { data: existing } = await service.from("timesheet_submissions").select("*").eq("organization_id", ctx.org.id).eq("employee_id", employeeId).eq("period", period).maybeSingle();
       if (existing?.status === "locked") fail("Dieser Nachweis wurde bereits exportiert und ist gesperrt.", 409);
@@ -704,7 +718,7 @@ Deno.serve(async (request: Request) => {
       if (downloadError || !signatureBlob) throw downloadError || new Error("Unterschrift konnte nicht geladen werden.");
       const signatureBytes = new Uint8Array(await signatureBlob.arrayBuffer());
       const snapshot = submission.payload?.snapshot;
-      if (!snapshot || await sha256Text(JSON.stringify(snapshot)) !== submission.snapshot_hash) fail("Der gespeicherte Nachweis hat die Integritätsprüfung nicht bestanden.", 409);
+      if (!snapshot || await sha256Text(stableStringify(snapshot)) !== submission.snapshot_hash) fail("Der gespeicherte Nachweis hat die Integritätsprüfung nicht bestanden.", 409);
       const approval = { approvedAt: submission.approved_at, snapshotHash: submission.snapshot_hash, signatureHash: signature.sha256, signedHash: submission.signed_hash };
       const bytes = format === "pdf" ? await pdfBytes(snapshot, approval, signatureBytes) : xlsxBytes(snapshot, approval);
       const checksum = await sha256Bytes(bytes);
