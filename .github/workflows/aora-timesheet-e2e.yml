@@ -66,6 +66,7 @@ jobs:
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 xlsx@0.18.5
           npx playwright install --with-deps chromium
+          sed -i 's|from "pdf-parse"|from "pdf-parse/lib/pdf-parse.js"|' tests/aora-timesheet-approval.spec.mjs
 
       - name: Build canonical preview bundle
         run: npm run build
