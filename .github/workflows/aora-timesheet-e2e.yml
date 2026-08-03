@@ -73,6 +73,8 @@ jobs:
           source = path.read_text()
           source = source.replace('from "pdf-parse"', 'from "pdf-parse/lib/pdf-parse.js"')
           source = source.replace('documentDialog.getByText("Einstein Kaffee Testfiliale")', 'documentDialog.getByText("Einstein Kaffee Testfiliale",{exact:true})')
+          source = source.replace('employee.getByText("Freigegeben")', 'employee.getByText("Freigegeben",{exact:true})')
+          source = source.replace('manager.getByText("Freigegeben")', 'manager.getByText("Freigegeben",{exact:true})')
           source = source.replace(
               '    await employee.locator(\'[data-timesheet-action="refresh-employee"]\').click();\n    await employee.locator(`[data-timesheet-action="view-submission"][data-submission-id="${submissionId}"]`).click();\n    const approved=',
               '    await employee.locator(\'[data-timesheet-action="refresh-employee"]\').click();\n    await expect(employee.getByText("Wartet auf Mitarbeiter")).toBeVisible({timeout:30000});\n    await employee.locator(`[data-timesheet-action="view-submission"][data-submission-id="${submissionId}"]`).click();\n    const approved='
