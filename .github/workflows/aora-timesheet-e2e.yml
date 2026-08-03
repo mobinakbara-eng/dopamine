@@ -69,7 +69,7 @@ jobs:
         run: npm run build
 
       - name: Run employee-approved timesheet flow
-        run: npx playwright test tests/aora-timesheet-approval.spec.mjs --project=timesheet-approval --no-deps
+        run: npx playwright test tests/aora-timesheet-release.spec.mjs --project=timesheet-approval --no-deps
 
       - name: Upload screenshots, PDF, Excel and report
         if: always()
