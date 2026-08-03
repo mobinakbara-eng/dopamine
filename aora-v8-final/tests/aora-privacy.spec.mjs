@@ -19,6 +19,10 @@ for(const route of ["/datenschutz/","/datenschutzbeauftragter/"]){
     await expect(page.getByText("Art. 15",{exact:true})).toBeVisible();
     await expect(page.getByText("Art. 21",{exact:true})).toBeVisible();
     await expect(page.getByText("Berliner Beauftragte für Datenschutz und Informationsfreiheit").first()).toBeVisible();
+    await expect(page.getByText("(Name des verantwortlichen Arbeitgebers eintragen)")).toBeVisible();
+    await expect(page.getByText("(Rechtlichen Namen des Plattformbetreibers eintragen)")).toBeVisible();
+    await expect(page.getByText("(Name der bestellten Person eintragen)")).toBeVisible();
+    await expect(page.getByText("(E-Mail-Adresse des Datenschutzbeauftragten eintragen)")).toBeVisible();
     await expect(page.locator("form")).toHaveCount(0);
     await expect(page.locator("script")).toHaveCount(0);
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content",/Datenschutzkontakt/);
@@ -26,6 +30,7 @@ for(const route of ["/datenschutz/","/datenschutzbeauftragter/"]){
     const pageHtml=await page.locator("html").innerHTML();
     expect(pageHtml).not.toContain("{{");
     expect(pageHtml).not.toContain("@aora.example");
+    expect(pageHtml).not.toContain("Ihr Arbeitgeber / Betreiber des Aora-Arbeitsbereichs");
   });
 }
 
