@@ -1,0 +1,116 @@
+name: Aora Timesheet Export Capture Fix
+
+on:
+  push:
+    branches:
+      - feature/timesheet-approval-xlsx
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aora-timesheet-export-capture-fix
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/timesheet-approval-xlsx
+      - name: Capture consumed export bodies through a fetch clone
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path("aora-v8-final/tests/aora-timesheet-approval.spec.mjs")
+          source=path.read_text()
+          old='''    await manager.evaluate(()=>{
+              window.__timesheetDownloadProbe=[];
+              const original=HTMLAnchorElement.prototype.click;
+              HTMLAnchorElement.prototype.click=function(){
+                if(this.download)window.__timesheetDownloadProbe.push({download:this.download,href:this.href});
+                return original.call(this);
+              };
+            });
+            async function download(format){
+              const responsePromise=manager.waitForResponse(response=>isApprovalAction(response,"exportTimesheet")&&String(response.request().postData()||"").includes(`\\"format\\":\\"${format}\\"`),{timeout:30000});
+              await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
+              const response=await responsePromise;
+              expect(response.status()).toBe(200);
+              const headers=response.headers();
+              expect(headers["x-document-checksum"]).toMatch(/^[a-f0-9]{64}$/);
+              expect(headers["content-type"]).toContain(format==="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+              const disposition=headers["content-disposition"]||"";
+              const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`Arbeitszeitnachweis.${format}`;
+              const destination=path.join(downloads,filename);
+              await writeFile(destination,await response.body());
+              expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
+              await expect.poll(()=>manager.evaluate(extension=>(window.__timesheetDownloadProbe||[]).some(item=>item.download.endsWith(`.${extension}`)),format),{timeout:10000}).toBe(true);
+              return destination;
+            }'''
+          new='''    await manager.evaluate(()=>{
+              window.__timesheetDownloadProbe=[];
+              window.__timesheetExportProbe={};
+              window.__timesheetExportProbeError="";
+              const originalAnchorClick=HTMLAnchorElement.prototype.click;
+              HTMLAnchorElement.prototype.click=function(){
+                if(this.download)window.__timesheetDownloadProbe.push({download:this.download,href:this.href});
+                return originalAnchorClick.call(this);
+              };
+              const originalFetch=window.fetch.bind(window);
+              window.fetch=async(...args)=>{
+                const response=await originalFetch(...args);
+                try{
+                  const body=String(args[1]?.body||"");
+                  if(body.includes('"action":"exportTimesheet"')){
+                    const parsed=JSON.parse(body);
+                    const clone=response.clone();
+                    const bytes=new Uint8Array(await clone.arrayBuffer());
+                    let binary="";
+                    for(let offset=0;offset<bytes.length;offset+=0x8000){
+                      binary+=String.fromCharCode(...bytes.subarray(offset,offset+0x8000));
+                    }
+                    window.__timesheetExportProbe[parsed.format]={
+                      status:clone.status,
+                      headers:Object.fromEntries(clone.headers.entries()),
+                      base64:btoa(binary)
+                    };
+                  }
+                }catch(error){
+                  window.__timesheetExportProbeError=String(error);
+                }
+                return response;
+              };
+            });
+            async function download(format){
+              const responsePromise=manager.waitForResponse(response=>isApprovalAction(response,"exportTimesheet")&&String(response.request().postData()||"").includes(`\\"format\\":\\"${format}\\"`),{timeout:30000});
+              await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
+              const response=await responsePromise;
+              expect(response.status()).toBe(200);
+              const headers=response.headers();
+              expect(headers["x-document-checksum"]).toMatch(/^[a-f0-9]{64}$/);
+              expect(headers["content-type"]).toContain(format==="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+              const disposition=headers["content-disposition"]||"";
+              const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`Arbeitszeitnachweis.${format}`;
+              await expect.poll(()=>manager.evaluate(extension=>Boolean(window.__timesheetExportProbe?.[extension]),format),{timeout:15000}).toBe(true);
+              const probe=await manager.evaluate(extension=>({result:window.__timesheetExportProbe[extension],error:window.__timesheetExportProbeError}),format);
+              expect(probe.error).toBe("");
+              expect(probe.result.status).toBe(200);
+              const destination=path.join(downloads,filename);
+              await writeFile(destination,Buffer.from(probe.result.base64,"base64"));
+              expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
+              await expect.poll(()=>manager.evaluate(extension=>(window.__timesheetDownloadProbe||[]).some(item=>item.download.endsWith(`.${extension}`)),format),{timeout:10000}).toBe(true);
+              return destination;
+            }'''
+          if old not in source:
+              raise SystemExit("export capture block not found")
+          path.write_text(source.replace(old,new,1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add aora-v8-final/tests/aora-timesheet-approval.spec.mjs
+          git commit -m "Capture binary timesheet exports from the UI fetch"
+          git push origin HEAD:feature/timesheet-approval-xlsx
