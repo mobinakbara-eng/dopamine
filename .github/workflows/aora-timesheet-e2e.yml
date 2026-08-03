@@ -1,4 +1,4 @@
-# Final isolated release gate for employee-approved timesheets
+# Final isolated release gate for employee-approved timesheets and the public privacy center
 name: Aora Timesheet Approval E2E
 
 on:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   timesheet-e2e:
-    name: Consent, approval, PDF and Excel gate
+    name: Privacy, consent, approval, PDF and Excel gate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -70,6 +70,9 @@ jobs:
       - name: Build canonical preview bundle
         run: npm run build
 
+      - name: Verify public privacy center
+        run: npx playwright test tests/aora-privacy.spec.mjs --project=privacy-public --no-deps
+
       - name: Run employee-approved timesheet flow
         run: npx playwright test tests/aora-timesheet-release.spec.mjs --project=timesheet-approval --no-deps
 
@@ -80,6 +83,7 @@ jobs:
           name: aora-timesheet-e2e-evidence
           path: |
             aora-v8-final/test-results/**/timesheet-e2e/**
+            aora-v8-final/test-results/**/test-failed-*.png
             aora-v8-final/playwright-report.json
           if-no-files-found: warn
           retention-days: 14
