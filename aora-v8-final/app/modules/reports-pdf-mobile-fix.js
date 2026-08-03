@@ -1,6 +1,6 @@
 "use strict";
 
-(function installAoraReportPrintFix(){
+(function installReportPrintFix(){
   function toastMessage(message){
     if(typeof toast==="function"){toast(message);return}
     const root=document.getElementById("toast-root");
@@ -32,7 +32,7 @@
     document.body.classList.add("aora-report-printing");
 
     const oldTitle=document.title;
-    document.title="Aora Arbeitszeitnachweis";
+    document.title="Arbeitszeitnachweis";
     let cleaned=false;
     const done=()=>{
       if(cleaned)return;
@@ -47,7 +47,7 @@
       setTimeout(done,30000);
     }catch(error){
       done();
-      console.error("Aora PDF print failed",error);
+      console.error("PDF print failed",error);
       toastMessage("PDF konnte nicht geöffnet werden.");
     }
   }
