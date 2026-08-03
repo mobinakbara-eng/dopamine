@@ -1,9 +1,7 @@
+# Isolated release gate for public privacy pages and document-scoped employee timesheet signatures
 name: Aora Timesheet Approval E2E
 
 on:
-  push:
-    branches:
-      - feature/timesheet-approval-xlsx
   pull_request:
     branches:
       - main
@@ -12,64 +10,15 @@ on:
       - ".github/workflows/aora-timesheet-e2e.yml"
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 concurrency:
-  group: aora-timesheet-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: aora-timesheet-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  patch-source:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/timesheet-approval-xlsx
-      - name: Canonicalize persisted approval timestamp and finalize version refresh test
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          edge=Path("aora-v8-final/supabase/functions/aora-v8-timesheet-document-signing/index.ts")
-          source=edge.read_text()
-          old='''        const expectedSignedHash = await sha256Text(`${submission.snapshot_hash}\\n${signature.sha256}\\n${signature.consent_hash}\\n${submission.employee_id}\\n${submission.version}\\n${signature.consent_accepted_at}`);'''
-          new='''        const acceptedAt = new Date(signature.consent_accepted_at).toISOString();
-                  const expectedSignedHash = await sha256Text(`${submission.snapshot_hash}\\n${signature.sha256}\\n${signature.consent_hash}\\n${submission.employee_id}\\n${submission.version}\\n${acceptedAt}`);'''
-          if old not in source and "const acceptedAt = new Date(signature.consent_accepted_at).toISOString();" not in source:
-              raise SystemExit("signed timestamp hash block not found")
-          source=source.replace(old,new,1)
-          edge.write_text(source)
-
-          test=Path("aora-v8-final/tests/aora-timesheet-document-signing.spec.mjs")
-          source=test.read_text()
-          old='''    await employee.locator('[data-docsign-action="refresh-employee"]').click();
-              await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
-              await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();'''
-          new='''    await employee.locator('[data-docsign-action="refresh-employee"]').click();
-              await expect(employee.getByText(/Version 2/).first()).toBeVisible({timeout:30000});
-              await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
-              await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();'''
-          if old not in source and "await expect(employee.getByText(/Version 2/).first())" not in source:
-              raise SystemExit("employee version refresh block not found")
-          source=source.replace(old,new,1)
-          test.write_text(source)
-          PY
-          if git diff --quiet; then
-            echo "Patch already applied."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add aora-v8-final/supabase/functions/aora-v8-timesheet-document-signing/index.ts aora-v8-final/tests/aora-timesheet-document-signing.spec.mjs
-          git commit -m "Fix persisted timestamp verification for signed timesheets"
-          git push origin HEAD:feature/timesheet-approval-xlsx
-
   timesheet-e2e:
-    if: github.event_name == 'pull_request'
     name: Privacy, unsigned preview, one-time signature, PDF and Excel gate
     runs-on: ubuntu-latest
     defaults:
@@ -82,15 +31,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Bootstrap isolated timesheet tenant with GitHub OIDC
         shell: bash
         run: |
           set -euo pipefail
           response_file="$GITHUB_WORKSPACE/aora-v8-final/timesheet-bootstrap-response.json"
-          oidc_json=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-timesheet-ci")
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-timesheet-ci")
           oidc_token=$(jq -er '.value' <<<"$oidc_json")
           echo "::add-mask::$oidc_token"
-          status=$(curl -sS -o "$response_file" -w '%{http_code}' -X POST "$AORA_CI_BOOTSTRAP_URL" -H "Authorization: Bearer $oidc_token" -H 'content-type: application/json' --data '{"action":"bootstrap"}')
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data '{"action":"bootstrap"}')
           test "$status" = "201"
           jq -e '.workspaceSlug and .manager.email and .manager.password and .employee.email and .employee.password and .testDate' "$response_file" >/dev/null
           mapfile -t masked_values < <(jq -r '[.workspaceSlug,.manager.email,.manager.password,.employee.email,.employee.password] | .[]' "$response_file")
@@ -104,16 +60,21 @@ jobs:
             echo "AORA_TEST_DATE=$(jq -r '.testDate' "$response_file")"
           } >> "$GITHUB_ENV"
           rm -f "$response_file"
+
       - name: Install Chromium and document validators
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 fflate@0.8.2
           npx playwright install --with-deps chromium
+
       - name: Build canonical preview bundle
         run: npm run build
+
       - name: Verify public privacy center and placeholders
         run: npx playwright test tests/aora-privacy.spec.mjs --project=privacy-public --no-deps
+
       - name: Run unsigned preview and document-scoped signature flow
         run: npx playwright test tests/aora-timesheet-document-signing.spec.mjs --project=timesheet-approval --no-deps
+
       - name: Upload screenshots, PDF, Excel and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,14 +86,21 @@ jobs:
             aora-v8-final/playwright-report.json
           if-no-files-found: warn
           retention-days: 14
+
       - name: Cleanup isolated timesheet tenant
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           if [ -z "${AORA_WORKSPACE_SLUG:-}" ]; then exit 0; fi
-          oidc_json=$(curl --fail-with-body -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-timesheet-ci")
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-timesheet-ci")
           oidc_token=$(jq -er '.value' <<<"$oidc_json")
           echo "::add-mask::$oidc_token"
           payload=$(jq -cn --arg workspaceSlug "$AORA_WORKSPACE_SLUG" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
-          curl --fail-with-body --retry 4 --retry-all-errors --retry-delay 2 -sS -X POST "$AORA_CI_BOOTSTRAP_URL" -H "Authorization: Bearer $oidc_token" -H 'content-type: application/json' --data "$payload" >/dev/null
+          curl --fail-with-body --retry 4 --retry-all-errors --retry-delay 2 -sS \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data "$payload" >/dev/null
