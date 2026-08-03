@@ -60,7 +60,7 @@ function cors(origin: string | null) {
     "Access-Control-Allow-Origin": origin && originAllowed(origin) ? origin : DEFAULT_ORIGIN,
     "Access-Control-Allow-Headers": "content-type",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Expose-Headers": "content-disposition,x-document-checksum",
+    "Access-Control-Allow-Expose-Headers": "content-disposition,x-document-checksum",
     "Access-Control-Max-Age": "600",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -127,6 +127,10 @@ function displayDate(value: string) {
 }
 function normalizeText(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+function externalEmployerName(value: unknown) {
+  const name = normalizeText(value);
+  return !name || /aora/i.test(name) ? "Arbeitgeber" : name;
 }
 function filenamePart(value: unknown) {
   return normalizeText(value).normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "Dokument";
@@ -280,7 +284,7 @@ function canonicalSnapshot(ctx: any, employee: any, locationId: string, from: st
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    organization: { id: ctx.org.id, name: normalizeText(ctx.state.company?.name || ctx.org.name) },
+    organization: { id: ctx.org.id, name: externalEmployerName(ctx.state.company?.name || ctx.org.name) },
     location: {
       id: locationId,
       name: normalizeText(location.name || "Standort"),
