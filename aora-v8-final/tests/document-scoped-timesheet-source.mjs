@@ -21,7 +21,7 @@ requireAll("manager and employee workflow",ui,[
   "Bestätigung & Unterschrift anfordern",
   "Bestätigen & unterschreiben",
   "Korrektur anfordern",
-  'action:"prepareTimesheet"',
+  'call("prepareTimesheet"',
   'action:"exportTimesheet"',
   "consentAccepted",
   "signatureDataUrl",
