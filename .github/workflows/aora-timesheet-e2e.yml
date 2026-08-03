@@ -71,6 +71,7 @@ jobs:
           path = Path("tests/aora-timesheet-approval.spec.mjs")
           source = path.read_text()
           source = source.replace('from "pdf-parse"', 'from "pdf-parse/lib/pdf-parse.js"')
+          source = source.replace('documentDialog.getByText("Einstein Kaffee Testfiliale")', 'documentDialog.getByText("Einstein Kaffee Testfiliale",{exact:true})')
           old = '''    const box=await canvas.boundingBox();if(!box)throw new Error("Signature canvas missing");
               await employee.mouse.move(box.x+25,box.y+box.height*0.62);await employee.mouse.down();
               for(let index=0;index<18;index++)await employee.mouse.move(box.x+25+index*12,box.y+box.height*(0.62+Math.sin(index/2)*0.12));
