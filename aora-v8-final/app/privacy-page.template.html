@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f4ef">
+  <meta name="description" content="{{META_DESCRIPTION}}">
+  <title>Datenschutz & Kontakt · AoraAI Workforce</title>
+  <link rel="stylesheet" href="/privacy-page.css?v=832">
+</head>
+<body>
+  <a class="skip-link" href="#main">Direkt zum Inhalt</a>
+  <header class="privacy-header">
+    <a class="privacy-brand" href="/" aria-label="Zur AoraAI-Anmeldung">
+      <span class="privacy-brand-mark" aria-hidden="true">A</span>
+      <span><strong>AoraAI</strong><small>Workforce</small></span>
+    </a>
+    <nav aria-label="Schnellzugriff">
+      <a href="#kontakt">Kontakt</a>
+      <a href="#rechte">Ihre Rechte</a>
+      <a class="privacy-login-link" href="/arbeitnehmer/">Zur Anmeldung</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="privacy-hero" aria-labelledby="privacy-title">
+      <div class="privacy-eyebrow">Datenschutz · klare Zuständigkeit</div>
+      <div class="privacy-status {{STATUS_CLASS}}"><span aria-hidden="true"></span>{{STATUS_LABEL}}</div>
+      <h1 id="privacy-title">Ihre Daten. Ihre Rechte.<br>Ein direkter Kontakt.</h1>
+      <p>{{HERO_TEXT}}</p>
+      <div class="privacy-hero-actions">
+        {{PRIMARY_ACTION}}
+        <a class="privacy-button secondary" href="#zustaendigkeit">Wer ist verantwortlich?</a>
+      </div>
+      <p class="privacy-minimal-note">Diese Seite setzt keine Cookies, enthält kein Tracking und speichert keine Eingaben.</p>
+    </section>
+
+    <section class="privacy-section" id="zustaendigkeit" aria-labelledby="responsibility-title">
+      <div class="privacy-section-heading">
+        <span>01</span>
+        <div><p>Zuständigkeit</p><h2 id="responsibility-title">Arbeitgeber und Plattform sauber getrennt</h2></div>
+      </div>
+      <div class="responsibility-grid">
+        <article class="privacy-card responsibility-card">
+          <div class="privacy-card-icon" aria-hidden="true">AG</div>
+          <div>
+            <p class="privacy-kicker">Beschäftigtendaten im Arbeitsbereich</p>
+            <h3>Ihr Arbeitgeber ist grundsätzlich Verantwortlicher</h3>
+            <p>Arbeitszeiten, Dienstpläne, Abwesenheiten, Korrekturen und Personalstammdaten werden im Auftrag des jeweiligen Arbeitgebers verarbeitet. Anfragen zu diesen Daten richten Sie zuerst an Ihren Arbeitgeber oder dessen Datenschutzkontakt.</p>
+            {{CONTROLLER_DETAILS}}
+          </div>
+        </article>
+        <article class="privacy-card responsibility-card">
+          <div class="privacy-card-icon" aria-hidden="true">AO</div>
+          <div>
+            <p class="privacy-kicker">Plattform- und Betreiberangelegenheiten</p>
+            <h3>Aora verarbeitet technische Dienst- und Kontodaten</h3>
+            <p>Für eigene technische Betriebs-, Sicherheits- und Kontaktdaten ist der rechtliche Betreiber der Plattform zuständig. Die öffentlich hinterlegten Betreiberangaben werden getrennt von den Arbeitgeberdaten ausgewiesen.</p>
+            {{OPERATOR_DETAILS}}
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="privacy-section privacy-contact-section" id="kontakt" aria-labelledby="contact-title">
+      <div class="privacy-section-heading">
+        <span>02</span>
+        <div><p>Unabhängige Anlaufstelle</p><h2 id="contact-title">{{CONTACT_TITLE}}</h2></div>
+      </div>
+      <div class="privacy-contact-layout">
+        <article class="privacy-contact-card">
+          <div class="privacy-contact-topline">
+            <div class="privacy-contact-seal" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="img" aria-label="Schutzschild"><path d="M12 2.5 19 5v5.7c0 4.7-2.8 8.6-7 10.8-4.2-2.2-7-6.1-7-10.8V5l7-2.5Z"/><path d="m8.8 12 2 2 4.5-4.7"/></svg>
+            </div>
+            <div><p class="privacy-kicker">{{CONTACT_ROLE_LABEL}}</p><h3>{{CONTACT_NAME}}</h3></div>
+          </div>
+          <p>{{CONTACT_INTRO}}</p>
+          {{CONTACT_DETAILS}}
+          <div class="privacy-contact-actions">{{CONTACT_ACTIONS}}</div>
+          <p class="privacy-confidentiality">Anfragen werden vertraulich behandelt. Bitte senden Sie keine Passwörter, PINs, vollständigen Ausweiskopien oder Gesundheitsunterlagen, solange diese nicht ausdrücklich angefordert wurden.</p>
+        </article>
+        <aside class="privacy-side-card" aria-labelledby="contact-help-title">
+          <p class="privacy-kicker">Wobei diese Stelle hilft</p>
+          <h3 id="contact-help-title">Datenschutzfragen richtig einordnen</h3>
+          <ul class="privacy-check-list">
+            <li>Auskunft zu gespeicherten personenbezogenen Daten</li>
+            <li>Berichtigung unrichtiger Angaben</li>
+            <li>Löschung oder Einschränkung der Verarbeitung</li>
+            <li>Datenübertragbarkeit und Widerspruch</li>
+            <li>Hinweise auf mögliche Datenschutzverletzungen</li>
+            <li>Fragen zur Nutzung von Beschäftigtendaten in Aora</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section class="privacy-section" id="rechte" aria-labelledby="rights-title">
+      <div class="privacy-section-heading">
+        <span>03</span>
+        <div><p>Betroffenenrechte</p><h2 id="rights-title">Was Sie verlangen können</h2></div>
+      </div>
+      <div class="rights-grid">
+        <article><strong>Art. 15</strong><h3>Auskunft</h3><p>Welche Daten verarbeitet werden, woher sie stammen, wofür sie verwendet und an wen sie übermittelt werden.</p></article>
+        <article><strong>Art. 16</strong><h3>Berichtigung</h3><p>Unrichtige oder unvollständige personenbezogene Daten korrigieren oder ergänzen lassen.</p></article>
+        <article><strong>Art. 17</strong><h3>Löschung</h3><p>Daten löschen lassen, sofern keine gesetzlichen Aufbewahrungs- oder Nachweispflichten entgegenstehen.</p></article>
+        <article><strong>Art. 18</strong><h3>Einschränkung</h3><p>Die weitere Nutzung von Daten unter den gesetzlichen Voraussetzungen begrenzen lassen.</p></article>
+        <article><strong>Art. 20</strong><h3>Übertragbarkeit</h3><p>Bereitgestellte Daten in einem strukturierten, gängigen und maschinenlesbaren Format erhalten.</p></article>
+        <article><strong>Art. 21</strong><h3>Widerspruch</h3><p>Verarbeitungen widersprechen, die auf berechtigten Interessen oder einer öffentlichen Aufgabe beruhen.</p></article>
+      </div>
+    </section>
+
+    <section class="privacy-section" aria-labelledby="process-title">
+      <div class="privacy-section-heading">
+        <span>04</span>
+        <div><p>Ablauf</p><h2 id="process-title">So bearbeiten wir eine Anfrage</h2></div>
+      </div>
+      <ol class="privacy-process">
+        <li><span>1</span><div><h3>Eingang und Zuordnung</h3><p>Die Anfrage wird dem zuständigen Verantwortlichen oder Datenschutzkontakt zugeordnet.</p></div></li>
+        <li><span>2</span><div><h3>Nur notwendige Identitätsprüfung</h3><p>Zusätzliche Nachweise werden nur verlangt, wenn begründete Zweifel an der Identität bestehen.</p></div></li>
+        <li><span>3</span><div><h3>Antwort grundsätzlich innerhalb eines Monats</h3><p>Bei komplexen oder zahlreichen Anfragen kann die Frist nach den gesetzlichen Regeln verlängert werden; darüber wird rechtzeitig informiert.</p></div></li>
+      </ol>
+    </section>
+
+    <section class="privacy-section authority-section" aria-labelledby="authority-title">
+      <div class="privacy-section-heading">
+        <span>05</span>
+        <div><p>Aufsichtsbehörde</p><h2 id="authority-title">Beschwerderecht bleibt uneingeschränkt</h2></div>
+      </div>
+      <div class="privacy-card authority-card">
+        <div>
+          <h3>Berliner Beauftragte für Datenschutz und Informationsfreiheit</h3>
+          <p>Sie können sich unabhängig von einer vorherigen Kontaktaufnahme mit uns bei einer Datenschutzaufsichtsbehörde beschweren.</p>
+        </div>
+        {{AUTHORITY_DETAILS}}
+      </div>
+    </section>
+  </main>
+
+  <footer class="privacy-footer">
+    <div><strong>AoraAI Workforce</strong><p>Datenschutzkontakt · Stand {{LAST_UPDATED}}</p></div>
+    <nav aria-label="Rechtliche Links"><a href="/">Start</a><a href="/datenschutz/">Datenschutz</a><a href="/datenschutzbeauftragter/">Datenschutzbeauftragter</a></nav>
+  </footer>
+</body>
+</html>

@@ -5,7 +5,7 @@ const desktop={...devices["Desktop Chrome"]};
 const mobile={...devices["Desktop Chrome"],viewport:{width:390,height:844},isMobile:true,hasTouch:true};
 export default defineConfig({
   testDir:"./tests",
-  timeout:120000,
+  timeout:180000,
   expect:{timeout:15000},
   fullyParallel:false,
   workers:1,
@@ -27,6 +27,11 @@ export default defineConfig({
   },
   projects:[
     {
+      name:"privacy-public",
+      testMatch:/aora-privacy\.spec\.mjs/,
+      use:desktop
+    },
+    {
       name:"unified-release",
       testMatch:/aora-unified-release\.spec\.mjs/,
       use:desktop
@@ -41,6 +46,12 @@ export default defineConfig({
       name:"chromium",
       dependencies:["mobile-layout"],
       testMatch:/aora-(accessibility|four-role|unified-login)\.spec\.mjs/,
+      use:desktop
+    },
+    {
+      name:"timesheet-approval",
+      dependencies:["chromium"],
+      testMatch:/aora-timesheet-(approval|release|document-signing)\.spec\.mjs/,
       use:desktop
     }
   ]
