@@ -165,6 +165,7 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     await runAction(manager,"requestApproval",()=>manager.locator('[data-docsign-action="request"]').first().click(),[200]);
 
     await employee.locator('[data-docsign-action="refresh-employee"]').click();
+    await expect(employee.getByText(/Version 2/).first()).toBeVisible({timeout:30000});
     await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
     await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();
     await employee.locator("#docsign-consent").check();

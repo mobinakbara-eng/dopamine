@@ -689,7 +689,8 @@ Deno.serve(async (request: Request) => {
         if (!["approved", "locked"].includes(submission.status) || !submission.document_signature_id) fail("Die bestätigte Version ist noch nicht verfügbar.", 409);
         const { data: signature } = await service.from("timesheet_document_signatures").select("*").eq("organization_id", ctx.org.id).eq("id", submission.document_signature_id).eq("submission_id", submission.id).eq("submission_version", submission.version).maybeSingle();
         if (!signature) fail("Die dokumentbezogene Unterschrift wurde nicht gefunden.", 409);
-        const expectedSignedHash = await sha256Text(`${submission.snapshot_hash}\n${signature.sha256}\n${signature.consent_hash}\n${submission.employee_id}\n${submission.version}\n${signature.consent_accepted_at}`);
+        const acceptedAt = new Date(signature.consent_accepted_at).toISOString();
+        const expectedSignedHash = await sha256Text(`${submission.snapshot_hash}\n${signature.sha256}\n${signature.consent_hash}\n${submission.employee_id}\n${submission.version}\n${acceptedAt}`);
         if (expectedSignedHash !== signature.signed_hash || expectedSignedHash !== submission.signed_hash) fail("Die digitale Freigabe hat die Integritätsprüfung nicht bestanden.", 409);
         const { data: signatureBlob, error: downloadError } = await service.storage.from(SIGNATURE_BUCKET).download(signature.storage_path);
         if (downloadError || !signatureBlob) throw downloadError || new Error("Unterschrift konnte nicht geladen werden.");
