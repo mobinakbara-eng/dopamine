@@ -32,7 +32,6 @@ jobs:
           node-version: 22
 
       - name: Bootstrap isolated timesheet tenant with GitHub OIDC
-        id: bootstrap
         shell: bash
         run: |
           set -euo pipefail
@@ -47,7 +46,6 @@ jobs:
             -H "Authorization: Bearer $oidc_token" \
             -H 'content-type: application/json' \
             --data '{"action":"bootstrap"}')
-          echo "status=$status" >> "$GITHUB_OUTPUT"
           test "$status" = "201"
           jq -e '.workspaceSlug and .manager.email and .manager.password and .employee.email and .employee.password and .testDate' "$response_file" >/dev/null
           mapfile -t masked_values < <(jq -r '[.workspaceSlug,.manager.email,.manager.password,.employee.email,.employee.password] | .[]' "$response_file")
@@ -62,111 +60,10 @@ jobs:
           } >> "$GITHUB_ENV"
           rm -f "$response_file"
 
-      - name: Install browser and document validators
+      - name: Install Chromium and document validators
         run: |
-          npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 xlsx@0.18.5
+          npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 fflate@0.8.2
           npx playwright install --with-deps chromium
-          sed -i 's/timeout:180000/timeout:300000/' playwright.config.mjs
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("tests/aora-timesheet-approval.spec.mjs")
-          source = path.read_text()
-          source = source.replace('from "pdf-parse"', 'from "pdf-parse/lib/pdf-parse.js"')
-          source = source.replace('{ mkdir, readFile, stat }', '{ mkdir, readFile, stat, writeFile }')
-          source = source.replace('documentDialog.getByText("Einstein Kaffee Testfiliale")', 'documentDialog.getByText("Einstein Kaffee Testfiliale",{exact:true})')
-          source = source.replace('employee.getByText("Freigegeben")', 'employee.getByText("Freigegeben",{exact:true})')
-          source = source.replace('manager.getByText("Freigegeben")', 'manager.getByText("Freigegeben",{exact:true})')
-          source = source.replace(
-              '    await employee.locator(\'[data-timesheet-action="refresh-employee"]\').click();\n    await employee.locator(`[data-timesheet-action="view-submission"][data-submission-id="${submissionId}"]`).click();\n    const approved=',
-              '    await employee.locator(\'[data-timesheet-action="refresh-employee"]\').click();\n    await expect(employee.getByText("Wartet auf Mitarbeiter")).toBeVisible({timeout:30000});\n    await employee.locator(`[data-timesheet-action="view-submission"][data-submission-id="${submissionId}"]`).click();\n    const approved='
-          )
-          old_login = '''async function passwordLogin(page,role,email,password){
-            const route=role==="manager"?"/arbeitgeber/":"/arbeitnehmer/";
-            await page.goto(`${route}?workspace=${encodeURIComponent(workspace)}`);
-            await page.locator('input[name="email"]').fill(email);
-            await page.locator('input[name="password"]').fill(password);
-            const response=page.waitForResponse(value=>value.request().method()==="POST"&&value.url().includes("/aora-v8-pilot-access")&&String(value.request().postData()||"").includes('"action":"passwordLogin"'));
-            await page.locator('#password-login button[type="submit"]').click();
-            expect((await response).status()).toBe(200);
-            await expect(page.locator(role==="employee"?".employee-app":".admin-app")).toBeVisible({timeout:30000});
-          }'''
-          new_login = '''async function passwordLogin(page,role,email,password){
-            const route=role==="manager"?"/arbeitgeber/":"/arbeitnehmer/";
-            let lastError;
-            for(let attempt=1;attempt<=3;attempt++){
-              try{
-                await page.goto(`${route}?workspace=${encodeURIComponent(workspace)}`,{waitUntil:"domcontentloaded"});
-                await page.locator('input[name="email"]').fill(email);
-                await page.locator('input[name="password"]').fill(password);
-                const responsePromise=page.waitForResponse(value=>value.request().method()==="POST"&&value.url().includes("/aora-v8-pilot-access")&&String(value.request().postData()||"").includes('"action":"passwordLogin"'),{timeout:30000});
-                await page.locator('#password-login button[type="submit"]').click();
-                const response=await responsePromise;
-                expect(response.status()).toBe(200);
-                await expect(page.locator(role==="employee"?".employee-app": ".admin-app")).toBeVisible({timeout:30000});
-                return;
-              }catch(error){
-                lastError=error;
-                if(attempt===3)throw error;
-                await page.waitForTimeout(2000*attempt);
-              }
-            }
-            throw lastError;
-          }'''
-          if old_login not in source:
-              raise SystemExit("login helper was not found")
-          source = source.replace(old_login,new_login)
-          old = '''    const box=await canvas.boundingBox();if(!box)throw new Error("Signature canvas missing");
-              await employee.mouse.move(box.x+25,box.y+box.height*0.62);await employee.mouse.down();
-              for(let index=0;index<18;index++)await employee.mouse.move(box.x+25+index*12,box.y+box.height*(0.62+Math.sin(index/2)*0.12));
-              await employee.mouse.up();'''
-          new = '''    await canvas.scrollIntoViewIfNeeded();
-              await canvas.evaluate(node=>{
-                const context=node.getContext("2d");
-                context.lineWidth=4;context.lineCap="round";context.strokeStyle="#151515";
-                context.beginPath();context.moveTo(40,140);
-                for(let index=0;index<22;index++)context.lineTo(40+index*25,140+Math.sin(index/2)*35);
-                context.stroke();node.dataset.dirty="true";
-              });'''
-          if old not in source:
-              raise SystemExit("signature block was not found")
-          source = source.replace(old,new)
-          old_download = '''    async function download(format){
-              const event=manager.waitForEvent("download",{timeout:30000});
-              await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
-              const item=await event;expect(await item.failure()).toBeNull();
-              const destination=path.join(downloads,item.suggestedFilename());await item.saveAs(destination);
-              expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
-              return destination;
-            }'''
-          new_download = '''    async function download(format){
-              await manager.evaluate(()=>{
-                if(window.__timesheetDownloadProbeInstalled)return;
-                window.__timesheetDownloadProbeInstalled=true;window.__timesheetDownloadProbe=[];
-                const original=HTMLAnchorElement.prototype.click;
-                HTMLAnchorElement.prototype.click=function(){
-                  if(this.download)window.__timesheetDownloadProbe.push({download:this.download,href:this.href});
-                  return original.call(this);
-                };
-              });
-              const responsePromise=manager.waitForResponse(response=>isApprovalAction(response,"exportTimesheet")&&String(response.request().postData()||"").includes(`"format":"${format}"`),{timeout:30000});
-              await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
-              const response=await responsePromise;
-              expect(response.status()).toBe(200);
-              const headers=response.headers();
-              expect(headers["x-document-checksum"]).toMatch(/^[a-f0-9]{64}$/);
-              expect(headers["content-type"]).toContain(format==="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-              const disposition=headers["content-disposition"]||"";
-              const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`Arbeitszeitnachweis.${format}`;
-              const destination=path.join(downloads,filename);
-              await writeFile(destination,await response.body());
-              expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
-              await expect.poll(()=>manager.evaluate(name=>(window.__timesheetDownloadProbe||[]).some(item=>item.download===name),filename),{timeout:10000}).toBe(true);
-              return destination;
-            }'''
-          if old_download not in source:
-              raise SystemExit("download helper was not found")
-          path.write_text(source.replace(old_download,new_download))
-          PY
 
       - name: Build canonical preview bundle
         run: npm run build
