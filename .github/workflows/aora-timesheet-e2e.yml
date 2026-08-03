@@ -1,3 +1,4 @@
+# Final isolated release gate for employee-approved timesheets
 name: Aora Timesheet Approval E2E
 
 on:
