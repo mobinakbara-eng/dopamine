@@ -1,0 +1,103 @@
+name: Aora Timesheet Approval E2E
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-timesheet-e2e.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aora-timesheet-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  timesheet-e2e:
+    name: Consent, approval, PDF and Excel gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    env:
+      AORA_CI_BOOTSTRAP_URL: https://xqgkawskftzurbujrpex.supabase.co/functions/v1/aora-v8-timesheet-ci-bootstrap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bootstrap isolated timesheet tenant with GitHub OIDC
+        id: bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$GITHUB_WORKSPACE/aora-v8-final/timesheet-bootstrap-response.json"
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-timesheet-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data '{"action":"bootstrap"}')
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          test "$status" = "201"
+          jq -e '.workspaceSlug and .manager.email and .manager.password and .employee.email and .employee.password and .testDate' "$response_file" >/dev/null
+          mapfile -t masked_values < <(jq -r '[.workspaceSlug,.manager.email,.manager.password,.employee.email,.employee.password] | .[]' "$response_file")
+          for value in "${masked_values[@]}"; do echo "::add-mask::$value"; done
+          {
+            echo "AORA_WORKSPACE_SLUG=$(jq -r '.workspaceSlug' "$response_file")"
+            echo "AORA_MANAGER_EMAIL=$(jq -r '.manager.email' "$response_file")"
+            echo "AORA_MANAGER_PASSWORD=$(jq -r '.manager.password' "$response_file")"
+            echo "AORA_EMPLOYEE_EMAIL=$(jq -r '.employee.email' "$response_file")"
+            echo "AORA_EMPLOYEE_PASSWORD=$(jq -r '.employee.password' "$response_file")"
+            echo "AORA_TEST_DATE=$(jq -r '.testDate' "$response_file")"
+          } >> "$GITHUB_ENV"
+          rm -f "$response_file"
+
+      - name: Install browser and document validators
+        run: |
+          npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 xlsx@0.18.5
+          npx playwright install --with-deps chromium
+
+      - name: Build canonical preview bundle
+        run: npm run build
+
+      - name: Run employee-approved timesheet flow
+        run: npx playwright test tests/aora-timesheet-approval.spec.mjs --project=timesheet-approval --no-deps
+
+      - name: Upload screenshots, PDF, Excel and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-timesheet-e2e-evidence
+          path: |
+            aora-v8-final/test-results/**/timesheet-e2e/**
+            aora-v8-final/playwright-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup isolated timesheet tenant
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${AORA_WORKSPACE_SLUG:-}" ]; then exit 0; fi
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-timesheet-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          payload=$(jq -cn --arg workspaceSlug "$AORA_WORKSPACE_SLUG" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
+          curl --fail-with-body --retry 4 --retry-all-errors --retry-delay 2 -sS \
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data "$payload" >/dev/null
