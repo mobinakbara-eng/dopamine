@@ -3,11 +3,12 @@ import { test, expect } from "@playwright/test";
 const forbiddenHosts=["supabase.co","fonts.googleapis.com","fonts.gstatic.com","cdn.jsdelivr.net","google-analytics.com","googletagmanager.com"];
 
 for(const route of ["/datenschutz/","/datenschutzbeauftragter/"]){
-  test(`privacy contact page is standalone and accessible at ${route}`,async({page})=>{
+  test(`privacy contact page is standalone and accessible at ${route}`,async({page,baseURL})=>{
     const externalRequests=[];
+    const expectedOrigin=new URL(baseURL||"http://127.0.0.1:4173").origin;
     page.on("request",request=>{
       const url=new URL(request.url());
-      if(url.origin!==new URL(page.context()._options.baseURL||"http://127.0.0.1:4173").origin)externalRequests.push(url.hostname);
+      if(url.origin!==expectedOrigin)externalRequests.push(url.hostname);
     });
     await page.goto(route,{waitUntil:"networkidle"});
     await expect(page).toHaveTitle(/Datenschutz & Kontakt/);
@@ -22,9 +23,9 @@ for(const route of ["/datenschutz/","/datenschutzbeauftragter/"]){
     await expect(page.locator("script")).toHaveCount(0);
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content",/Datenschutzkontakt/);
     for(const host of forbiddenHosts)expect(externalRequests.filter(item=>item.includes(host))).toEqual([]);
-    const html=await page.locator("html").innerHTML();
-    expect(html).not.toContain("{{");
-    expect(html).not.toContain("@aora.example");
+    const pageHtml=await page.locator("html").innerHTML();
+    expect(pageHtml).not.toContain("{{");
+    expect(pageHtml).not.toContain("@aora.example");
   });
 }
 
