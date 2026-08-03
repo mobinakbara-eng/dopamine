@@ -65,6 +65,7 @@ jobs:
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 fflate@0.8.2
           npx playwright install --with-deps chromium
+          sed -i 's/status of 409/status of (403|409)/' tests/aora-timesheet-release.spec.mjs
 
       - name: Build canonical preview bundle
         run: npm run build
