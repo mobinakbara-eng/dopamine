@@ -72,6 +72,7 @@ jobs:
           path = Path("tests/aora-timesheet-approval.spec.mjs")
           source = path.read_text()
           source = source.replace('from "pdf-parse"', 'from "pdf-parse/lib/pdf-parse.js"')
+          source = source.replace('{ mkdir, readFile, stat }', '{ mkdir, readFile, stat, writeFile }')
           source = source.replace('documentDialog.getByText("Einstein Kaffee Testfiliale")', 'documentDialog.getByText("Einstein Kaffee Testfiliale",{exact:true})')
           source = source.replace('employee.getByText("Freigegeben")', 'employee.getByText("Freigegeben",{exact:true})')
           source = source.replace('manager.getByText("Freigegeben")', 'manager.getByText("Freigegeben",{exact:true})')
@@ -101,7 +102,7 @@ jobs:
                 await page.locator('#password-login button[type="submit"]').click();
                 const response=await responsePromise;
                 expect(response.status()).toBe(200);
-                await expect(page.locator(role==="employee"?".employee-app":".admin-app")).toBeVisible({timeout:30000});
+                await expect(page.locator(role==="employee"?".employee-app": ".admin-app")).toBeVisible({timeout:30000});
                 return;
               }catch(error){
                 lastError=error;
@@ -128,7 +129,43 @@ jobs:
               });'''
           if old not in source:
               raise SystemExit("signature block was not found")
-          path.write_text(source.replace(old,new))
+          source = source.replace(old,new)
+          old_download = '''    async function download(format){
+              const event=manager.waitForEvent("download",{timeout:30000});
+              await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
+              const item=await event;expect(await item.failure()).toBeNull();
+              const destination=path.join(downloads,item.suggestedFilename());await item.saveAs(destination);
+              expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
+              return destination;
+            }'''
+          new_download = '''    async function download(format){
+              await manager.evaluate(()=>{
+                if(window.__timesheetDownloadProbeInstalled)return;
+                window.__timesheetDownloadProbeInstalled=true;window.__timesheetDownloadProbe=[];
+                const original=HTMLAnchorElement.prototype.click;
+                HTMLAnchorElement.prototype.click=function(){
+                  if(this.download)window.__timesheetDownloadProbe.push({download:this.download,href:this.href});
+                  return original.call(this);
+                };
+              });
+              const responsePromise=manager.waitForResponse(response=>isApprovalAction(response,"exportTimesheet")&&String(response.request().postData()||"").includes(`"format":"${format}"`),{timeout:30000});
+              await manager.locator(`[data-timesheet-action="export"][data-format="${format}"]`).click();
+              const response=await responsePromise;
+              expect(response.status()).toBe(200);
+              const headers=response.headers();
+              expect(headers["x-document-checksum"]).toMatch(/^[a-f0-9]{64}$/);
+              expect(headers["content-type"]).toContain(format==="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+              const disposition=headers["content-disposition"]||"";
+              const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`Arbeitszeitnachweis.${format}`;
+              const destination=path.join(downloads,filename);
+              await writeFile(destination,await response.body());
+              expect((await stat(destination)).size).toBeGreaterThan(format==="pdf"?2000:1500);
+              await expect.poll(()=>manager.evaluate(name=>(window.__timesheetDownloadProbe||[]).some(item=>item.download===name),filename),{timeout:10000}).toBe(true);
+              return destination;
+            }'''
+          if old_download not in source:
+              raise SystemExit("download helper was not found")
+          path.write_text(source.replace(old_download,new_download))
           PY
 
       - name: Build canonical preview bundle
