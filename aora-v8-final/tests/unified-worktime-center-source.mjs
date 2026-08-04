@@ -6,24 +6,27 @@ import { fileURLToPath } from "node:url";
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFile(resolve(root,path),"utf8");
-const [index,moduleCss,moduleJs,edge,migration,eventMigration]=await Promise.all([
+const [index,moduleCss,moduleJs,documentBridge,edge,migration,eventMigration]=await Promise.all([
   read("app/index.html"),
   read("app/worktime-center.css"),
   read("app/modules/worktime-center.js"),
+  read("app/modules/worktime-document-bridge.js"),
   read("supabase/functions/aora-v8-worktime-center/index.ts"),
   read("supabase/migrations/20260804125000_unified_worktime_center.sql"),
   read("supabase/migrations/20260804132000_worktime_event_types.sql")
 ]);
 
 execFileSync(process.execPath,["--check",resolve(root,"app/modules/worktime-center.js")],{stdio:"pipe"});
+execFileSync(process.execPath,["--check",resolve(root,"app/modules/worktime-document-bridge.js")],{stdio:"pipe"});
 
-for(const marker of ["worktime-center.css?v=838","modules/worktime-center.js?v=838"]){
+for(const marker of ["worktime-center.css?v=838","modules/worktime-center.js?v=838","modules/worktime-document-bridge.js?v=839"]){
   assert.ok(index.includes(marker),`missing worktime center asset: ${marker}`);
 }
 assert.ok(index.indexOf("time-correction-clock-hub.js")<index.indexOf("modules/worktime-center.js"),"unified center must load after the legacy correction hub so it can consolidate navigation and views");
 assert.ok(index.indexOf("timesheet-document-signing.js")<index.indexOf("modules/worktime-center.js"),"unified center must load after document-scoped Nachweise");
 assert.ok(index.indexOf("reports-sync.js")<index.indexOf("modules/worktime-center.js"),"unified center must load after reports so it can embed the canonical report view");
-assert.ok(index.indexOf("modules/worktime-center.js")<index.indexOf("modules/handlers.js"),"unified actions must be registered before generic handlers and boot");
+assert.ok(index.indexOf("modules/worktime-center.js")<index.indexOf("modules/worktime-document-bridge.js"),"embedded document bridge must load after the unified worktime state");
+assert.ok(index.indexOf("modules/worktime-document-bridge.js")<index.indexOf("modules/handlers.js"),"unified document refresh must be installed before generic handlers and boot");
 
 for(const marker of [
   'const remove=new Set(["time","reports","time-control","approvals",VIEW])',
@@ -37,6 +40,15 @@ for(const marker of [
   'legacyView("approvals")',
   'legacyView("reports")'
 ])assert.ok(moduleJs.includes(marker),`missing customer-friendly navigation marker: ${marker}`);
+
+for(const marker of [
+  "aora-v8-timesheet-document-signing",
+  'payload?.action==="managerOverview"',
+  'S?.adminView==="worktime"',
+  'data-tab="documents"].active',
+  "setTimeout",
+  "renderAdmin()"
+])assert.ok(documentBridge.includes(marker),`missing embedded Nachweise refresh marker: ${marker}`);
 
 for(const marker of [
   'action==="managerPunch"',
@@ -93,4 +105,4 @@ assert.ok(moduleCss.includes("@media(max-width:640px)"),"mobile layout contract 
 assert.ok(moduleCss.includes(".worktime-diff"),"before/after comparison must have a dedicated responsive layout");
 assert.ok(moduleCss.includes(".aora-worktime-dialog"),"direct and approval-required actions need a focused dialog surface");
 
-console.log("Unified worktime center contract passed: one Arbeitszeit navigation, direct audited manager punch, employee-approved historical changes, embedded reports/Nachweise and simplified compliance.");
+console.log("Unified worktime center contract passed: one Arbeitszeit navigation, direct audited manager punch, employee-approved historical changes, embedded reports/Nachweise with deterministic refresh and simplified compliance.");
