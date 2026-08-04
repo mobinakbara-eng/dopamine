@@ -1,7 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root=resolve(new URL(".",import.meta.url).pathname);
+const root=dirname(fileURLToPath(import.meta.url));
 const routes=["datenschutz","datenschutzbeauftragter"];
 const replacements=new Map([
   ["Ihr Arbeitgeber / Betreiber des Aora-Arbeitsbereichs","(Name des verantwortlichen Arbeitgebers eintragen)"],

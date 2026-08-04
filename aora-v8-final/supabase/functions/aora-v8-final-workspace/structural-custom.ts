@@ -11,9 +11,9 @@ import {
   service,
 } from "./core.ts";
 import {
-  issueInvitationToken,
-  revokeInvitationToken,
+  prepareInvitationToken,
 } from "./invitation.ts";
+import { appOriginForRequest } from "./origin.ts";
 
 export const STRUCTURAL_TYPES = new Set([
   "ADD_LOCATION",
@@ -77,6 +77,44 @@ async function persistKioskActivation(ctx: any, state: any, activation: any) {
     }
     throw error || new Error("Kiosk-Aktivierung konnte nicht gespeichert werden.");
   }
+  return revision;
+}
+
+async function persistAccountDeactivation(ctx: any, state: any, account: any) {
+  const revision = Number(ctx.snapshot.revision) + 1;
+  state.meta = { ...(state.meta || {}), revision, updatedAt: now(), variant: "isolated-v8-final" };
+  const { data, error } = await service.rpc("aora_commit_account_deactivation", {
+    p_organization_id: ctx.organization.id,
+    p_expected_revision: Number(ctx.snapshot.revision),
+    p_state: state,
+    p_actor_role: ctx.accessRole,
+    p_actor_id: ctx.admin.id,
+    p_subject_role: account.subjectRole,
+    p_subject_id: account.subjectId,
+    p_event_payload: account.eventPayload || {},
+  });
+  if (error || Number(data) !== revision) throw error || new Error("Konto konnte nicht atomar deaktiviert werden.");
+  return revision;
+}
+
+async function persistInvitationChange(ctx: any, state: any, event: any, prepared: any, revokeTokenId: string | null) {
+  const revision = Number(ctx.snapshot.revision) + 1;
+  state.meta = { ...(state.meta || {}), revision, updatedAt: now(), variant: "isolated-v8-final" };
+  const invitationId = prepared?.delivery?.invitationId || revokeTokenId;
+  const { data, error } = await service.rpc("aora_commit_invitation_change", {
+    p_organization_id: ctx.organization.id,
+    p_expected_revision: Number(ctx.snapshot.revision),
+    p_state: state,
+    p_actor_role: ctx.accessRole,
+    p_actor_id: ctx.admin.id,
+    p_event_type: event.type,
+    p_event_payload: event,
+    p_invitation_id: invitationId,
+    p_token_hash: prepared?.tokenHash || null,
+    p_expires_at: prepared?.delivery?.expiresAt || null,
+    p_revoke: Boolean(revokeTokenId),
+  });
+  if (error || Number(data) !== revision) throw error || new Error("Einladung konnte nicht atomar gespeichert werden.");
   return revision;
 }
 
@@ -152,6 +190,7 @@ export async function applyStructural(
   let inviteRole: "manager" | "employee" | null = null;
   let revokeTokenId: string | null = null;
   let kioskActivation: any = null;
+  let deactivation: any = null;
 
   switch (event.type) {
     case "ADD_LOCATION": {
@@ -578,16 +617,11 @@ export async function applyStructural(
           }
           : item
       );
-      await service.from("app_sessions")
-        .update({ revoked_at: now() })
-        .eq("organization_id", ctx.organization.id)
-        .eq("role", subjectRole)
-        .eq("subject_id", account.id);
-      await service.from("aora_v8_final_credentials")
-        .update({ active: false, updated_at: now() })
-        .eq("organization_id", ctx.organization.id)
-        .eq("subject_role", subjectRole)
-        .eq("subject_id", account.id);
+      deactivation = {
+        subjectRole,
+        subjectId: account.id,
+        eventPayload: { kind, id: account.id, locationId: account.locationId || null },
+      };
       addAudit(
         state,
         ctx,
@@ -701,18 +735,17 @@ export async function applyStructural(
       });
   }
 
+  const preparedInvitation = invitation && inviteRole
+    ? await prepareInvitationToken({ ...ctx, state }, invitation, inviteRole, origin)
+    : null;
   const revision = kioskActivation
     ? await persistKioskActivation(ctx, state, kioskActivation)
+    : deactivation
+    ? await persistAccountDeactivation(ctx, state, deactivation)
+    : preparedInvitation || revokeTokenId
+    ? await persistInvitationChange(ctx, state, event, preparedInvitation, revokeTokenId)
     : await persist(ctx, state, event.type, event);
-  if (revokeTokenId) await revokeInvitationToken(ctx, revokeTokenId);
-  const delivery = invitation && inviteRole
-    ? await issueInvitationToken(
-      { ...ctx, state },
-      invitation,
-      inviteRole,
-      origin,
-    )
-    : null;
+  const delivery = preparedInvitation?.delivery || null;
 
   const { data: finalSnapshot, error: finalError } = await service
     .from("workspace_snapshots")
@@ -731,9 +764,7 @@ export async function applyStructural(
         deviceId: kioskActivation.deviceId,
         deviceName: kioskActivation.deviceName,
         activationCode: kioskActivation.code,
-        kioskUrl: `${origin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
-          ? origin
-          : "https://dopamine-mobins-projects-4f428afa.vercel.app"}/kiosk/dashboard/?workspace=${encodeURIComponent(ctx.organization.slug)}`,
+        kioskUrl: `${appOriginForRequest(origin)}/kiosk/dashboard/?workspace=${encodeURIComponent(ctx.organization.slug)}`,
       }
       : null,
   };

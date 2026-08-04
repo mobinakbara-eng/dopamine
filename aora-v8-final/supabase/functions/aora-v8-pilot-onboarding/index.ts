@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const APP_URL = "https://dopamine-mobins-projects-4f428afa.vercel.app";
+const FALLBACK_APP_URL = "https://dopamine-blond.vercel.app";
 const service = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
 const PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
@@ -52,8 +52,15 @@ function hex(bytes: Uint8Array) {
 function randomHex(size = 32) {
   return hex(crypto.getRandomValues(new Uint8Array(size)));
 }
-function sixDigitCode() {
-  return String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+function activationCode() {
+  let value = "";
+  while (value.length < 8) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(16))) {
+      if (byte < 250) value += String(byte % 10);
+      if (value.length === 8) break;
+    }
+  }
+  return value;
 }
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
@@ -69,6 +76,17 @@ function validEmail(value: unknown) {
 }
 function slugify(value: string) {
   return value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "unternehmen";
+}
+function canonicalAppUrl(origin: string | null) {
+  try {
+    if (origin && allowed(origin) && SUPABASE_URL.includes("xqgkawskftzurbujrpex")) {
+      return new globalThis.URL(origin).origin;
+    }
+    const parsed = new globalThis.URL(String(Deno.env.get("AORA_APP_ORIGIN") || FALLBACK_APP_URL));
+    return parsed.protocol === "https:" || localHost(parsed.hostname) ? parsed.origin : FALLBACK_APP_URL;
+  } catch {
+    return FALLBACK_APP_URL;
+  }
 }
 async function readBody(request: Request) {
   const text = await request.text();
@@ -123,7 +141,7 @@ Deno.serve(async (request: Request) => {
     const deviceId = `kiosk_${crypto.randomUUID()}`;
     const invitationId = `invite_${crypto.randomUUID()}`;
     const invitationToken = randomHex(32);
-    const activationCode = sixDigitCode();
+    const activationCodeValue = activationCode();
     const invitationExpiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
     const activationExpiresAt = new Date(Date.now() + 24 * 3600000).toISOString();
     const now = new Date().toISOString();
@@ -140,17 +158,19 @@ Deno.serve(async (request: Request) => {
       }],
       admins: [{ id: managerId, name: managerName, email: managerEmail, role: "Manager", scope: "manager", locationIds: [locationId], active: true, status: "pending", createdAt: now }],
       employees: [],
-      kioskDevices: [{ id: deviceId, name: clean(kiosk.name || "Kiosk 1", 120), locationId, active: true, locked: false, activationCodeHash: await sha256(activationCode), activationVersion: 1, createdAt: now }],
+      kioskDevices: [{ id: deviceId, name: clean(kiosk.name || "Kiosk 1", 120), locationId, active: true, locked: false, activationCodeHash: await sha256(activationCodeValue), activationExpiresAt, activationVersion: 1, createdAt: now }],
       invitations: [{ id: invitationId, kind: "manager", name: managerName, email: managerEmail, status: "pending", subjectId: managerId, locationIds: [locationId], expiresAt: invitationExpiresAt, createdAt: now, emailStatus: "prepared" }],
       shifts: [], timeEntries: [], leaveRequests: [], correctionRequests: [], announcements: [], notifications: [],
       audit: [{ id: `audit_${crypto.randomUUID()}`, action: "organization.provisioned", actor: "Pilot Onboarding", entity: "organization", entityId: organizationSlug, createdAt: now }],
       clockRequests: [], availabilityRules: [], shiftRequests: [], checklistTemplates: [], checklistAssignments: [], dailyLogs: [], timesheetPeriods: [], staffingRequirements: [], shiftFeedback: [], shiftTemplates: [],
     };
 
-    const { data, error } = await service.rpc("aora_provision_pilot_organization", {
+    const { data, error } = await service.rpc("aora_provision_pilot_organization_v2", {
       p_code_hash: await sha256(code), p_slug: organizationSlug, p_name: companyName, p_timezone: timezone, p_billing_email: billingEmail, p_state: state,
       p_company: { businessType: clean(company.businessType, 80), language, address: company.address || {} },
       p_invitation_id: invitationId, p_invitation_token_hash: await sha256(invitationToken), p_invitation_expires_at: invitationExpiresAt, p_created_by: "pilot-onboarding",
+      p_manager_id: managerId, p_kiosk_device_id: deviceId, p_kiosk_name: clean(kiosk.name || "Kiosk 1", 120),
+      p_kiosk_location_id: locationId, p_kiosk_activation_code: activationCodeValue, p_kiosk_activation_expires_at: activationExpiresAt,
     });
     if (error) {
       const message = String(error.message || error);
@@ -159,14 +179,14 @@ Deno.serve(async (request: Request) => {
       throw error;
     }
 
-    const invitationUrl = new globalThis.URL("/arbeitgeber/", APP_URL);
+    const invitationUrl = new globalThis.URL("/arbeitgeber/", canonicalAppUrl(origin));
     invitationUrl.searchParams.set("workspace", organizationSlug);
     invitationUrl.searchParams.set("invitation", invitationId);
     invitationUrl.searchParams.set("token", invitationToken);
     return reply({
       organizationId: data, workspaceSlug: organizationSlug, locationId, managerId, deviceId,
       managerInvitation: { id: invitationId, email: managerEmail, expiresAt: invitationExpiresAt, inviteUrl: invitationUrl.toString() },
-      kioskActivation: { code: activationCode, expiresAt: activationExpiresAt },
+      kioskActivation: { code: activationCodeValue, expiresAt: activationExpiresAt },
       subscription: { plan: "pilot", status: "trial" },
     }, 201, origin);
   } catch (error: any) {

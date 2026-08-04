@@ -78,16 +78,18 @@ async function bindOfflinePunchSession(session=S.session){
   if(!session||session.role!=="kiosk"||!session.token)return;
   const context=offlineContext(session);
   const key=await getDeviceKey(context);
-  const encrypted=await encryptJson(key,{token:session.token,expiresAt:session.expiresAt||null},aad(context,"session"));
+  const workspaceSlug=String(CFG.slug||"");
+  const encrypted=await encryptJson(key,{token:session.token,expiresAt:session.expiresAt||null,workspaceSlug},aad(context,"session"));
   await withStore(OFFLINE_SESSION_STORE,"readwrite",store=>store.put({
-    keyId:context.keyId,organizationId:context.organizationId,deviceId:context.deviceId,
+    keyId:context.keyId,organizationId:context.organizationId,deviceId:context.deviceId,workspaceSlug,
     iv:encrypted.iv,ciphertext:encrypted.ciphertext,updatedAt:Date.now()
   }));
 }
 async function restoreOfflineKioskSession(){
+  const workspaceSlug=String(CFG.slug||"");
   const sessions=await withStore(OFFLINE_SESSION_STORE,"readonly",store=>idbRequest(store.getAll()));
   const ordered=(sessions||[]).filter(record=>
-    record?.organizationId&&record?.deviceId&&record?.keyId
+    record?.organizationId&&record?.deviceId&&record?.keyId&&record.workspaceSlug===workspaceSlug
   ).sort((a,b)=>Number(b.updatedAt||0)-Number(a.updatedAt||0));
   for(const record of ordered){
     const context={keyId:record.keyId,organizationId:String(record.organizationId),deviceId:String(record.deviceId)};
@@ -96,6 +98,7 @@ async function restoreOfflineKioskSession(){
       if(!keyRecord?.key)continue;
       const stored=await decryptJson(keyRecord.key,record,aad(context,"session"));
       if(!stored?.token||String(stored.token).length!==64)continue;
+      if(stored.workspaceSlug!==workspaceSlug)continue;
       if(stored.expiresAt&&new Date(stored.expiresAt)<=new Date()){
         await withStore(OFFLINE_SESSION_STORE,"readwrite",store=>store.delete(record.keyId));
         continue;
@@ -148,10 +151,19 @@ async function updateOfflinePunch(eventId,patch){
 }
 async function markOfflinePunchPending(eventId,error){
   if(!eventId)return;
-  await updateOfflinePunch(eventId,{status:"pending",retryCount:undefined,lastError:String(error?.message||error||"Netzwerkfehler")});
   const existing=await withStore(OFFLINE_QUEUE_STORE,"readonly",store=>idbRequest(store.get(eventId)));
-  if(existing)await updateOfflinePunch(eventId,{retryCount:Number(existing.retryCount||0)+1});
+  if(existing)await updateOfflinePunch(eventId,{status:"pending",retryCount:Number(existing.retryCount||0)+1,lastError:String(error?.message||error||"Netzwerkfehler")});
   await registerOfflineSync();
+}
+async function markOfflinePunchFailed(eventId,error){
+  if(!eventId)return;
+  const existing=await withStore(OFFLINE_QUEUE_STORE,"readonly",store=>idbRequest(store.get(eventId)));
+  if(existing)await updateOfflinePunch(eventId,{status:"failed",retryCount:Number(existing.retryCount||0)+1,lastError:String(error?.message||error||"Buchung wurde abgelehnt")});
+}
+function retryableOfflinePunchError(error){
+  if(typeof retryablePunchError==="function")return retryablePunchError(error);
+  if(error?.retryable===true)return true;
+  return[408,425,429,500,502,503,504].includes(Number(error?.status));
 }
 async function resolveOfflinePunch(eventId){
   if(!eventId)return;
@@ -173,7 +185,7 @@ async function syncOfflinePunchQueue(){
   offlineSyncRunning=true;
   try{
     const context=offlineContext();
-    const records=await listOfflinePunches(context.keyId);
+    const records=(await listOfflinePunches(context.keyId)).filter(record=>record.status!=="failed");
     for(const record of records){
       try{
         await updateOfflinePunch(record.eventId,{status:"syncing"});
@@ -184,8 +196,11 @@ async function syncOfflinePunchQueue(){
         if(data.revision!==undefined)S.revision=data.revision;
         await resolveOfflinePunch(record.eventId);
       }catch(error){
-        await markOfflinePunchPending(record.eventId,error);
-        if(!navigator.onLine||Number(error?.status)>=500||[408,425,429].includes(Number(error?.status)))break;
+        if(retryableOfflinePunchError(error)){
+          await markOfflinePunchPending(record.eventId,error);
+          break;
+        }
+        await markOfflinePunchFailed(record.eventId,error);
       }
     }
     if(S.state)render();
@@ -203,17 +218,37 @@ async function registerOfflineSync(){
 async function renderOfflinePunchStatus(){
   const existing=document.getElementById("aora-offline-status");
   if(S.accessRole!=="kiosk"){existing?.remove();return}
-  let count=0;
-  try{count=(await listOfflinePunches(offlineContext().keyId)).length}catch{}
-  if(!count&&navigator.onLine){existing?.remove();return}
+  let records=[];
+  try{records=await listOfflinePunches(offlineContext().keyId)}catch{}
+  const failed=records.filter(record=>record.status==="failed");
+  const count=records.length-failed.length;
+  const lastFailure=failed.at(-1)?.lastError||"Die Buchung wurde vom Server abgelehnt.";
+  if(!count&&!failed.length&&navigator.onLine){existing?.remove();return}
   const banner=existing||document.createElement("div");
   banner.id="aora-offline-status";
-  banner.className=`aora-offline-banner ${navigator.onLine?"syncing":"offline"}`;
-  banner.setAttribute("role","status");
-  banner.innerHTML=navigator.onLine
+  banner.className=`aora-offline-banner ${failed.length?"failed":navigator.onLine?"syncing":"offline"}`;
+  banner.setAttribute("role",failed.length?"alert":"status");
+  banner.innerHTML=failed.length
+    ?`<strong>${failed.length} Buchung${failed.length===1?"":"en"} brauchen Aufmerksamkeit.</strong><span>${esc(lastFailure)}</span><span class="aora-offline-actions"><button type="button" data-offline-action="retry">Erneut versuchen</button><button type="button" data-offline-action="discard">Verwerfen</button></span>`
+    :navigator.onLine
     ?`<strong>${count} Buchung${count===1?"":"en"} werden synchronisiert …</strong><span>Bitte nicht erneut stempeln.</span>`
     :`<strong>Offline</strong><span>Buchungen werden sicher verschlüsselt auf diesem Gerät gespeichert.${count?` ${count} ausstehend.`:""}</span>`;
-  if(!existing)document.body.prepend(banner);
+  if(!existing){
+    banner.addEventListener("click",async event=>{
+      const action=event.target.closest("[data-offline-action]")?.dataset.offlineAction;
+      if(!action)return;
+      const context=offlineContext();
+      const failures=(await listOfflinePunches(context.keyId)).filter(record=>record.status==="failed");
+      if(action==="retry"){
+        for(const record of failures)await updateOfflinePunch(record.eventId,{status:"pending",lastError:null});
+        await syncOfflinePunchQueue();
+      }else if(action==="discard"&&confirm("Abgelehnte Offline-Buchungen wirklich verwerfen? Die Arbeitszeit muss danach manuell geprüft werden.")){
+        for(const record of failures)await resolveOfflinePunch(record.eventId);
+        toast("Abgelehnte Offline-Buchungen wurden verworfen. Bitte Arbeitszeit manuell prüfen.","warning");
+      }
+    });
+    document.body.prepend(banner);
+  }
 }
 
 window.addEventListener("online",()=>{renderOfflinePunchStatus().catch(()=>{});syncOfflinePunchQueue().catch(()=>{})});

@@ -180,9 +180,35 @@ function normalizeShift(input: any) {
   }
   return { ...shift, breakMinutes };
 }
+async function requireEmployeeLocation(ctx: any, employeeId: string, locationId: string) {
+  const { data: employee, error: employeeError } = await service.from("employees")
+    .select("id,location_id,primary_location_id,active,deleted_at")
+    .eq("organization_id", ctx.organization.id)
+    .eq("id", employeeId)
+    .maybeSingle();
+  if (employeeError) throw employeeError;
+  if (!employee || employee.active !== true || employee.deleted_at) {
+    throw Object.assign(new Error("Mitarbeiter ist nicht aktiv oder wurde nicht gefunden."), { status: 403 });
+  }
+  const directLocations = [employee.location_id, employee.primary_location_id]
+    .filter(Boolean)
+    .map(String);
+  if (directLocations.includes(locationId)) return;
+  const { data: access, error: accessError } = await service.from("employee_location_access")
+    .select("location_id")
+    .eq("organization_id", ctx.organization.id)
+    .eq("employee_id", employeeId)
+    .eq("location_id", locationId)
+    .maybeSingle();
+  if (accessError) throw accessError;
+  if (!access) {
+    throw Object.assign(new Error("Mitarbeiter ist für diesen Standort nicht freigeschaltet."), { status: 403 });
+  }
+}
 async function evaluate(ctx: any, shiftInput: any, ruleOverride: any = null) {
   const shift = normalizeShift(shiftInput);
   if (ctx.accessRole === "manager" && !ctx.managerLocations.includes(String(shift.locationId))) throw Object.assign(new Error("Kein Zugriff auf diesen Standort."), { status: 403 });
+  await requireEmployeeLocation(ctx, String(shift.employeeId), String(shift.locationId));
   const shifts = Array.isArray(ctx.state.shifts) ? ctx.state.shifts : [];
   const { data, error } = await service.rpc("aora_evaluate_shift_rules", {
     p_organization_id: ctx.organization.id,

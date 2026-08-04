@@ -10,6 +10,14 @@ on:
     paths:
       - "aora-v8-final/**"
       - ".github/workflows/aora-v8-pilot-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-v8-pilot-ci.yml"
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +30,7 @@ concurrency:
 
 jobs:
   source-gate:
-    name: Source, crypto and build gate
+    name: Source, Deno and reproducible build gate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,31 +40,74 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate and build immutable pilot bundle
-        id: source_build
-        shell: bash
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Validate owned Edge Functions and release contracts
         run: |
-          set +e
-          npm run build 2>&1 | tee build.log
-          status=${PIPESTATUS[0]}
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload source-gate diagnostics
-        if: steps.source_build.outputs.status != '0'
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-pilot-realtime-broadcast/index.ts
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-pilot-monitor/index.ts
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts
+          node tests/zero-cost-release-hardening.mjs
+      - name: Build production artifact
+        env:
+          AORA_DEPLOY_ENV: production
+        run: npm run build
+      - name: Bind production artifact to source commit
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > artifact-source.txt
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > artifact-manifest.sha256
+          sha256sum -c artifact-manifest.sha256
+      - name: Upload immutable production artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aora-source-gate-build-log
-          path: aora-v8-final/build.log
+          name: aora-production-${{ github.sha }}
+          path: |
+            aora-v8-final/dist
+            aora-v8-final/artifact-source.txt
+            aora-v8-final/artifact-manifest.sha256
           if-no-files-found: error
           retention-days: 7
-      - name: Enforce source build result
-        if: always()
-        shell: bash
-        run: test "${{ steps.source_build.outputs.status }}" = "0"
+      - name: Build staging browser artifact
+        env:
+          AORA_DEPLOY_ENV: staging
+        run: npm run build
+      - name: Bind staging artifact to source commit
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > artifact-source.txt
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > artifact-manifest.sha256
+          sha256sum -c artifact-manifest.sha256
+      - name: Upload immutable staging artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-staging-${{ github.sha }}
+          path: |
+            aora-v8-final/dist
+            aora-v8-final/artifact-source.txt
+            aora-v8-final/artifact-manifest.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  immutable-artifact:
+    name: Immutable production artifact verification
+    needs: source-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aora-production-${{ github.sha }}
+          path: aora-v8-final
+      - name: Verify source binding and every output byte
+        run: |
+          test "$(cat artifact-source.txt)" = "$GITHUB_SHA"
+          sha256sum -c artifact-manifest.sha256
 
   four-role-browser:
     name: Four roles, invitation and offline browser gate
-    needs: source-gate
+    needs: [source-gate, immutable-artifact]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -69,6 +120,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: aora-staging-${{ github.sha }}
+          path: aora-v8-final
+      - name: Verify browser artifact source and bytes
+        run: |
+          test "$(cat artifact-source.txt)" = "$GITHUB_SHA"
+          sha256sum -c artifact-manifest.sha256
       - name: Bootstrap isolated staging tenant with GitHub OIDC
         id: ci_bootstrap
         shell: bash
@@ -129,14 +188,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Enforce CI tenant bootstrap
-        shell: bash
         run: test "${{ steps.ci_bootstrap.outputs.status }}" = "201"
       - name: Install Playwright without changing lockfiles
         run: |
           npm install --no-save @playwright/test@1.56.1
           npx playwright install --with-deps chromium
-      - name: Build browser bundle
-        run: npm run build
       - name: Run four-role, invitation replay and offline-resync tests
         run: npx playwright test --project=chromium
       - name: Run bounded workspace concurrency smoke
@@ -168,19 +224,23 @@ jobs:
           echo "::add-mask::$oidc_token"
           payload=$(jq -cn --arg workspaceSlug "$AORA_WORKSPACE_SLUG" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
           curl --fail-with-body --retry 4 --retry-all-errors --retry-delay 2 -sS \
-              -X POST "$AORA_CI_BOOTSTRAP_URL" \
-              -H "Authorization: Bearer $oidc_token" \
-              -H 'content-type: application/json' \
-              --data "$payload" >/dev/null
+            -X POST "$AORA_CI_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data "$payload" >/dev/null
 
   release-gate:
     name: Aora pilot release gate
     if: always()
-    needs: [source-gate, four-role-browser]
+    needs: [source-gate, immutable-artifact, four-role-browser]
     runs-on: ubuntu-latest
     steps:
-      - name: Enforce all mandatory checks
-        shell: bash
+      - name: Enforce mandatory checks for this event
+        env:
+          SOURCE_RESULT: ${{ needs.source-gate.result }}
+          ARTIFACT_RESULT: ${{ needs.immutable-artifact.result }}
+          BROWSER_RESULT: ${{ needs.four-role-browser.result }}
         run: |
-          test "${{ needs.source-gate.result }}" = "success"
-          test "${{ needs.four-role-browser.result }}" = "success"
+          test "$SOURCE_RESULT" = "success"
+          test "$ARTIFACT_RESULT" = "success"
+          test "$BROWSER_RESULT" = "success"

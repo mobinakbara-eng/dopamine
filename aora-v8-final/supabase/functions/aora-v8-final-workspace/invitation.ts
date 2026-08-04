@@ -1,11 +1,7 @@
 import {
   now,
-  service,
 } from "./core.ts";
-import { allowedOrigin } from "./origin.ts";
-
-const CANONICAL_APP_ORIGIN =
-  "https://dopamine-mobins-projects-4f428afa.vercel.app";
+import { appOriginForRequest } from "./origin.ts";
 
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -18,7 +14,7 @@ async function sha256(value: string) {
   return hex(new Uint8Array(digest));
 }
 
-export async function issueInvitationToken(
+export async function prepareInvitationToken(
   ctx: any,
   invitation: any,
   accessRole: "manager" | "employee",
@@ -27,26 +23,7 @@ export async function issueInvitationToken(
   const token = hex(crypto.getRandomValues(new Uint8Array(32)));
   const tokenHash = await sha256(token);
   const issuedAt = now();
-  const { error } = await service
-    .from("aora_v8_final_invitation_tokens")
-    .upsert({
-      organization_id: ctx.organization.id,
-      invitation_id: invitation.id,
-      token_hash: tokenHash,
-      expires_at: invitation.expiresAt,
-      used_at: null,
-      revoked_at: null,
-      updated_at: issuedAt,
-    }, { onConflict: "organization_id,invitation_id" });
-  if (error) throw error;
-
-  let appOrigin = CANONICAL_APP_ORIGIN;
-  if (origin && allowedOrigin(origin)) {
-    const parsed = new globalThis.URL(origin);
-    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
-      appOrigin = parsed.origin;
-    }
-  }
+  const appOrigin = appOriginForRequest(origin);
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
   const inviteUrlObject = new globalThis.URL(`/${route}`, appOrigin);
   inviteUrlObject.searchParams.set("workspace", ctx.organization.slug);
@@ -73,23 +50,17 @@ export async function issueInvitationToken(
   ].join("\n");
 
   return {
-    invitationId: invitation.id,
-    email: invitation.email,
-    name: invitation.name,
-    accessRole,
-    inviteUrl,
-    subject,
-    body,
-    expiresAt: invitation.expiresAt,
+    tokenHash,
+    issuedAt,
+    delivery: {
+      invitationId: invitation.id,
+      email: invitation.email,
+      name: invitation.name,
+      accessRole,
+      inviteUrl,
+      subject,
+      body,
+      expiresAt: invitation.expiresAt,
+    },
   };
-}
-
-export async function revokeInvitationToken(ctx: any, invitationId: string) {
-  const timestamp = now();
-  const { error } = await service
-    .from("aora_v8_final_invitation_tokens")
-    .update({ revoked_at: timestamp, updated_at: timestamp })
-    .eq("organization_id", ctx.organization.id)
-    .eq("invitation_id", invitationId);
-  if (error) throw error;
 }

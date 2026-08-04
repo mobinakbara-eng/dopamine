@@ -42,7 +42,7 @@ const paths=[
   "tests/offline-crypto.mjs","tests/environment-guard.mjs","tests/aora-four-role.spec.mjs","playwright.config.mjs","../.github/workflows/aora-v8-pilot-ci.yml"
 ];
 for(const path of paths)await access(resolve(root,path)).catch(()=>{throw new Error(`Missing pilot source: ${path}`)});
-const read=path=>readFile(resolve(root,path),"utf8");
+const read=async path=>(await readFile(resolve(root,path),"utf8")).replace(/\r\n/g,"\n");
 const source={
   index:await read("app/index.html"),config:await read("app/modules/config.js"),api:await read("app/modules/api.js"),
   offline:await read("app/modules/offline-punch.js"),ruleUi:await read("app/modules/rule-engine.js"),sw:await read("app/sw.js"),
@@ -81,10 +81,11 @@ forbidAll("tenant workspace",source.pilotWorkspace,['.eq("slug", PRIMARY_PILOT_S
 requireAll("server geofence enforcement",source.pilotWorkspace,["configuredLocationPosition","enforceApprovalGeofence","Math.abs(Date.now() - capturedAt) > 120_000","Ausserhalb des Standorts","maxGpsAccuracy"]);
 requireAll("geolocation timestamp fallback",source.handlers,["Number(position.timestamp)","Number.isFinite(timestamp)&&timestamp>0?timestamp:Date.now()"]);
 requireAll("location GPS persistence",source.finalWorkspaceStructural,["locationGps(input)","gpsConfigured: true","latitude,","longitude,"]);
-requireAll("canonical public links",source.finalWorkspaceInvitation,['CANONICAL_APP_ORIGIN =','"https://dopamine-mobins-projects-4f428afa.vercel.app"',"inviteUrlObject"]);
+requireAll("canonical public links",source.finalWorkspaceInvitation,["prepareInvitationToken","appOriginForRequest","inviteUrlObject"]);
+requireAll("atomic invitation and account changes",source.finalWorkspaceStructural,["aora_commit_invitation_change","aora_commit_account_deactivation","prepareInvitationToken"]);
 requireAll("legacy workspace consolidation",source.hardeningWorkspace,["CANONICAL_WORKSPACE","aora-v8-final-workspace","authorization: `Bearer ${SERVICE_KEY}`","allowedOrigin(origin)","x-aora-request-origin","trustedProxy"]);
 forbidAll("legacy workspace consolidation",source.hardeningWorkspace,["APPROVE_CLOCK_REQUEST","CREATE_KIOSK_DEVICE","INVITE_MANAGER"]);
-requireAll("canonical onboarding links",source.pilotOnboarding,['const APP_URL = "https://dopamine-mobins-projects-4f428afa.vercel.app"']);
+requireAll("canonical onboarding links",source.pilotOnboarding,["FALLBACK_APP_URL","AORA_APP_ORIGIN","canonicalAppUrl"]);
 requireAll("duration correction consistency",source.geofenceDurationMigration,["aora_recalculate_time_entry_duration","durationMinutes","aora_decide_time_correction_atomic","aora_commit_workspace_state"]);
 requireAll("punch receipts",source.punch,["public.punch_events","primary key (organization_id, event_id)","aora_begin_punch","aora_claim_punch_approval","approval_response_payload"]);
 requireAll("pilot kiosk",source.pilotKiosk,["aora_begin_punch","clientEventId","clock_${eventId}","x-aora-punch-replay","idempotentReplay"]);
@@ -107,7 +108,7 @@ requireAll("origin-safe monitor",source.pilotMonitor,["new globalThis.URL(origin
 forbidAll("origin-safe monitor",source.pilotMonitor,['const URL=Deno.env.get("SUPABASE_URL")','new URL(origin)']);
 requireAll("compliance proxy",source.complianceProxy,["aora-v8-pilot-compliance","new globalThis.URL(origin)","content-disposition","x-aora-export-checksum","SERVICE_KEY"]);
 forbidAll("compliance proxy",source.complianceProxy,["SUPABASE_SERVICE_ROLE_KEY\")!;\nconst service"]);
-requireAll("origin-safe onboarding",source.pilotOnboarding,["aora_provision_pilot_organization","new globalThis.URL(origin)","crypto.getRandomValues","managerInvitation","kioskActivation","Access-Control-Allow-Private-Network"]);
+requireAll("origin-safe onboarding",source.pilotOnboarding,["aora_provision_pilot_organization_v2","canonicalAppUrl","crypto.getRandomValues","managerInvitation","kioskActivation","Access-Control-Allow-Private-Network"]);
 forbidAll("origin-safe onboarding",source.pilotOnboarding,['const URL=Deno.env.get("SUPABASE_URL")','new URL(origin)','Math.random']);
 requireAll("scoped CI ledger cleanup",source.cleanupMigration,["aora.cleanup_organization_id","tenantSource","github-oidc-ci","aora_cleanup_ci_tenant"]);
 requireAll("manager projection and session lifecycle",source.unifiedMigration,["aora_sync_manager_location_access","aora_project_snapshot_trigger","aora_trim_subject_sessions","aora_cleanup_expired_sessions","manager-session-projection-cleanup"]);
