@@ -232,7 +232,7 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     await page.locator('[data-view="more"]').click();await openAndCloseModal(page,'[data-a="profile-modal"]',"Profil bearbeiten");
     await page.locator('.employee-bottom [data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
     await page.locator('.employee-bottom [data-view="time"]').click();
-    await page.locator('[data-time-hub-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
+    await page.locator('[data-time-hub-action="request-correction"]').click();await expect(page.getByRole("heading",{name:"Korrektur beantragen"})).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
     expect(getErrors()).toEqual([]);
   });
 

@@ -64,7 +64,7 @@ test.describe.serial("Integrated correction and clock hub",()=>{
     const nav=page.locator('.admin-nav [data-a="admin-view"][data-view="time-control"]');
     await expect(nav).toBeVisible();
     await nav.click();
-    await expect(page.getByRole("heading",{name:"Korrektur & Stempeluhr"})).toBeVisible();
+    await expect(page.locator("h1").filter({hasText:"Korrektur & Stempeluhr"}).first()).toBeVisible();
     await expect(page.getByText("Zeitkorrekturen").first()).toBeVisible();
     await expect(page.getByText("Aktueller Stempelstatus")).toBeVisible();
     await expect(page.getByText("Offene Stempelbestätigungen")).toBeVisible();
