@@ -1,0 +1,44 @@
+name: Package Aora Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/package-aora-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aora-v8-final/package-lock.json
+
+      - name: Install dependencies
+        working-directory: aora-v8-final
+        run: npm ci
+
+      - name: Build production bundle
+        working-directory: aora-v8-final
+        env:
+          AORA_DEPLOY_ENV: production
+          AORA_CANONICAL_ORIGIN: https://dopamine-blond.vercel.app
+        run: npm run build
+
+      - name: Upload production bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-production-dist
+          path: aora-v8-final/dist
+          if-no-files-found: error
+          retention-days: 1
