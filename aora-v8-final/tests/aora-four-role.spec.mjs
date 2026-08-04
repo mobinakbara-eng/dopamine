@@ -16,13 +16,20 @@ function diagnostics(page,{allowOffline=false}={}){
   page.on("requestfailed",request=>{
     const reason=request.failure()?.errorText||"failed";
     const url=safeUrl(request.url());
-    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast"));
+    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast")||url.includes("/aora-v8-pilot-access"));
     if(!allowOffline&&!expectedAbort)errors.push(`network:${reason}:${url}`);
   });
   return()=>errors;
 }
 function isAccessAction(request,action){return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-access")&&String(request.postData()||"").includes(`"action":"${action}"`)}
-function isWorkspaceEvent(request,eventType){return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-workspace-rules")&&String(request.postData()||"").includes(`"type":"${eventType}"`)}
+function isWorkspaceEvent(request,eventType){
+  if(request.method()!=="POST"||!String(request.postData()||"").includes(`"type":"${eventType}"`))return false;
+  const url=request.url();
+  const invitationEvents=new Set(["INVITE_MANAGER","CREATE_EMPLOYEE_ACCOUNT","RESEND_INVITATION","REVOKE_INVITATION"]);
+  return invitationEvents.has(eventType)
+    ? url.includes("/functions/v1/aora-v8-invitation-patch")
+    : url.includes("/functions/v1/aora-v8-pilot-workspace-rules");
+}
 function isComplianceAction(request,action){return request.method()==="POST"&&request.url().includes("/functions/v1/aora-v8-pilot-compliance-proxy")&&String(request.postData()||"").includes(`"action":"${action}"`)}
 async function observeAccessAction(page,action,trigger){
   const responsePromise=page.waitForResponse(response=>isAccessAction(response.request(),action),{timeout:15000}).then(response=>({kind:"response",response}));
@@ -223,8 +230,9 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     expect(tabs).toEqual(["home","calendar","time","leave","more"]);
     for(const view of tabs){await page.locator(`[data-a="employee-view"][data-view="${view}"]`).click();await expect(page.locator(".employee-main")).toBeVisible();await assertHealthy(page);await assertNoHorizontalOverflow(page)}
     await page.locator('[data-view="more"]').click();await openAndCloseModal(page,'[data-a="profile-modal"]',"Profil bearbeiten");
-    await page.locator('[data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
-    await page.locator('[data-compliance-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
+    await page.locator('.employee-bottom [data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
+    await page.locator('.employee-bottom [data-view="time"]').click();
+    await page.locator('[data-time-hub-action="request-correction"]').click();await expect(page.getByRole("heading",{name:"Korrektur beantragen"})).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
     expect(getErrors()).toEqual([]);
   });
 
@@ -235,7 +243,8 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const leaveModal=page.locator(".modal-backdrop .modal").last();
     await leaveModal.locator('input[name="start"]').fill(futureStart);await leaveModal.locator('input[name="end"]').fill(futureEnd);await leaveModal.locator('textarea[name="note"]').fill(`Agent QA ${workspace}`);await leaveModal.locator('button[type="submit"]').click();
     await expect(leaveModal).toBeHidden({timeout:30000});await expect(page.locator(".employee-main")).toContainText(futureStart);
-    await page.locator('[data-compliance-action="request-correction"]').click();
+    await page.locator('.employee-bottom [data-view="time"]').click();
+    await page.locator('[data-time-hub-action="request-correction"]').click();
     const correction=page.locator("#aora-compliance-dialog");await expect(correction).toBeVisible();await correction.locator('input[name="breakMinutes"]').fill("5");await correction.locator('textarea[name="reason"]').fill(correctionReason());await correction.locator('button[type="submit"]').click();await expect(correction).not.toBeVisible({timeout:30000});
     expect(getErrors()).toEqual([]);
 
@@ -291,7 +300,9 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const breachedPassword="Password123!";await page.locator('input[name="password"]').fill(breachedPassword);await page.locator('input[name="confirm"]').fill(breachedPassword);
     const rejection=await triggerAccessRejection(page,"acceptInvitation",400,()=>page.locator('#invitation-accept button[type="submit"]').click());expect(String(rejection.error||"")).toContain("Datenlecks");await expect(page.getByText(/bekannten Datenlecks/)).toBeVisible();
     await page.locator('input[name="password"]').fill(password);await page.locator('input[name="confirm"]').fill(password);await triggerAccessAction(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});await expect(page.locator("#loc-select option")).toHaveCount(1);
-    await page.locator('[data-a="logout"]').click();await page.locator('input[name="email"]').fill(email);await page.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>page.locator('#password-login button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
+    await page.locator('[data-a="logout"]').click();
+    const passwordForm=page.locator("#password-login");await expect(passwordForm).toBeVisible({timeout:30000});
+    await passwordForm.locator('input[name="email"]').fill(email);await passwordForm.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>passwordForm.locator('button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
     const replayContext=await browser.newContext();const replay=await replayContext.newPage();await replay.goto(localInvite);await expect(replay.getByText("Link nicht mehr gültig")).toBeVisible();await replayContext.close();
   });
 });
