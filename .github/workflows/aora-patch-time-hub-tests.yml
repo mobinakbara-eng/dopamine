@@ -1,0 +1,71 @@
+name: Patch Aora time hub browser selectors
+
+on:
+  push:
+    branches:
+      - agent/aora-workforce-features
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aora-patch-time-hub-tests
+  cancel-in-progress: false
+
+jobs:
+  patch-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aora-workforce-features
+      - name: Align browser tests with integrated time hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          new_test=Path("aora-v8-final/tests/aora-time-correction-clock-hub.spec.mjs")
+          text=new_test.read_text()
+          old='.employee-bottom-nav [data-a="employee-view"][data-view="time"]'
+          new='.employee-bottom [data-a="employee-view"][data-view="time"]'
+          if old not in text and new not in text:
+              raise SystemExit("New time hub selector not found")
+          new_test.write_text(text.replace(old,new))
+
+          full_test=Path("aora-v8-final/tests/aora-four-role.spec.mjs")
+          text=full_test.read_text()
+          old1='''    await page.locator('[data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
+              await page.locator('[data-compliance-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();'''
+          new1='''    await page.locator('.employee-bottom [data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
+              await page.locator('.employee-bottom [data-view="time"]').click();
+              await page.locator('[data-time-hub-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();'''
+          if old1 not in text and new1 not in text:
+              raise SystemExit("Mobile correction dialog block not found")
+          text=text.replace(old1,new1,1)
+
+          old2='''    await expect(leaveModal).toBeHidden({timeout:30000});await expect(page.locator(".employee-main")).toContainText(futureStart);
+              await page.locator('[data-compliance-action="request-correction"]').click();
+              const correction=page.locator("#aora-compliance-dialog");'''
+          new2='''    await expect(leaveModal).toBeHidden({timeout:30000});await expect(page.locator(".employee-main")).toContainText(futureStart);
+              await page.locator('.employee-bottom [data-view="time"]').click();
+              await page.locator('[data-time-hub-action="request-correction"]').click();
+              const correction=page.locator("#aora-compliance-dialog");'''
+          if old2 not in text and new2 not in text:
+              raise SystemExit("Correction submission block not found")
+          text=text.replace(old2,new2,1)
+          for marker in ["CREATE_KIOSK_DEVICE","kioskActivation.activationCode","inside/outside geofence enforcement","durationMinutes:505"]:
+              if marker not in text:
+                  raise SystemExit(f"Regression marker missing after patch: {marker}")
+          full_test.write_text(text)
+          PY
+          if git diff --quiet; then
+            echo "Selectors already patched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add aora-v8-final/tests/aora-time-correction-clock-hub.spec.mjs aora-v8-final/tests/aora-four-role.spec.mjs
+          git commit -m "Align correction browser tests with integrated time hub"
+          git push origin HEAD:agent/aora-workforce-features
