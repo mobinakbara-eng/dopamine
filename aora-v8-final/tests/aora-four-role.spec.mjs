@@ -126,7 +126,7 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
       renderAdmin();
     });
     await expect(page.locator("#stored-location-xss")).toHaveCount(0);
-    await expect(page.getByText('<img id="stored-location-xss" src=x onerror=alert(1)>').first()).toBeVisible();
+    await expect(page.locator("option",{hasText:'<img id="stored-location-xss" src=x onerror=alert(1)>'}).first()).toHaveText('<img id="stored-location-xss" src=x onerror=alert(1)>');
     await assertNoHorizontalOverflow(page);
     expect(errors()).toEqual([]);
   });
