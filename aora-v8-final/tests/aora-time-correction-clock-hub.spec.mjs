@@ -32,7 +32,7 @@ test.describe.serial("Integrated correction and clock hub",()=>{
     await page.setViewportSize({width:390,height:844});
     const browserErrors=errors(page);
     await login(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
-    await page.locator('.employee-bottom-nav [data-a="employee-view"][data-view="time"]').click();
+    await page.locator('.employee-bottom [data-a="employee-view"][data-view="time"]').click();
     await expect(page.getByRole("heading",{name:"Korrektur & Stempeluhr"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Deine Korrekturanfragen"})).toBeVisible();
     await expect(page.getByRole("heading",{name:"Erfasste Arbeitszeiten"})).toBeVisible();

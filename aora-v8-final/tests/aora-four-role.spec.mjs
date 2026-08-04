@@ -230,8 +230,9 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     expect(tabs).toEqual(["home","calendar","time","leave","more"]);
     for(const view of tabs){await page.locator(`[data-a="employee-view"][data-view="${view}"]`).click();await expect(page.locator(".employee-main")).toBeVisible();await assertHealthy(page);await assertNoHorizontalOverflow(page)}
     await page.locator('[data-view="more"]').click();await openAndCloseModal(page,'[data-a="profile-modal"]',"Profil bearbeiten");
-    await page.locator('[data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
-    await page.locator('[data-compliance-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
+    await page.locator('.employee-bottom [data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
+    await page.locator('.employee-bottom [data-view="time"]').click();
+    await page.locator('[data-time-hub-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
     expect(getErrors()).toEqual([]);
   });
 
@@ -242,7 +243,8 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const leaveModal=page.locator(".modal-backdrop .modal").last();
     await leaveModal.locator('input[name="start"]').fill(futureStart);await leaveModal.locator('input[name="end"]').fill(futureEnd);await leaveModal.locator('textarea[name="note"]').fill(`Agent QA ${workspace}`);await leaveModal.locator('button[type="submit"]').click();
     await expect(leaveModal).toBeHidden({timeout:30000});await expect(page.locator(".employee-main")).toContainText(futureStart);
-    await page.locator('[data-compliance-action="request-correction"]').click();
+    await page.locator('.employee-bottom [data-view="time"]').click();
+    await page.locator('[data-time-hub-action="request-correction"]').click();
     const correction=page.locator("#aora-compliance-dialog");await expect(correction).toBeVisible();await correction.locator('input[name="breakMinutes"]').fill("5");await correction.locator('textarea[name="reason"]').fill(correctionReason());await correction.locator('button[type="submit"]').click();await expect(correction).not.toBeVisible({timeout:30000});
     expect(getErrors()).toEqual([]);
 
