@@ -300,7 +300,9 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     const breachedPassword="Password123!";await page.locator('input[name="password"]').fill(breachedPassword);await page.locator('input[name="confirm"]').fill(breachedPassword);
     const rejection=await triggerAccessRejection(page,"acceptInvitation",400,()=>page.locator('#invitation-accept button[type="submit"]').click());expect(String(rejection.error||"")).toContain("Datenlecks");await expect(page.getByText(/bekannten Datenlecks/)).toBeVisible();
     await page.locator('input[name="password"]').fill(password);await page.locator('input[name="confirm"]').fill(password);await triggerAccessAction(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});await expect(page.locator("#loc-select option")).toHaveCount(1);
-    await page.locator('[data-a="logout"]').click();await page.locator('input[name="email"]').fill(email);await page.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>page.locator('#password-login button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
+    await page.locator('[data-a="logout"]').click();
+    const passwordForm=page.locator("#password-login");await expect(passwordForm).toBeVisible({timeout:30000});
+    await passwordForm.locator('input[name="email"]').fill(email);await passwordForm.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>passwordForm.locator('button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
     const replayContext=await browser.newContext();const replay=await replayContext.newPage();await replay.goto(localInvite);await expect(replay.getByText("Link nicht mehr gültig")).toBeVisible();await replayContext.close();
   });
 });
