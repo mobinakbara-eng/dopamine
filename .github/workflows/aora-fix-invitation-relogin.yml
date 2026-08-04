@@ -1,0 +1,50 @@
+name: Fix Aora invitation relogin gate
+
+on:
+  push:
+    branches:
+      - agent/aora-workforce-features
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aora-fix-invitation-relogin
+  cancel-in-progress: false
+
+jobs:
+  patch-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aora-workforce-features
+      - name: Wait for and scope the post-logout password form
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path("aora-v8-final/tests/aora-four-role.spec.mjs")
+          text=path.read_text()
+          old='''    await page.locator('[data-a="logout"]').click();await page.locator('input[name="email"]').fill(email);await page.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>page.locator('#password-login button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});'''
+          new='''    await page.locator('[data-a="logout"]').click();
+              const passwordForm=page.locator("#password-login");await expect(passwordForm).toBeVisible({timeout:30000});
+              await passwordForm.locator('input[name="email"]').fill(email);await passwordForm.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>passwordForm.locator('button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});'''
+          if old not in text and new not in text:
+              raise SystemExit("Invitation relogin block not found")
+          text=text.replace(old,new,1)
+          for marker in ["triggerAccessRejection(page,\"acceptInvitation\",400","triggerAccessAction(page,\"acceptInvitation\"","Link nicht mehr gültig","CREATE_KIOSK_DEVICE"]:
+              if marker not in text:
+                  raise SystemExit(f"Invitation regression marker missing: {marker}")
+          path.write_text(text)
+          PY
+          if git diff --quiet; then
+            echo "Invitation relogin already scoped."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add aora-v8-final/tests/aora-four-role.spec.mjs
+          git commit -m "Wait for password form after invitation logout"
+          git push origin HEAD:agent/aora-workforce-features
