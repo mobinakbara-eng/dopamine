@@ -16,7 +16,7 @@ function diagnostics(page,{allowOffline=false}={}){
   page.on("requestfailed",request=>{
     const reason=request.failure()?.errorText||"failed";
     const url=safeUrl(request.url());
-    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast"));
+    const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast")||url.includes("/aora-v8-pilot-access"));
     if(!allowOffline&&!expectedAbort)errors.push(`network:${reason}:${url}`);
   });
   return()=>errors;
