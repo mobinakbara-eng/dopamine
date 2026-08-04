@@ -106,7 +106,9 @@ test.describe.serial("Unified worktime center",()=>{
     dialog=page.locator("#aora-worktime-dialog");
     await dialog.locator('textarea[name="reason"]').fill("Manager beendet die vergessene laufende Arbeitszeit");
     await observeWorktime(page,"managerPunch",()=>dialog.locator('button[type="submit"]').click());
-    const directEntryId=await expect.poll(()=>page.evaluate(()=>S.state.timeEntries.find(item=>item.source==="manager_direct"&&item.status==="completed")?.id||""),{timeout:30000}).not.toBe("");
+    await expect.poll(()=>page.evaluate(()=>S.state.timeEntries.find(item=>item.source==="manager_direct"&&item.status==="completed")?.id||""),{timeout:30000}).not.toBe("");
+    const directEntryId=await page.evaluate(()=>S.state.timeEntries.find(item=>item.source==="manager_direct"&&item.status==="completed")?.id||"");
+    expect(directEntryId).not.toBe("");
 
     await page.locator('[data-worktime-action="tab"][data-tab="entries"]').click();
     const directRow=page.locator(".worktime-entry").filter({hasText:"Durch Manager gestempelt"}).first();
@@ -139,6 +141,7 @@ test.describe.serial("Unified worktime center",()=>{
     expect(employeeErrors()).toEqual([]);
     await employeeContext.close();
 
+    await observeWorktime(page,"overview",()=>page.locator('[data-worktime-action="refresh"]').click());
     await page.locator('[data-worktime-action="tab"][data-tab="changes"]').click();
     await expect(page.getByText("Manager → Mitarbeiter").first()).toBeVisible();
     await expect(page.locator(".worktime-change").filter({hasText:"09:10–17:20"}).first()).toContainText("Bestätigt",{timeout:30000});
