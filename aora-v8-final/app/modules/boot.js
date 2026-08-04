@@ -42,25 +42,32 @@ function redirectInvitationToCanonicalOrigin(callback){
   location.replace(target.toString());
   return true;
 }
-function clearInvitationCallback(){
-  const url=new URL(location.href);
-  url.searchParams.delete("invitation");
-  url.searchParams.delete("token");
-  url.searchParams.set("workspace",CFG.slug);
-  history.replaceState({},"",url.pathname+(url.searchParams.toString()?`?${url.searchParams}`:""));
+function authenticatedSession(preferredRole){
+  const roles=[preferredRole,"owner","manager","employee","kiosk"].filter((role,index,list)=>role&&list.indexOf(role)===index);
+  for(const role of roles){
+    const session=restore(role);
+    if(session?.token)return{role:session.accessRole||role,session};
+  }
+  return null;
+}
+function clearInvitationCallback(accessRole=S.accessRole){
+  history.replaceState({},"",accessPath(accessRole));
 }
 async function boot(){
   renderLoading();
   try{
-    const accessRole=accessRoleFromPath();
-    setAccessRole(accessRole);
+    const pathRole=accessRoleFromPath();
     const callback=invitationCallback();
-    S.session=restore(accessRole);
-    if(callback.invitationId&&callback.token&&S.session){
-      clearInvitationCallback();
+    const recovered=callback.invitationId&&callback.token?authenticatedSession(pathRole):null;
+    if(recovered){
+      setAccessRole(recovered.role);
+      S.session=recovered.session;
+      clearInvitationCallback(recovered.role);
       await loadState();
       return;
     }
+    setAccessRole(pathRole);
+    S.session=restore(pathRole);
     if(redirectInvitationToCanonicalOrigin(callback))return;
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
@@ -68,8 +75,8 @@ async function boot(){
       return;
     }
     if(S.session){await loadState();return}
-    if(accessRole==="kiosk"&&typeof restoreOfflineKioskSession==="function"){
-      await ensureDirectory(accessRole);
+    if(pathRole==="kiosk"&&typeof restoreOfflineKioskSession==="function"){
+      await ensureDirectory(pathRole);
       const restored=await restoreOfflineKioskSession();
       if(restored){
         activateSession(restored,"kiosk");
@@ -77,7 +84,7 @@ async function boot(){
         return;
       }
     }
-    await ensureDirectory(accessRole);
+    await ensureDirectory(pathRole);
     renderLogin();
   }catch(error){
     renderError(error.message);
