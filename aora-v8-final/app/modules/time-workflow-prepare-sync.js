@@ -3,6 +3,23 @@
 (function installTimesheetPreparationSync(){
   const FUNCTION_NAME="aora-v8-timesheet-document-signing-sync";
 
+  function addApprovalsNavigation(){
+    const item=["approvals","Freigaben",I.news];
+    if(typeof managerNav!=="undefined"&&!managerNav.some(([id])=>id==="approvals")){
+      const reportsIndex=managerNav.findIndex(([id])=>id==="reports");
+      managerNav.splice(reportsIndex<0?managerNav.length:reportsIndex,0,item);
+    }
+    if(typeof ownerNav!=="undefined"&&!ownerNav.some(([id])=>id==="approvals")){
+      const reportsIndex=ownerNav.findIndex(([id])=>id==="reports");
+      ownerNav.splice(reportsIndex<0?ownerNav.length:reportsIndex,0,item);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded",()=>{
+    addApprovalsNavigation();
+    if(S?.session&&["owner","manager"].includes(String(S.accessRole||""))&&typeof renderAdmin==="function")renderAdmin();
+  },{once:true});
+
   document.addEventListener("click",async event=>{
     const button=event.target.closest?.('[data-docsign-action="prepare"]');
     if(!button)return;
