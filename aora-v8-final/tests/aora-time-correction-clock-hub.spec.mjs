@@ -70,8 +70,9 @@ test.describe.serial("Integrated correction and clock hub",()=>{
     await expect(page.getByText("Offene Stempelbestätigungen")).toBeVisible();
     await expect(page.getByText("Letzte Zeitbuchungen")).toBeVisible();
     await expect(page.locator(".time-hub-manager-list")).not.toContainText("Korrekturen werden geladen",{timeout:30000});
-    await expect(page.locator('[data-a="admin-view"][data-view="approvals"]')).toBeVisible();
-    await expect(page.locator('[data-a="admin-view"][data-view="compliance"]')).toBeVisible();
+    const hubActions=page.locator(".time-hub-admin-actions");
+    await expect(hubActions.locator('[data-a="admin-view"][data-view="approvals"]')).toBeVisible();
+    await expect(hubActions.locator('[data-a="admin-view"][data-view="compliance"]')).toBeVisible();
     const kiosk=page.locator("[data-time-hub-kiosk-link]").first();
     await expect(kiosk).toHaveAttribute("target","_blank");
     await expect(kiosk).toHaveAttribute("rel",/noopener/);
