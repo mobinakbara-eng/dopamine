@@ -10,6 +10,11 @@
     "test:e2e": "playwright test",
     "test:load": "node tests/load-smoke.mjs"
   },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "fflate": "0.8.2",
+    "pdf-parse": "1.1.1"
+  },
   "engines": {
     "node": ">=20"
   }
