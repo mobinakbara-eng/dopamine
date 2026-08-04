@@ -58,7 +58,6 @@ for (const marker of [
   'REPOSITORY_OWNER_ID = "228580584"',
   "WORKFLOW_PATH",
   "payload.repository !== REPOSITORY",
-  "payload.head_repository",
   'eventName === "pull_request"',
   'eventName === "push"',
   '"refs/heads/main"',
@@ -71,6 +70,7 @@ for (const marker of [
   'MERGE_QUEUE_ACTOR_ID = "118344674"',
   '["merge_group", "push"].includes(eventName) && mergeQueueActor',
 ]) assert.ok(timesheetBootstrap.includes(marker), `Timesheet OIDC hardening marker missing: ${marker}`);
+assert.ok(!timesheetBootstrap.includes("head_repository"), "Timesheet bootstrap must not require a non-standard OIDC head_repository claim");
 
 for (const marker of [
   "MAX_BODY_BYTES",

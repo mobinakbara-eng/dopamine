@@ -132,10 +132,10 @@ async function claims(request: Request) {
   if (String(payload.runner_environment || "") !== "github-hosted") fail("runner_not_allowed", 403);
 
   if (eventName === "pull_request") {
-    if (String(payload.head_repository || "") !== REPOSITORY || !ALLOWED_HEADS.has(String(payload.head_ref || "")) || String(payload.base_ref || "") !== "main") fail("pull_request_not_allowed", 403);
+    if (!ALLOWED_HEADS.has(String(payload.head_ref || "")) || String(payload.base_ref || "") !== "main") fail("pull_request_not_allowed", 403);
     if (!/^refs\/pull\/\d+\/merge$/.test(String(payload.ref || ""))) fail("pull_request_ref_not_allowed", 403);
   } else if (eventName === "push") {
-    if (String(payload.head_repository || "") !== REPOSITORY || String(payload.ref || "") !== "refs/heads/main" || String(payload.ref_type || "") !== "branch") fail("push_ref_not_allowed", 403);
+    if (String(payload.ref || "") !== "refs/heads/main" || String(payload.ref_type || "") !== "branch") fail("push_ref_not_allowed", 403);
   } else if (eventName === "merge_group") {
     if (String(payload.base_ref || "") !== "main" || !/^refs\/heads\/gh-readonly-queue\/main\//.test(String(payload.ref || ""))) fail("merge_group_ref_not_allowed", 403);
   } else if (eventName === "workflow_dispatch") {
