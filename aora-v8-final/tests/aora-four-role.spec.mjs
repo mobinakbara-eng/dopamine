@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 
+// Coverage contract: every navigation view; exports and verified backup; all scoped views;
+// every tab; submit and approve leave plus time correction; encrypted offline queue;
+// inside/outside geofence enforcement; Invitation: reject breached password.
 const workspace=process.env.AORA_WORKSPACE_SLUG;
 const pathFor={owner:"/inhaber/",manager:"/arbeitgeber/",employee:"/arbeitnehmer/",kiosk:"/kiosk/dashboard/"};
 const shellFor={owner:".admin-app",manager:".admin-app",employee:".employee-app",kiosk:".kiosk-app"};
@@ -27,6 +30,8 @@ const access=(page,action,trigger,allowed)=>observe(page,request=>actionRequest(
 const worktime=(page,action,trigger,allowed)=>observe(page,request=>actionRequest(request,"aora-v8-worktime-center",action),trigger,allowed);
 const compliance=(page,action,trigger,allowed)=>observe(page,request=>actionRequest(request,"aora-v8-pilot-compliance-proxy",action),trigger,allowed);
 const workspaceEvent=(page,type,trigger,allowed)=>observe(page,request=>workspaceRequest(request,type),trigger,allowed);
+async function triggerAccessRejection(page,action,expectedStatus,trigger){return access(page,action,trigger,[expectedStatus])}
+async function triggerWorkspaceRejection(page,type,expectedStatus,trigger){return workspaceEvent(page,type,trigger,[expectedStatus])}
 
 function diagnostics(page,{allowOffline=false}={}){
   const errors=[];
@@ -35,7 +40,7 @@ function diagnostics(page,{allowOffline=false}={}){
   page.on("requestfailed",request=>{
     const reason=request.failure()?.errorText||"failed";
     if(allowOffline&&reason.includes("ERR_INTERNET_DISCONNECTED"))return;
-    if(reason==="net::ERR_ABORTED"&&/(compliance-proxy|realtime-broadcast|pilot-access)/.test(request.url()))return;
+    if(reason==="net::ERR_ABORTED"&&/(compliance-proxy|realtime-broadcast|pilot-access|workspace-rules)/.test(request.url()))return;
     errors.push(`network:${reason}:${new URL(request.url()).pathname}`);
   });
   return()=>errors;
@@ -60,7 +65,7 @@ async function healthy(page){
   const duplicateIds=await page.evaluate(()=>{const ids=[...document.querySelectorAll("[id]")].map(node=>node.id).filter(Boolean);return ids.filter((id,index)=>ids.indexOf(id)!==index)});
   expect(duplicateIds).toEqual([]);
 }
-async function noOverflow(page){const value=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));expect(value.scroll).toBeLessThanOrEqual(value.width+2)}
+async function assertNoHorizontalOverflow(page){const value=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));expect(value.scroll).toBeLessThanOrEqual(value.width+2)}
 async function visitAdminViews(page){
   const views=await page.locator('.admin-nav [data-a="admin-view"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.view));
   for(const view of views){
@@ -81,7 +86,7 @@ async function exportFile(page,format){
 test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
   test.beforeAll(()=>env("AORA_WORKSPACE_SLUG"));
 
-  test("owner: unified navigation, invitation, technical exports and backup",async({page,browser,baseURL})=>{
+  test("Owner: every navigation view, exports and verified backup",async({page,browser,baseURL})=>{
     const errors=diagnostics(page);
     await login(page,"owner",env("AORA_OWNER_EMAIL"),env("AORA_OWNER_PASSWORD"));
     const views=await visitAdminViews(page);
@@ -113,11 +118,11 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     expect(new Set(filenames).size).toBe(3);
     const backup=await compliance(page,"backup",()=>page.locator('[data-compliance-action="backup"]').click());
     expect(backup.verified).toBe(true);
-    await noOverflow(page);
+    await assertNoHorizontalOverflow(page);
     expect(errors()).toEqual([]);
   });
 
-  test("manager: scoped unified views, kiosk creation and responsive shell",async({page,browser})=>{
+  test("Manager: all scoped views and unified worktime shell",async({page,browser})=>{
     const errors=diagnostics(page);
     await login(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
     await expect(page.locator("#loc-select option")).toHaveCount(Number(env("AORA_MANAGER_LOCATION_COUNT")));
@@ -133,6 +138,7 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await modal.locator('input[name="name"]').fill(`Manager Kiosk ${Date.now()}`);
     const created=await workspaceEvent(page,"CREATE_KIOSK_DEVICE",()=>modal.locator('button[type="submit"]').click());
     expect(created.kioskActivation.activationCode).toMatch(/^\d{8}$/);
+    expect(new URL(created.kioskActivation.kioskUrl).searchParams.get("workspace")).toBe(workspace);
     const context=await browser.newContext();
     const kiosk=await context.newPage();
     await kiosk.goto(created.kioskActivation.kioskUrl);
@@ -141,13 +147,18 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await access(kiosk,"login",()=>kiosk.locator('#pin-login button[type="submit"]').click());
     await expect(kiosk.locator(".kiosk-app")).toBeVisible({timeout:30000});
     await context.close();
-    await noOverflow(page);
+    await assertNoHorizontalOverflow(page);
     expect(errors()).toEqual([]);
   });
 
-  test("employee correction is approved by manager inside Arbeitszeit",async({page,browser})=>{
+  test("Employee: every tab; submit and approve leave plus time correction",async({page,browser})=>{
     const errors=diagnostics(page);
+    await page.setViewportSize({width:390,height:844});
     await login(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
+    const tabs=await page.locator('.employee-bottom [data-a="employee-view"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.view));
+    expect(tabs).toEqual(["home","calendar","time","leave","more"]);
+    for(const view of tabs){await page.locator(`.employee-bottom [data-view="${view}"]`).click();await healthy(page);await assertNoHorizontalOverflow(page)}
+
     await page.locator('.employee-bottom [data-view="leave"]').click();
     await page.locator('[data-a="leave-modal"]').click();
     const leave=page.locator(".modal-backdrop .modal").last();
@@ -178,13 +189,12 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     const row=manager.locator(".worktime-change").filter({hasText:correctionReason()}).first();
     await expect(row).toBeVisible({timeout:30000});
     await worktime(manager,"decideChange",()=>row.locator('[data-worktime-action="decide"][data-decision="approved"]').click());
-    await expect.poll(()=>manager.evaluate(()=>{const entry=S.state.timeEntries.find(item=>item.end);return{pause:entry?.breakMinutes,duration:entry?.durationMinutes}}),{timeout:30000}).toEqual({pause:5,duration:505});
+    await expect.poll(()=>manager.evaluate(()=>{const entry=S.state.timeEntries.find(item=>item.end);return{breakMinutes:entry?.breakMinutes,durationMinutes:entry?.durationMinutes}}),{timeout:30000}).toEqual({breakMinutes:5,durationMinutes:505});
     await context.close();
-    await noOverflow(page);
     expect(errors()).toEqual([]);
   });
 
-  test("kiosk: encrypted offline queue and geofence approval",async({page,context,browser})=>{
+  test("Kiosk: encrypted offline queue and inside/outside geofence enforcement",async({page,context,browser})=>{
     const errors=diagnostics(page,{allowOffline:true});
     await kioskLogin(page);
     await page.locator('[data-a="select-person"]').first().click();
@@ -201,11 +211,24 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
     const clockIn=await workspaceEvent(employee,"APPROVE_CLOCK_REQUEST",()=>employee.locator('[data-a="clock-approve"]').click());
     expect(clockIn.state.timeEntries.some(item=>item.status==="live"&&item.source==="secure_kiosk")).toBe(true);
+
+    await page.reload();
+    await expect(page.locator(".kiosk-app")).toBeVisible({timeout:30000});
+    await page.locator('[data-a="select-person"]').first().click();
+    await page.locator('[data-a="transition"][data-target="pause"]').click();
+    await employee.reload();
+    await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
+    await employeeContext.setGeolocation({latitude:52.62,longitude:13.405,accuracy:20});
+    const outside=await triggerWorkspaceRejection(employee,"APPROVE_CLOCK_REQUEST",403,()=>employee.locator('[data-a="clock-approve"]').click());
+    expect(String(outside.error||"")).toContain("Ausserhalb des Standorts");
+    await employeeContext.setGeolocation({latitude:52.52,longitude:13.405,accuracy:20});
+    const paused=await workspaceEvent(employee,"APPROVE_CLOCK_REQUEST",()=>employee.locator('[data-a="clock-approve"]').click());
+    expect(paused.state.timeEntries.some(item=>item.status==="paused")).toBe(true);
     await employeeContext.close();
     expect(errors()).toEqual([]);
   });
 
-  test("invitation: breached password rejection, activation and replay protection",async({page,browser,baseURL})=>{
+  test("Invitation: reject breached password, activate and block replay",async({page,browser,baseURL})=>{
     const source=new URL(env("AORA_INVITATION_URL"));
     const url=new URL(`${source.pathname}${source.search}`,baseURL).toString();
     const email=env("AORA_INVITATION_EMAIL"),password=env("AORA_INVITATION_PASSWORD");
@@ -213,7 +236,7 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await page.locator('input[name="email"]').fill(email);
     await page.locator('input[name="password"]').fill("Password123!");
     await page.locator('input[name="confirm"]').fill("Password123!");
-    const rejected=await access(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click(),[400]);
+    const rejected=await triggerAccessRejection(page,"acceptInvitation",400,()=>page.locator('#invitation-accept button[type="submit"]').click());
     expect(String(rejected.error||"")).toContain("Datenlecks");
     await page.locator('input[name="password"]').fill(password);
     await page.locator('input[name="confirm"]').fill(password);
