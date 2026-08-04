@@ -31,6 +31,13 @@ function diagnostics(page){
   page.on("console",message=>{if(message.type()==="error")rows.push(`console:${message.text()}`)});
   return rows;
 }
+async function submitManagerPunch(page,employeeCard,buttonName,reason){
+  await employeeCard.getByRole("button",{name:buttonName}).click();
+  const dialog=page.locator("#aora-worktime-dialog");
+  await expect(dialog.getByText("Sofort wirksam")).toBeVisible();
+  await dialog.locator('textarea[name="reason"]').fill(reason);
+  await worktime(page,"managerPunch",()=>dialog.locator('button[type="submit"]').click());
+}
 
 test.describe.serial("Unified worktime center",()=>{
   test.beforeAll(()=>env("AORA_WORKSPACE_SLUG"));
@@ -79,26 +86,30 @@ test.describe.serial("Unified worktime center",()=>{
     await login(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
     await page.locator('.admin-nav [data-view="worktime"]').click();
     let employeeCard=page.locator(".worktime-person").filter({hasText:"CI Employee"}).first();
+    await expect(employeeCard).toBeVisible();
 
-    await employeeCard.getByRole("button",{name:"Einstempeln"}).click();
-    let dialog=page.locator("#aora-worktime-dialog");
-    await expect(dialog.getByText("Sofort wirksam")).toBeVisible();
-    await dialog.locator('textarea[name="reason"]').fill("Mitarbeiter hat das Einstempeln am Kiosk vergessen");
-    await worktime(page,"managerPunch",()=>dialog.locator('button[type="submit"]').click());
+    // Other browser gates share the isolated tenant and may leave a secure-kiosk
+    // entry live or paused. Close it first so this scenario tests a clean direct
+    // manager clock-in without depending on file execution order.
+    const existingOut=employeeCard.getByRole("button",{name:"Ausstempeln"});
+    if(await existingOut.count()){
+      await submitManagerPunch(page,employeeCard,"Ausstempeln","Bestehende Testbuchung vor direktem Manager-Stempelvorgang schließen");
+      await expect.poll(()=>page.evaluate(()=>!S.state.timeEntries.some(item=>["live","paused"].includes(item.status))),{timeout:30000}).toBe(true);
+      employeeCard=page.locator(".worktime-person").filter({hasText:"CI Employee"}).first();
+    }
+
+    await submitManagerPunch(page,employeeCard,"Einstempeln","Mitarbeiter hat das Einstempeln am Kiosk vergessen");
     await expect.poll(()=>page.evaluate(()=>S.state.timeEntries.some(item=>item.status==="live"&&item.source==="manager_direct")),{timeout:30000}).toBe(true);
 
     employeeCard=page.locator(".worktime-person").filter({hasText:"CI Employee"}).first();
-    await employeeCard.getByRole("button",{name:"Ausstempeln"}).click();
-    dialog=page.locator("#aora-worktime-dialog");
-    await dialog.locator('textarea[name="reason"]').fill("Manager beendet die vergessene laufende Arbeitszeit");
-    await worktime(page,"managerPunch",()=>dialog.locator('button[type="submit"]').click());
+    await submitManagerPunch(page,employeeCard,"Ausstempeln","Manager beendet die vergessene laufende Arbeitszeit");
     await expect.poll(()=>page.evaluate(()=>S.state.timeEntries.find(item=>item.source==="manager_direct"&&item.status==="completed")?.id||""),{timeout:30000}).not.toBe("");
     const entryId=await page.evaluate(()=>S.state.timeEntries.find(item=>item.source==="manager_direct"&&item.status==="completed")?.id||"");
 
     await page.locator('[data-worktime-action="tab"][data-tab="entries"]').click();
     const row=page.locator(".worktime-entry").filter({hasText:"Durch Manager gestempelt"}).first();
     await row.getByRole("button",{name:"Änderung vorschlagen"}).click();
-    dialog=page.locator("#aora-worktime-dialog");
+    let dialog=page.locator("#aora-worktime-dialog");
     await expect(dialog.getByText("Erst nach Bestätigung wirksam")).toBeVisible();
     await dialog.locator('input[name="start"]').fill("09:10");
     await dialog.locator('input[name="end"]').fill("17:20");
