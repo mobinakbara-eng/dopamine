@@ -1,0 +1,48 @@
+name: Patch Aora navigation abort diagnostics
+
+on:
+  push:
+    branches:
+      - agent/aora-workforce-features
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aora-patch-navigation-abort
+  cancel-in-progress: false
+
+jobs:
+  patch-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aora-workforce-features
+      - name: Ignore only expected navigation-aborted access requests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path("aora-v8-final/tests/aora-four-role.spec.mjs")
+          text=path.read_text()
+          old='const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast"));'
+          new='const expectedAbort=reason==="net::ERR_ABORTED"&&(url.includes("/aora-v8-pilot-compliance-proxy")||url.includes("/aora-v8-pilot-realtime-broadcast")||url.includes("/aora-v8-pilot-access"));'
+          if old not in text and new not in text:
+              raise SystemExit("Expected abort diagnostic line not found")
+          text=text.replace(old,new,1)
+          for marker in ["triggerAccessAction(createdKiosk,\"login\"","expect(await createdKiosk.locator(\".kiosk-app\")","CREATE_KIOSK_DEVICE","inside/outside geofence enforcement"]:
+              if marker not in text:
+                  raise SystemExit(f"Required explicit access regression assertion missing: {marker}")
+          path.write_text(text)
+          PY
+          if git diff --quiet; then
+            echo "Navigation abort diagnostic already patched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add aora-v8-final/tests/aora-four-role.spec.mjs
+          git commit -m "Ignore expected access abort after successful navigation"
+          git push origin HEAD:agent/aora-workforce-features
