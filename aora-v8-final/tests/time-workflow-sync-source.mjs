@@ -6,10 +6,11 @@ import { aggregateDayEntries, buildCanonicalSnapshot } from "../supabase/functio
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFile(resolve(root,path),"utf8");
-const [index,prepareSync,reportsSync,edge]=await Promise.all([
+const [index,prepareSync,reportsSync,reportPrintFix,edge]=await Promise.all([
   read("app/index.html"),
   read("app/modules/time-workflow-prepare-sync.js"),
   read("app/modules/reports-sync.js"),
+  read("app/modules/reports-pdf-mobile-fix.js"),
   read("supabase/functions/aora-v8-timesheet-document-signing-sync/index.ts")
 ]);
 
@@ -19,11 +20,14 @@ for(const marker of ["time-workflow-prepare-sync.js?v=835","reports-sync.js?v=83
   assert.ok(index.includes(marker),`missing synchronized workflow asset: ${marker}`);
 }
 assert.ok(index.indexOf("time-workflow-prepare-sync.js")<index.indexOf("timesheet-document-signing.js"),"prepare interception must load before document signing UI");
-for(const marker of ["aora-v8-timesheet-document-signing-sync","stopImmediatePropagation","aora:timesheet-prepared"]){
-  assert.ok(prepareSync.includes(marker),`missing prepare sync marker: ${marker}`);
+for(const marker of ["aora-v8-timesheet-document-signing-sync","stopImmediatePropagation","aora:timesheet-prepared","addApprovalsNavigation","managerNav","ownerNav"]){
+  assert.ok(prepareSync.includes(marker),`missing prepare/navigation sync marker: ${marker}`);
 }
 for(const marker of ["alle Buchungen zusammengeführt","Live-Auswertung","Vollständig","Freigaben"]){
   assert.ok(reportsSync.includes(marker),`missing report synchronization marker: ${marker}`);
+}
+for(const marker of ["aoraReportBuildPrintBundle(all)",'data-a="report-print-all"',"printVisibleReport"]){
+  assert.ok(reportPrintFix.includes(marker),`missing report print routing marker: ${marker}`);
 }
 for(const marker of ["buildCanonicalSnapshot","prepareTimesheet","TIMESHEET_DRAFT_REFRESHED","entryCount"]){
   assert.ok(edge.includes(marker),`missing synchronized edge marker: ${marker}`);
@@ -83,4 +87,4 @@ assert.equal(openSnapshot.rows[0].netMinutes,240,"completed segments must remain
 assert.equal(openSnapshot.totals.workedMinutes,240);
 assert.equal(openSnapshot.totals.openDays,1);
 
-console.log("Time workflow synchronization contract passed: one approvals UI, multi-entry daily aggregation, matching live report semantics and synchronized snapshots.");
+console.log("Time workflow synchronization contract passed: Freigaben navigation, one approvals UI, multi-entry daily aggregation, matching live report semantics, distinct print routes and synchronized snapshots.");
