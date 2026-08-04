@@ -55,13 +55,18 @@ async function boot(){
     const accessRole=accessRoleFromPath();
     setAccessRole(accessRole);
     const callback=invitationCallback();
+    S.session=restore(accessRole);
+    if(callback.invitationId&&callback.token&&S.session){
+      clearInvitationCallback();
+      await loadState();
+      return;
+    }
     if(redirectInvitationToCanonicalOrigin(callback))return;
     if(callback.invitationId&&callback.token){
       const info=await inspectInvitation(callback.invitationId,callback.token);
       renderInvitationSetup(info,callback.invitationId,callback.token);
       return;
     }
-    S.session=restore(accessRole);
     if(S.session){await loadState();return}
     if(accessRole==="kiosk"&&typeof restoreOfflineKioskSession==="function"){
       await ensureDirectory(accessRole);
