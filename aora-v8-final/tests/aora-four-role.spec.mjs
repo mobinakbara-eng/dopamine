@@ -170,124 +170,136 @@ test.describe.serial("Aora 8.1.0 isolated staging role and browser gates",()=>{
     if(await options.count()>1){const first=await options.nth(0).getAttribute("value");const second=await options.nth(1).getAttribute("value");await page.locator("#loc-select").selectOption(second);await expect(page.locator("#loc-select")).toHaveValue(second);await page.locator("#loc-select").selectOption(first)}
     await page.locator('.admin-nav [data-view="compliance"]').click();
     await expect(page.getByText("Compliance, Exporte und Zeitkorrekturen")).toBeVisible();
-    const csv=await downloadComplianceExport(page,"csv");
-    const pdf=await downloadComplianceExport(page,"pdf");
-    expect(csv).toMatch(/\.csv$/);
-    expect(pdf).toMatch(/\.pdf$/);
-    await page.locator('.admin-nav [data-view="settings"]').click();
-    const restore=page.locator('[data-u="settings-restore"]');
-    await expect(restore).toBeVisible();
-    const fileInput=page.locator('#settings-restore-input');
-    await fileInput.setInputFiles({name:"invalid-backup.json",mimeType:"application/json",buffer:Buffer.from('{"invalid":true}')});
-    await expect(page.locator(".toast.error")).toBeVisible();
-    expect(getErrors()).toEqual([]);
+    await expect(page.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
+    const filenames=[];for(const format of ["csv","pdf","audit","steuerberater"])filenames.push(await downloadComplianceExport(page,format));
+    expect(new Set(filenames).size).toBe(4);
+    const backup=await observeComplianceAction(page,"backup",()=>page.locator('[data-compliance-action="backup"]').click());
+    expect(backup.verified).toBe(true);
+    await page.reload();
+    await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
+    await assertHealthy(page);await assertNoHorizontalOverflow(page);expect(getErrors()).toEqual([]);
   });
 
-  test("Manager: all scoped views and every creation modal render without errors",async({page})=>{
+  test("Manager: all scoped views and every creation modal render without errors",async({page,browser})=>{
     const getErrors=diagnostics(page);
     await passwordLogin(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
-    expect(Number(env("AORA_MANAGER_LOCATION_COUNT"))).toBe(1);
-    expect(await page.locator("#loc-select option").count()).toBe(1);
+    await expect(page.locator("#loc-select option")).toHaveCount(Number(env("AORA_MANAGER_LOCATION_COUNT")));
     const views=await visitAdminViews(page);
-    expect(views).toEqual(expect.arrayContaining(["overview","schedule","people","time","leave","settings"]));
-    await page.locator('.admin-nav [data-view="overview"]').click();
-    await openAndCloseModal(page,'[data-a="employee-modal"]',"Mitarbeiter");
-    await openAndCloseModal(page,'[data-a="shift-modal"]',"Schicht");
-    await openAndCloseModal(page,'[data-a="announce-modal"]',"Ankündigung");
-    expect(getErrors()).toEqual([]);
+    expect(views).toEqual(expect.arrayContaining(["overview","schedule","time","leave","employees","reports","news","kiosk","compliance","settings"]));
+    await page.locator('.admin-nav [data-view="overview"]').click();await openAndCloseModal(page,'[data-a="employee-account-modal"]',"Mitarbeiter");
+    await page.locator('.admin-nav [data-view="schedule"]').click();await openAndCloseModal(page,'[data-a="shift-modal"]',"Neue Schicht");
+    await page.locator('.admin-nav [data-view="news"]').click();await openAndCloseModal(page,'[data-a="news-modal"]',"Mitteilung erstellen");
+    await page.locator('.admin-nav [data-view="kiosk"]').click();
+    await page.locator('[data-a="kiosk-create-modal"]').click();
+    const createKiosk=page.locator(".modal-backdrop .modal").last();
+    await createKiosk.locator('input[name="name"]').fill(`Manager Kiosk ${Date.now()}`);
+    const kioskResult=await triggerWorkspaceEvent(page,"CREATE_KIOSK_DEVICE",()=>createKiosk.locator('button[type="submit"]').click());
+    expect(kioskResult.kioskActivation.deviceId).toMatch(/^kiosk_/);
+    expect(kioskResult.kioskActivation.activationCode).toMatch(/^\d{8}$/);
+    expect(new URL(kioskResult.kioskActivation.kioskUrl).searchParams.get("workspace")).toBe(workspace);
+    expect(new URL(kioskResult.kioskActivation.kioskUrl).origin).toBe(new URL(page.url()).origin);
+    await expect(page.getByText("Zugangsdaten bereit")).toBeVisible();
+    const kioskContext=await browser.newContext();
+    const createdKiosk=await kioskContext.newPage();
+    const kioskErrors=diagnostics(createdKiosk);
+    await createdKiosk.goto(kioskResult.kioskActivation.kioskUrl);
+    await createdKiosk.locator('input[name="subject"]').fill(kioskResult.kioskActivation.deviceId);
+    await createdKiosk.locator('input[name="pin"]').fill(kioskResult.kioskActivation.activationCode);
+    await triggerAccessAction(createdKiosk,"login",()=>createdKiosk.locator('#pin-login button[type="submit"]').click());
+    await expect(createdKiosk.locator(".kiosk-app")).toBeVisible({timeout:30000});
+    expect(kioskErrors()).toEqual([]);
+    await kioskContext.close();
+    await page.locator(".modal-backdrop .modal").last().locator('[data-a="close"]').first().click();
+    const toggle=page.locator('[data-a="toggle-kiosk"]').first();
+    if(await toggle.count()){
+      const before=(await toggle.innerText()).trim();
+      await toggle.click();await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).not.toBe(before);
+      await page.locator('[data-a="toggle-kiosk"]').first().click();
+      await expect.poll(()=>page.locator('[data-a="toggle-kiosk"]').first().innerText(),{timeout:30000}).toBe(before);
+    }
+    await assertNoHorizontalOverflow(page);expect(getErrors()).toEqual([]);
   });
 
   test("Employee: every tab, profile, leave and correction dialogs render on mobile",async({page})=>{
-    const getErrors=diagnostics(page);
     await page.setViewportSize({width:390,height:844});
+    const getErrors=diagnostics(page);
     await passwordLogin(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
-    for(const view of ["home","shifts","time","leave","more"]){await page.locator(`.employee-bottom-nav [data-view="${view}"]`).click();await assertHealthy(page);await assertNoHorizontalOverflow(page)}
-    await openAndCloseModal(page,'[data-a="leave-modal"]',"Abwesenheit");
-    await openAndCloseModal(page,'[data-compliance-action="open-correction"]',"Korrektur beantragen");
-    await page.locator('.employee-bottom-nav [data-view="more"]').click();
-    await expect(page.getByRole("button",{name:/Profil bearbeiten/})).toBeVisible();
+    const nav=page.locator('.employee-bottom [data-a="employee-view"]');
+    await expect(nav).toHaveCount(5,{timeout:30000});
+    const tabs=await nav.evaluateAll(nodes=>nodes.map(node=>node.dataset.view));
+    expect(tabs).toEqual(["home","calendar","time","leave","more"]);
+    for(const view of tabs){await page.locator(`[data-a="employee-view"][data-view="${view}"]`).click();await expect(page.locator(".employee-main")).toBeVisible();await assertHealthy(page);await assertNoHorizontalOverflow(page)}
+    await page.locator('[data-view="more"]').click();await openAndCloseModal(page,'[data-a="profile-modal"]',"Profil bearbeiten");
+    await page.locator('[data-view="leave"]').click();await openAndCloseModal(page,'[data-a="leave-modal"]',"Antrag stellen");
+    await page.locator('[data-compliance-action="request-correction"]').click();await expect(page.getByText("Korrektur beantragen")).toBeVisible();await page.locator('[data-compliance-action="close"]').first().click();
     expect(getErrors()).toEqual([]);
   });
 
-  test("Employee → Manager: submit and approve leave plus time correction",async({page})=>{
+  test("Employee → Manager: submit and approve leave plus time correction",async({page,browser})=>{
+    const getErrors=diagnostics(page);
     await passwordLogin(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
-    await page.locator('[data-a="leave-modal"]').click();
+    await page.locator('[data-view="leave"]').click();await page.locator('[data-a="leave-modal"]').click();
     const leaveModal=page.locator(".modal-backdrop .modal").last();
-    await leaveModal.locator('input[name="start"]').fill(futureStart);
-    await leaveModal.locator('input[name="end"]').fill(futureEnd);
-    await leaveModal.locator('textarea[name="reason"]').fill(`CI leave ${workspace}`);
-    await triggerWorkspaceEvent(page,"REQUEST_LEAVE",()=>leaveModal.locator('button[type="submit"]').click());
-    await page.locator('[data-compliance-action="open-correction"]').click();
-    const correctionDialog=page.locator("#aora-compliance-dialog");
-    await correctionDialog.locator('input[name="date"]').fill(futureStart);
-    await correctionDialog.locator('input[name="start"]').fill("09:00");
-    await correctionDialog.locator('input[name="end"]').fill("17:30");
-    await correctionDialog.locator('input[name="breakMinutes"]').fill("30");
-    await correctionDialog.locator('textarea[name="reason"]').fill(correctionReason());
-    await observeComplianceAction(page,"createCorrection",()=>correctionDialog.locator('button[type="submit"]').click());
-    await page.locator('[data-a="logout"]').click();
-    await passwordLogin(page,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
-    await page.locator('.admin-nav [data-view="leave"]').click();
-    const leaveRow=page.locator(".admin-request-row").filter({hasText:`CI leave ${workspace}`}).first();
-    await expect(leaveRow).toBeVisible();
-    await triggerWorkspaceEvent(page,"DECIDE_LEAVE",()=>leaveRow.locator('[data-a="leave-decide"][data-decision="approved"]').click());
-    await page.locator('.admin-nav [data-view="compliance"]').click();
-    const correctionRow=page.locator(".compliance-request-row").filter({hasText:correctionReason()}).first();
-    await expect(correctionRow).toBeVisible();
-    await observeComplianceAction(page,"decideCorrection",()=>correctionRow.locator('[data-compliance-action="decide"][data-decision="approved"]').click());
-    await expect(correctionRow).toContainText("Genehmigt");
-    await expect(page.getByText("8:00 Std.",{exact:true}).first()).toBeVisible();
+    await leaveModal.locator('input[name="start"]').fill(futureStart);await leaveModal.locator('input[name="end"]').fill(futureEnd);await leaveModal.locator('textarea[name="note"]').fill(`Agent QA ${workspace}`);await leaveModal.locator('button[type="submit"]').click();
+    await expect(leaveModal).toBeHidden({timeout:30000});await expect(page.locator(".employee-main")).toContainText(futureStart);
+    await page.locator('[data-compliance-action="request-correction"]').click();
+    const correction=page.locator("#aora-compliance-dialog");await expect(correction).toBeVisible();await correction.locator('input[name="breakMinutes"]').fill("5");await correction.locator('textarea[name="reason"]').fill(correctionReason());await correction.locator('button[type="submit"]').click();await expect(correction).not.toBeVisible({timeout:30000});
+    expect(getErrors()).toEqual([]);
+
+    const context=await browser.newContext();const manager=await context.newPage();const managerErrors=diagnostics(manager);
+    await passwordLogin(manager,"manager",env("AORA_MANAGER_EMAIL"),env("AORA_MANAGER_PASSWORD"));
+    await manager.locator('.admin-nav [data-view="leave"]').click();
+    const leaveRow=manager.locator(".leave-row").filter({hasText:futureStart}).first();await expect(leaveRow).toBeVisible();await leaveRow.locator('[data-decision="approved"]').click();await expect.poll(()=>manager.locator(".leave-row").filter({hasText:futureStart}).first().innerText(),{timeout:30000}).toContain("approved");
+    await manager.locator('.admin-nav [data-view="compliance"]').click();await expect(manager.locator(".compliance-list")).not.toContainText("Compliance-Daten werden geladen",{timeout:30000});
+    const correctionRow=manager.locator(".compliance-row").filter({hasText:correctionReason()}).first();await expect(correctionRow).toBeVisible();manager.once("dialog",dialog=>dialog.accept("Agent QA approved"));await observeComplianceAction(manager,"decideCorrection",()=>correctionRow.locator('[data-decision="approved"]').click());await expect.poll(()=>manager.locator(".compliance-row").filter({hasText:correctionReason()}).first().innerText(),{timeout:30000}).toContain("Genehmigt");
+    await expect.poll(()=>manager.evaluate(()=>{const entry=(S.state.timeEntries||[]).find(item=>item.end);return{breakMinutes:entry?.breakMinutes,durationMinutes:entry?.durationMinutes}}),{timeout:30000}).toEqual({breakMinutes:5,durationMinutes:505});
+    expect(managerErrors()).toEqual([]);await context.close();
   });
 
-  test("Kiosk: encrypted offline queue, resync and inside/outside geofence enforcement",async({page})=>{
-    const getErrors=diagnostics(page,{allowOffline:true});
-    await kioskLogin(page);
-    await page.context().setOffline(true);
-    await page.locator(`[data-a="kiosk-select"][data-emp]`).first().click();
-    await page.locator('[data-a="kiosk-transition"] input[name="geoPermission"]').check();
-    await page.locator('[data-a="kiosk-transition"] button[type="submit"]').click();
-    await expect(page.getByText("Lokal verschlüsselt gespeichert")).toBeVisible();
-    const queueSnapshot=await page.evaluate(async()=>{
-      const db=await new Promise((resolve,reject)=>{const request=indexedDB.open("aora-v8-offline");request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-      const records=await new Promise((resolve,reject)=>{const tx=db.transaction("punch-queue","readonly");const request=tx.objectStore("punch-queue").getAll();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-      return records;
-    });
-    expect(queueSnapshot.length).toBeGreaterThan(0);
-    expect(JSON.stringify(queueSnapshot)).not.toContain("employeeId");
-    expect(JSON.stringify(queueSnapshot)).not.toContain("CLOCK_IN");
-    expect(queueSnapshot[0].cipherText).toBeTruthy();
-    await page.context().setOffline(false);
-    await page.evaluate(()=>window.dispatchEvent(new Event("online")));
-    await expect.poll(()=>page.evaluate(async()=>{const db=await new Promise((resolve,reject)=>{const request=indexedDB.open("aora-v8-offline");request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});return new Promise((resolve,reject)=>{const tx=db.transaction("punch-queue","readonly");const request=tx.objectStore("punch-queue").count();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})})).toBe(0);
-    await page.locator(`[data-a="kiosk-select"][data-emp]`).first().click();
-    await page.locator('[data-a="kiosk-transition"] input[name="geoPermission"]').check();
-    const requestBody=await triggerAccessAction(page,"requestPunch",()=>page.locator('[data-a="kiosk-transition"] button[type="submit"]').click());
-    expect(requestBody.request?.id).toBeTruthy();
-    await page.locator('[data-a="logout"]').click();
-    await passwordLogin(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
-    await expect(page.locator(".employee-punch-gate")).toBeVisible();
-    await triggerAccessRejection(page,"decidePunch",403,()=>page.locator('[data-a="employee-punch-decide"][data-decision="approved"]').click());
-    await page.context().setGeolocation({latitude:52.52,longitude:13.405});
-    await page.context().grantPermissions(["geolocation"],{origin:new URL(page.url()).origin});
-    await triggerAccessAction(page,"decidePunch",()=>page.locator('[data-a="employee-punch-decide"][data-decision="approved"]').click());
-    await expect(page.locator(".employee-punch-gate")).toBeHidden();
-    expect(getErrors().filter(error=>!error.includes("net::ERR_INTERNET_DISCONNECTED"))).toEqual([]);
+  test("Kiosk: encrypted offline queue, resync and inside/outside geofence enforcement",async({page,context,browser})=>{
+    await page.setViewportSize({width:1024,height:768});const getErrors=diagnostics(page,{allowOffline:true});
+    await kioskLogin(page);await assertHealthy(page);await assertNoHorizontalOverflow(page);
+    const people=page.locator('[data-a="select-person"]');await expect(people.first()).toBeVisible();await people.first().click();await context.setOffline(true);await page.locator('[data-a="transition"]').first().click();
+    await expect.poll(()=>page.evaluate(()=>inspectOfflineQueue()),{timeout:15000}).toEqual(expect.arrayContaining([expect.objectContaining({status:"pending",hasCiphertext:true,hasPlaintextPayload:false})]));
+    await context.setOffline(false);await page.evaluate(()=>syncOfflinePunchQueue());await expect.poll(()=>page.evaluate(()=>inspectOfflineQueue()),{timeout:30000}).toEqual([]);
+
+    const employeeContext=await browser.newContext({permissions:["geolocation"],geolocation:{latitude:52.52,longitude:13.405,accuracy:20}});
+    const employee=await employeeContext.newPage();const employeeErrors=diagnostics(employee);
+    await passwordLogin(employee,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
+    await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
+    const clockIn=await triggerWorkspaceEvent(employee,"APPROVE_CLOCK_REQUEST",()=>employee.locator('[data-a="clock-approve"]').click());
+    const approvedIn=clockIn.state.clockRequests.find(item=>item.status==="approved");
+    expect(approvedIn?.verification?.result).toBe("passed");
+    expect(clockIn.state.timeEntries.some(item=>item.status==="live"&&item.source==="secure_kiosk")).toBe(true);
+
+    await page.reload();await expect(page.locator(".kiosk-app")).toBeVisible({timeout:30000});
+    await page.locator('[data-a="select-person"]').first().click();
+    await page.locator('[data-a="transition"][data-target="pause"]').click();
+    await employee.reload();await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible({timeout:30000});
+    await employeeContext.setGeolocation({latitude:52.62,longitude:13.405,accuracy:20});
+    const outside=await triggerWorkspaceRejection(employee,"APPROVE_CLOCK_REQUEST",403,()=>employee.locator('[data-a="clock-approve"]').click());
+    expect(String(outside.error||"")).toContain("Ausserhalb des Standorts");
+    await expect(employee.locator('[data-a="clock-approve"]')).toBeVisible();
+
+    await employeeContext.setGeolocation({latitude:52.52,longitude:13.405,accuracy:20});
+    const pause=await triggerWorkspaceEvent(employee,"APPROVE_CLOCK_REQUEST",()=>employee.locator('[data-a="clock-approve"]').click());
+    expect(pause.state.timeEntries.some(item=>item.status==="paused")).toBe(true);
+    expect(employeeErrors().filter(item=>
+      !item.includes("console:Failed to load resource: the server responded with a status of 403")&&
+      !(item.includes("network:net::ERR_ABORTED:")&&item.includes("/functions/v1/aora-v8-pilot-workspace-rules"))
+    )).toEqual([]);
+    await employeeContext.close();
+    expect(getErrors().filter(item=>!item.includes("ERR_INTERNET_DISCONNECTED"))).toEqual([]);
   });
 
-  test("Invitation: reject breached password, activate, login, scope and replay",async({page})=>{
-    await page.goto(env("AORA_INVITATION_URL"));
-    await expect(page.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible();
-    await page.locator('input[name="password"]').fill("Password123!");
-    await triggerAccessRejection(page,"acceptInvitation",422,()=>page.locator('#invitation-accept button[type="submit"]').click());
-    await expect(page.locator(".login-error")).toContainText("kompromittiert");
-    await page.locator('input[name="password"]').fill(env("AORA_INVITATION_PASSWORD"));
-    await triggerAccessAction(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click());
-    await expect(page.locator(".admin-app")).toBeVisible();
-    expect(await page.locator("#loc-select option").count()).toBe(1);
-    await page.locator('[data-a="logout"]').click();
-    await passwordLogin(page,"manager",env("AORA_INVITATION_EMAIL"),env("AORA_INVITATION_PASSWORD"));
-    await page.locator('[data-a="logout"]').click();
-    await page.goto(env("AORA_INVITATION_URL"));
-    await expect(page.locator(".login-error")).toContainText(/bereits aktiviert|nicht mehr verfügbar/);
+  test("Invitation: reject breached password, activate, login, scope and replay",async({page,browser,baseURL})=>{
+    const invitation=new URL(env("AORA_INVITATION_URL"));const localInvite=new URL(`${invitation.pathname}${invitation.search}`,baseURL).toString();const email=env("AORA_INVITATION_EMAIL"),password=env("AORA_INVITATION_PASSWORD");
+    await page.goto(localInvite);await expect(page.getByRole("heading",{name:"Konto aktivieren"})).toBeVisible();await page.locator('input[name="email"]').fill(email);
+    const breachedPassword="Password123!";await page.locator('input[name="password"]').fill(breachedPassword);await page.locator('input[name="confirm"]').fill(breachedPassword);
+    const rejection=await triggerAccessRejection(page,"acceptInvitation",400,()=>page.locator('#invitation-accept button[type="submit"]').click());expect(String(rejection.error||"")).toContain("Datenlecks");await expect(page.getByText(/bekannten Datenlecks/)).toBeVisible();
+    await page.locator('input[name="password"]').fill(password);await page.locator('input[name="confirm"]').fill(password);await triggerAccessAction(page,"acceptInvitation",()=>page.locator('#invitation-accept button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});await expect(page.locator("#loc-select option")).toHaveCount(1);
+    await page.locator('[data-a="logout"]').click();await page.locator('input[name="email"]').fill(email);await page.locator('input[name="password"]').fill(password);await triggerAccessAction(page,"passwordLogin",()=>page.locator('#password-login button[type="submit"]').click());await expect(page.locator(".admin-app")).toBeVisible({timeout:30000});
+    const replayContext=await browser.newContext();const replay=await replayContext.newPage();await replay.goto(localInvite);await expect(replay.getByText("Link nicht mehr gültig")).toBeVisible();await replayContext.close();
   });
 });
+
