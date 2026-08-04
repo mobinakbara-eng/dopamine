@@ -6,12 +6,13 @@ import { fileURLToPath } from "node:url";
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const read=path=>readFile(resolve(root,path),"utf8");
-const [index,moduleCss,moduleJs,edge,migration]=await Promise.all([
+const [index,moduleCss,moduleJs,edge,migration,eventMigration]=await Promise.all([
   read("app/index.html"),
   read("app/worktime-center.css"),
   read("app/modules/worktime-center.js"),
   read("supabase/functions/aora-v8-worktime-center/index.ts"),
-  read("supabase/migrations/20260804125000_unified_worktime_center.sql")
+  read("supabase/migrations/20260804125000_unified_worktime_center.sql"),
+  read("supabase/migrations/20260804132000_worktime_event_types.sql")
 ]);
 
 execFileSync(process.execPath,["--check",resolve(root,"app/modules/worktime-center.js")],{stdio:"pipe"});
@@ -73,6 +74,19 @@ for(const marker of [
   "grant execute",
   "to service_role"
 ])assert.ok(migration.includes(marker),`missing migration/security marker: ${marker}`);
+
+for(const marker of [
+  "time_entry_events_event_type_check",
+  "MANAGER_DIRECT_CLOCK_IN",
+  "MANAGER_DIRECT_CLOCK_OUT",
+  "MANAGER_DIRECT_PAUSE_START",
+  "MANAGER_DIRECT_PAUSE_END",
+  "MANAGER_CHANGE_REQUESTED",
+  "MANAGER_TIME_CHANGE_CONFIRMED",
+  "MANAGER_TIME_CHANGE_REJECTED",
+  "EMPLOYEE_TIME_CHANGE_APPROVED",
+  "EMPLOYEE_TIME_CHANGE_REJECTED"
+])assert.ok(eventMigration.includes(marker),`missing audited event type marker: ${marker}`);
 
 assert.ok(!migration.includes("grant execute on function public.aora_manager_direct_punch_atomic")||migration.includes("revoke all on function public.aora_manager_direct_punch_atomic"),"manager direct punch RPC must be service-role only");
 assert.ok(moduleCss.includes("@media(max-width:640px)"),"mobile layout contract is required");
