@@ -33,16 +33,23 @@ for(const marker of ["aoraReportBuildPrintBundle(all)",'data-a="report-print-all
 for(const marker of ["buildCanonicalSnapshot","prepareTimesheet","TIMESHEET_DRAFT_REFRESHED","entryCount"]){
   assert.ok(edge.includes(marker),`missing synchronized edge marker: ${marker}`);
 }
-for(const marker of ["S.session=restore(accessRole)","callback.invitationId&&callback.token&&S.session","clearInvitationCallback();","await loadState();"]){
-  assert.ok(boot.includes(marker),`missing authenticated invitation-routing marker: ${marker}`);
+for(const marker of [
+  "function authenticatedSession(preferredRole)",
+  '[preferredRole,"owner","manager","employee","kiosk"]',
+  "const recovered=callback.invitationId&&callback.token?authenticatedSession(pathRole):null",
+  "setAccessRole(recovered.role)",
+  "clearInvitationCallback(recovered.role)",
+  'history.replaceState({},"",accessPath(accessRole))'
+]){
+  assert.ok(boot.includes(marker),`missing cross-role invitation-session marker: ${marker}`);
 }
 assert.ok(
-  boot.indexOf("S.session=restore(accessRole)")<boot.indexOf("redirectInvitationToCanonicalOrigin(callback)"),
-  "an authenticated session must be restored before an invitation callback can redirect or replace the active admin view"
+  boot.indexOf("const recovered=callback.invitationId&&callback.token?authenticatedSession(pathRole):null")<boot.indexOf("redirectInvitationToCanonicalOrigin(callback)"),
+  "an authenticated session from any valid role must be recovered before an invitation callback can redirect"
 );
 assert.ok(
-  boot.indexOf("callback.invitationId&&callback.token&&S.session")<boot.indexOf("renderInvitationSetup(info,callback.invitationId,callback.token)"),
-  "active sessions must clear invitation secrets and load the workspace before invitation activation is rendered"
+  boot.indexOf("if(recovered)")<boot.indexOf("renderInvitationSetup(info,callback.invitationId,callback.token)"),
+  "an authenticated session must restore its canonical role route before invitation activation can render"
 );
 
 const twoSegments=[
@@ -99,4 +106,4 @@ assert.equal(openSnapshot.rows[0].netMinutes,240,"completed segments must remain
 assert.equal(openSnapshot.totals.workedMinutes,240);
 assert.equal(openSnapshot.totals.openDays,1);
 
-console.log("Time workflow synchronization contract passed: Freigaben navigation, one approvals UI, multi-entry daily aggregation, matching live report semantics, distinct print routes, authenticated invitation routing and synchronized snapshots.");
+console.log("Time workflow synchronization contract passed: Freigaben navigation, one approvals UI, multi-entry daily aggregation, matching live report semantics, distinct print routes, cross-role invitation session recovery and synchronized snapshots.");
