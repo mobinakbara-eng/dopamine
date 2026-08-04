@@ -32,7 +32,7 @@
     document.body.classList.add("aora-report-printing");
 
     const oldTitle=document.title;
-    document.title="Arbeitszeitnachweis";
+    document.title="Live-Arbeitszeitbericht";
     let cleaned=false;
     const done=()=>{
       if(cleaned)return;
@@ -57,6 +57,12 @@
     if(!button)return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    const all=button.matches('[data-a="report-print-all"]');
+    if(typeof window.aoraReportBuildPrintBundle==="function"){
+      window.aoraReportBuildPrintBundle(all);
+      return;
+    }
+    if(all){toastMessage("Die Sammel-PDF ist noch nicht verfügbar.");return}
     printVisibleReport();
   },true);
 })();
