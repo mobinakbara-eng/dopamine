@@ -35,6 +35,12 @@ async function login(page,role,email,password){
   expect((await responsePromise).status()).toBe(200);
   await expect(page.locator(role==="manager"?".admin-app":".employee-app")).toBeVisible({timeout:30000});
 }
+async function openManagerDocuments(page){
+  await page.locator('.admin-nav [data-a="admin-view"][data-view="worktime"]').click();
+  await expect(page.locator(".worktime-tabs")).toBeVisible({timeout:30000});
+  await page.locator('[data-worktime-action="tab"][data-tab="documents"]').click();
+  await expect(page.getByRole("heading",{name:"Erst prüfen und exportieren. Dann gezielt bestätigen lassen."})).toBeVisible({timeout:30000});
+}
 async function runAction(page,action,trigger,expected=[200,201]){
   const responsePromise=page.waitForResponse(response=>actionResponse(response,action),{timeout:30000});
   await trigger();
@@ -96,7 +102,6 @@ async function drawSignature(page){
   });
 }
 
-
 test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
   test.beforeAll(()=>{required("AORA_WORKSPACE_SLUG");required("AORA_TEST_DATE")});
 
@@ -108,8 +113,7 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     const managerContext=await browser.newContext({baseURL,viewport:{width:1440,height:1100},acceptDownloads:true});
     const manager=await managerContext.newPage(),managerErrors=captureErrors(manager);
     await login(manager,"manager",required("AORA_MANAGER_EMAIL"),required("AORA_MANAGER_PASSWORD"));
-    await manager.locator('.admin-nav [data-a="admin-view"][data-view="approvals"]').click();
-    await expect(manager.getByRole("heading",{name:"Erst prüfen und exportieren. Dann gezielt bestätigen lassen."})).toBeVisible({timeout:30000});
+    await openManagerDocuments(manager);
     await manager.screenshot({path:path.join(screenshots,"01-manager-empty-workflow.png"),fullPage:true});
 
     await manager.locator("#docsign-date-from").fill(testDate);
