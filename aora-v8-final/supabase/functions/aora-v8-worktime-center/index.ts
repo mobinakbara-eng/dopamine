@@ -80,9 +80,9 @@ function activeEntry(state:any,employeeId:string){return(state.timeEntries||[]).
 function entryById(ctx:any,id:string){
   const entry=ctx.state.timeEntries.find((item:any)=>String(item.id)===id);
   if(!entry)fail("Arbeitszeiteintrag wurde nicht gefunden.",404);
-  const employeeId=String(entry.employeeId??entry.employee_id||"");
+  const employeeId=String((entry.employeeId??entry.employee_id)||"");
   const {locationId}=employeeById(ctx,employeeId);
-  if(String(entry.locationId??entry.location_id||locationId)!==locationId&&ctx.accessRole!=="owner")fail("Kein Zugriff auf diese Buchung.",403);
+  if(String((entry.locationId??entry.location_id)||locationId)!==locationId&&ctx.accessRole!=="owner")fail("Kein Zugriff auf diese Buchung.",403);
   return entry;
 }
 function proposedEntry(base:any,body:any,{employeeId,locationId,id}:{employeeId:string,locationId:string,id:string}){
@@ -209,7 +209,7 @@ async function decideChange(ctx:any,body:any){
     }
     if(expectedTarget==="manager")state.notifications.push(notification(employeeId,"Zeitkorrektur bearbeitet",`Deine Korrektur wurde ${decision==="approved"?"genehmigt":"abgelehnt"}.`,"time_change_decision"));
   }
-  const {data:result,rpcError}=await service.rpc("aora_decide_time_change_atomic",{
+  const {data:result,error:rpcError}=await service.rpc("aora_decide_time_change_atomic",{
     p_organization_id:ctx.organization.id,p_expected_revision:Number(ctx.snapshot.revision),p_correction_id:correction.id,p_decision:decision,p_actor_type:ctx.accessRole,p_actor_id:ctx.session.subject_id,p_expected_approval_target:expectedTarget,p_decision_reason:decisionReason,p_state:decision==="approved"?state:null,p_previous_value:previous,p_new_value:next,p_rule_set_version:Number(previous?.ruleSetVersion||next?.ruleSetVersion||1)
   });
   if(rpcError)throw rpcError;
