@@ -67,9 +67,10 @@
       if(positioned){badge.style.right="16px";badge.style.top="8px"}
       button.appendChild(badge);
     }
-    badge.textContent=String(count);
-    badge.hidden=count<1;
-    badge.style.display=count<1?"none":"grid";
+    const nextText=String(count),hidden=count<1,nextDisplay=hidden?"none":"grid";
+    if(badge.textContent!==nextText)badge.textContent=nextText;
+    if(badge.hidden!==hidden)badge.hidden=hidden;
+    if(badge.style.display!==nextDisplay)badge.style.display=nextDisplay;
   }
   function updateBadges(){
     if(!employeeSession())return;
@@ -78,7 +79,8 @@
     if(headerButton){
       headerButton.classList.add("docnotice-header-button");
       headerButton.dataset.docnoticeAction="open-inbox";
-      headerButton.setAttribute("aria-label",count?`${count} offene Benachrichtigungen`:"Benachrichtigungen");
+      const label=count?`${count} offene Benachrichtigungen`:"Benachrichtigungen";
+      if(headerButton.getAttribute("aria-label")!==label)headerButton.setAttribute("aria-label",label);
       setBadge(headerButton,count,false);
     }
     const moreButton=document.querySelector('.employee-bottom [data-a="employee-view"][data-view="more"]');
@@ -142,16 +144,14 @@
       group.append(prepare,send);
     }
     document.querySelectorAll('[data-docsign-action="request"]').forEach(button=>{
-      button.textContent=button.disabled?"Erst offene Buchungen korrigieren":"Jetzt an Mitarbeiter senden";
-      button.dataset.docnoticeEnhanced="true";
+      const label=button.disabled?"Erst offene Buchungen korrigieren":"Jetzt an Mitarbeiter senden";
+      if(button.textContent!==label)button.textContent=label;
+      if(button.dataset.docnoticeEnhanced!=="true")button.dataset.docnoticeEnhanced="true";
     });
   }
 
   const appRoot=document.getElementById("app");
-  if(appRoot)new MutationObserver(()=>{
-    decorateManagerDocuments();
-    updateBadges();
-  }).observe(appRoot,{childList:true,subtree:true});
+  if(appRoot)new MutationObserver(()=>decorateManagerDocuments()).observe(appRoot,{childList:true,subtree:true});
 
   async function requestApproval(submissionId,button){
     button.disabled=true;
