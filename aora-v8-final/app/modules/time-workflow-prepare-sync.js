@@ -15,10 +15,10 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded",()=>{
-    addApprovalsNavigation();
-    if(S?.session&&["owner","manager"].includes(String(S.accessRole||""))&&typeof renderAdmin==="function")renderAdmin();
-  },{once:true});
+  // This module is loaded after admin.js and before boot.js. Register the
+  // navigation synchronously so the first real render already contains
+  // Freigaben. Never call renderAdmin before loadState has populated S.state.
+  addApprovalsNavigation();
 
   document.addEventListener("click",async event=>{
     const button=event.target.closest?.('[data-docsign-action="prepare"]');
