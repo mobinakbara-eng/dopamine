@@ -44,7 +44,7 @@ for(const marker of [
   assert.ok(boot.includes(marker),`missing cross-role invitation-session marker: ${marker}`);
 }
 assert.ok(
-  boot.indexOf("const recovered=callback.invitationId&&callback.token?authenticatedSession(pathRole):null")<boot.indexOf("redirectInvitationToCanonicalOrigin(callback)"),
+  boot.indexOf("const recovered=callback.invitationId&&callback.token?authenticatedSession(pathRole):null")<boot.indexOf("if(redirectInvitationToCanonicalOrigin(callback))return"),
   "an authenticated session from any valid role must be recovered before an invitation callback can redirect"
 );
 assert.ok(
