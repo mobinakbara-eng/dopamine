@@ -32,7 +32,7 @@ jobs:
           if old not in text and new not in text:
               raise SystemExit("Expected abort diagnostic line not found")
           text=text.replace(old,new,1)
-          for marker in ["triggerAccessAction(createdKiosk,\"login\"","expect(await createdKiosk.locator(\".kiosk-app\")","CREATE_KIOSK_DEVICE","inside/outside geofence enforcement"]:
+          for marker in ["triggerAccessAction(createdKiosk,\"login\"","await expect(createdKiosk.locator(\".kiosk-app\"))","CREATE_KIOSK_DEVICE","inside/outside geofence enforcement"]:
               if marker not in text:
                   raise SystemExit(f"Required explicit access regression assertion missing: {marker}")
           path.write_text(text)
