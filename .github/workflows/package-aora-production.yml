@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -35,10 +38,110 @@ jobs:
           AORA_CANONICAL_ORIGIN: https://dopamine-blond.vercel.app
         run: npm run build
 
-      - name: Upload production bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: aora-production-dist
-          path: aora-v8-final/dist
-          if-no-files-found: error
-          retention-days: 1
+      - name: Create compact direct-deploy bundle
+        run: |
+          cat > /tmp/create-aora-bundle.mjs <<'NODE'
+          import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+          import { dirname, resolve } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const repo=process.cwd();
+          const dist=resolve(repo,"aora-v8-final/dist");
+          const out=resolve(repo,"aora-deploy-bundle");
+          await rm(out,{recursive:true,force:true});
+          await mkdir(out,{recursive:true});
+
+          const stripQuery=value=>String(value).split("?")[0].replace(/^\//,"");
+          let html=await readFile(resolve(dist,"index.html"),"utf8");
+
+          const css=[];
+          const localStyleTags=[...html.matchAll(/<link\b[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi)]
+            .filter(match=>!/^https?:\/\//i.test(match[1]));
+          for(const match of localStyleTags){
+            css.push(await readFile(resolve(dist,stripQuery(match[1])),"utf8"));
+            html=html.replace(match[0],"");
+          }
+          html=html.replace("</head>",'<link rel="stylesheet" href="/app.bundle.css?v=1"></head>');
+
+          const js=[];
+          const scriptTags=[...html.matchAll(/<script\b[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi)];
+          for(const match of scriptTags){
+            const src=match[1];
+            let source;
+            if(/^https?:\/\//i.test(src)){
+              const response=await fetch(src);
+              if(!response.ok)throw new Error(`Unable to fetch ${src}: ${response.status}`);
+              source=await response.text();
+            }else{
+              source=await readFile(resolve(dist,stripQuery(src)),"utf8");
+            }
+            js.push(`\n;/* ${src} */\n${source}\n`);
+            html=html.replace(match[0],"");
+          }
+          html=html.replace("</body>",'<script src="/app.bundle.js?v=1" defer></script></body>');
+
+          const privacySource=await readFile(resolve(dist,"datenschutz/index.html"),"utf8");
+          let privacy=privacySource;
+          for(const match of [...privacy.matchAll(/<link\b[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi)]){
+            if(/^https?:\/\//i.test(match[1]))continue;
+            const content=await readFile(resolve(dist,stripQuery(match[1])),"utf8");
+            privacy=privacy.replace(match[0],`<style>${content}</style>`);
+          }
+          for(const match of [...privacy.matchAll(/<script\b[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi)]){
+            const src=match[1];
+            const content=/^https?:\/\//i.test(src)
+              ?await (await fetch(src)).text()
+              :await readFile(resolve(dist,stripQuery(src)),"utf8");
+            privacy=privacy.replace(match[0],`<script>${content.replaceAll("</script>","<\\/script>")}</script>`);
+          }
+
+          const routes=[
+            "index.html",
+            "inhaber/index.html",
+            "arbeitgeber/index.html",
+            "arbeitnehmer/index.html",
+            "kiosk/dashboard/index.html",
+            "reset-password/index.html"
+          ];
+          for(const file of routes){
+            const target=resolve(out,file);
+            await mkdir(dirname(target),{recursive:true});
+            await writeFile(target,html,"utf8");
+          }
+          for(const file of ["datenschutz/index.html","datenschutzbeauftragter/index.html"]){
+            const target=resolve(out,file);
+            await mkdir(dirname(target),{recursive:true});
+            await writeFile(target,privacy,"utf8");
+          }
+          await writeFile(resolve(out,"app.bundle.css"),css.join("\n"),"utf8");
+          await writeFile(resolve(out,"app.bundle.js"),js.join("\n"),"utf8");
+          await writeFile(resolve(out,"sw.js"),await readFile(resolve(dist,"sw.js"),"utf8"),"utf8");
+          await writeFile(resolve(out,"vercel.json"),JSON.stringify({
+            headers:[{
+              source:"/(.*)",
+              headers:[
+                {key:"X-Content-Type-Options",value:"nosniff"},
+                {key:"X-Frame-Options",value:"DENY"},
+                {key:"Referrer-Policy",value:"strict-origin-when-cross-origin"},
+                {key:"Permissions-Policy",value:"camera=(self), geolocation=(self), microphone=(), payment=(), usb=()"},
+                {key:"X-Robots-Tag",value:"noindex, nofollow"},
+                {key:"Content-Security-Policy",value:"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https://lxpmgnllgqdulfjxbdau.supabase.co wss://lxpmgnllgqdulfjxbdau.supabase.co; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"}
+              ]
+            }],
+            cleanUrls:false,
+            trailingSlash:true
+          },null,2),"utf8");
+          NODE
+          node /tmp/create-aora-bundle.mjs
+
+      - name: Commit direct-deploy bundle to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add aora-deploy-bundle
+          if git diff --cached --quiet; then
+            echo "Bundle unchanged"
+            exit 0
+          fi
+          git commit -m "Update unified production deploy bundle [skip ci]"
+          git push origin HEAD:main
