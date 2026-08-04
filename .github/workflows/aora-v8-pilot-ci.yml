@@ -138,7 +138,7 @@ jobs:
       - name: Build browser bundle
         run: npm run build
       - name: Run four-role, invitation replay and offline-resync tests
-        run: npm run test:e2e
+        run: npx playwright test --project=chromium
       - name: Run bounded workspace concurrency smoke
         env:
           AORA_LOAD_REQUESTS: "100"
@@ -184,4 +184,3 @@ jobs:
         run: |
           test "${{ needs.source-gate.result }}" = "success"
           test "${{ needs.four-role-browser.result }}" = "success"
-
