@@ -8,19 +8,103 @@ on:
     paths:
       - "aora-v8-final/**"
       - ".github/workflows/aora-timesheet-e2e.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-timesheet-e2e.yml"
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: aora-timesheet-${{ github.event.pull_request.number }}
+  group: aora-timesheet-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  source-artifact:
+    name: Timesheet production and staging artifacts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Validate release hardening contract
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-timesheet-ci-bootstrap/index.ts
+          node tests/zero-cost-release-hardening.mjs
+      - name: Build production artifact
+        env:
+          AORA_DEPLOY_ENV: production
+        run: npm run build
+      - name: Bind production artifact to source commit
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > artifact-source.txt
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > artifact-manifest.sha256
+          sha256sum -c artifact-manifest.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aora-timesheet-production-${{ github.sha }}
+          path: |
+            aora-v8-final/dist
+            aora-v8-final/artifact-source.txt
+            aora-v8-final/artifact-manifest.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Build staging browser artifact
+        env:
+          AORA_DEPLOY_ENV: staging
+        run: npm run build
+      - name: Bind staging artifact to source commit
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > artifact-source.txt
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > artifact-manifest.sha256
+          sha256sum -c artifact-manifest.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aora-timesheet-staging-${{ github.sha }}
+          path: |
+            aora-v8-final/dist
+            aora-v8-final/artifact-source.txt
+            aora-v8-final/artifact-manifest.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  immutable-artifact:
+    name: Timesheet immutable production artifact verification
+    needs: source-artifact
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aora-timesheet-production-${{ github.sha }}
+          path: aora-v8-final
+      - name: Verify source binding and every output byte
+        run: |
+          test "$(cat artifact-source.txt)" = "$GITHUB_SHA"
+          sha256sum -c artifact-manifest.sha256
+
   timesheet-e2e:
     name: Privacy, unsigned preview, one-time signature, PDF and Excel gate
+    needs: [source-artifact, immutable-artifact]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: aora-v8-final
@@ -31,7 +115,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
+      - uses: actions/download-artifact@v4
+        with:
+          name: aora-timesheet-staging-${{ github.sha }}
+          path: aora-v8-final
+      - name: Verify browser artifact source and bytes
+        run: |
+          test "$(cat artifact-source.txt)" = "$GITHUB_SHA"
+          sha256sum -c artifact-manifest.sha256
       - name: Bootstrap isolated timesheet tenant with GitHub OIDC
         shell: bash
         run: |
@@ -60,21 +151,14 @@ jobs:
             echo "AORA_TEST_DATE=$(jq -r '.testDate' "$response_file")"
           } >> "$GITHUB_ENV"
           rm -f "$response_file"
-
       - name: Install Chromium and document validators
         run: |
           npm install --no-save @playwright/test@1.56.1 pdf-parse@1.1.1 fflate@0.8.2
           npx playwright install --with-deps chromium
-
-      - name: Build canonical preview bundle
-        run: npm run build
-
       - name: Verify public privacy center and placeholders
         run: npx playwright test tests/aora-privacy.spec.mjs --project=privacy-public --no-deps
-
       - name: Run unsigned preview and document-scoped signature flow
         run: npx playwright test tests/aora-timesheet-document-signing.spec.mjs --project=timesheet-approval --no-deps
-
       - name: Upload screenshots, PDF, Excel and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,7 +170,6 @@ jobs:
             aora-v8-final/playwright-report.json
           if-no-files-found: warn
           retention-days: 14
-
       - name: Cleanup isolated timesheet tenant
         if: always()
         shell: bash
@@ -104,3 +187,20 @@ jobs:
             -H "Authorization: Bearer $oidc_token" \
             -H 'content-type: application/json' \
             --data "$payload" >/dev/null
+
+  release-gate:
+    name: Aora timesheet release gate
+    if: always()
+    needs: [source-artifact, immutable-artifact, timesheet-e2e]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Enforce mandatory checks for this event
+        env:
+          SOURCE_RESULT: ${{ needs.source-artifact.result }}
+          ARTIFACT_RESULT: ${{ needs.immutable-artifact.result }}
+          E2E_RESULT: ${{ needs.timesheet-e2e.result }}
+        run: |
+          test "$SOURCE_RESULT" = "success"
+          test "$ARTIFACT_RESULT" = "success"
+          test "$E2E_RESULT" = "success"

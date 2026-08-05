@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { appOriginForRequest } from "./origin.ts";
 
 export const URL = Deno.env.get("SUPABASE_URL")!;
 export const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -524,14 +525,7 @@ export async function sendInvite(
   invitation: any,
   accessRole: "manager" | "employee",
 ) {
-  let redirectOrigin =
-    "https://dopamine-mobins-projects-4f428afa.vercel.app";
-  if (origin && allowedOrigin(origin)) {
-    const parsed = new globalThis.URL(origin);
-    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
-      redirectOrigin = parsed.origin;
-    }
-  }
+  const redirectOrigin = appOriginForRequest(origin);
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
   const redirectUrl = new globalThis.URL(`/${route}`, redirectOrigin);
   redirectUrl.searchParams.set("workspace", ctx.organization.slug);

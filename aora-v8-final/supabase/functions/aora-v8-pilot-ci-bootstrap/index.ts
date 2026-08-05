@@ -7,6 +7,10 @@ const JWKS_URL=ISSUER+"/.well-known/jwks";
 const AUDIENCE="aora-staging-ci";
 const REPOSITORY="mobinakbara-eng/dopamine";
 const REPOSITORY_ID="1044549733";
+const REPOSITORY_OWNER="mobinakbara-eng";
+const REPOSITORY_OWNER_ID="228580584";
+const MERGE_QUEUE_ACTOR="github-merge-queue[bot]";
+const MERGE_QUEUE_ACTOR_ID="118344674";
 const WORKFLOW_PREFIX=REPOSITORY+"/.github/workflows/aora-v8-pilot-ci.yml@";
 const ALLOWED_HEADS=new Set([
   "agent/aora-v8-hardening",
@@ -15,7 +19,8 @@ const ALLOWED_HEADS=new Set([
   "agent/aora-unified-production",
   "agent/aora-relational-foundation",
   "agent/aora-access-hardening",
-  "agent/aora-workforce-features"
+  "agent/aora-workforce-features",
+  "agent/aora-zero-cost-release-hardening"
 ]);
 const ALLOWED_BASES=new Set([
   "agent/aora-v8-final",
@@ -95,10 +100,19 @@ async function claims(req:Request){
   if(payload.repository!==REPOSITORY||String(payload.repository_id||"")!==REPOSITORY_ID)fail("repository_not_allowed",403);
   if(!String(payload.workflow_ref||"").startsWith(WORKFLOW_PREFIX))fail("workflow_not_allowed",403);
   const eventName=String(payload.event_name||"");
+  const actor=String(payload.actor||"");
+  const actorId=String(payload.actor_id||"");
+  const ownerActor=actor===REPOSITORY_OWNER&&actorId===REPOSITORY_OWNER_ID;
+  const mergeQueueActor=actor===MERGE_QUEUE_ACTOR&&actorId===MERGE_QUEUE_ACTOR_ID;
+  if(!ownerActor&&!(["merge_group","push"].includes(eventName)&&mergeQueueActor))fail("actor_not_allowed",403);
   if(eventName==="pull_request"){
     if(!ALLOWED_HEADS.has(String(payload.head_ref||""))||!ALLOWED_BASES.has(String(payload.base_ref||"")))fail("pull_request_not_allowed",403);
   }else if(eventName==="workflow_dispatch"){
     if(!ALLOWED_HEADS.has(String(payload.ref||"").replace(/^refs\/heads\//,"")))fail("dispatch_ref_not_allowed",403);
+  }else if(eventName==="push"){
+    if(String(payload.ref||"")!=="refs/heads/main"||String(payload.ref_type||"")!=="branch")fail("push_ref_not_allowed",403);
+  }else if(eventName==="merge_group"){
+    if(String(payload.base_ref||"")!=="main"||!/^refs\/heads\/gh-readonly-queue\/main\//.test(String(payload.ref||"")))fail("merge_group_ref_not_allowed",403);
   }else fail("event_not_allowed",403);
   if(String(payload.runner_environment||"")!=="github-hosted")fail("runner_not_allowed",403);
   const runId=String(payload.run_id||"");

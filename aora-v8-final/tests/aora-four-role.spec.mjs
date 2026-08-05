@@ -118,6 +118,15 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     expect(new Set(filenames).size).toBe(3);
     const backup=await compliance(page,"backup",()=>page.locator('[data-compliance-action="backup"]').click());
     expect(backup.verified).toBe(true);
+    await page.evaluate(()=>{
+      const location=S.state.locations.find(item=>item.id===S.locationId);
+      location.name='<img id="stored-location-xss" src=x onerror=alert(1)>';
+      S.state.announcements.push({id:"stored-xss-check",audience:location.id,title:"Escaping QA",body:"Location names stay text."});
+      S.adminView="news";
+      renderAdmin();
+    });
+    await expect(page.locator("#stored-location-xss")).toHaveCount(0);
+    await expect(page.locator("option",{hasText:'<img id="stored-location-xss" src=x onerror=alert(1)>'}).first()).toHaveText('<img id="stored-location-xss" src=x onerror=alert(1)>');
     await assertNoHorizontalOverflow(page);
     expect(errors()).toEqual([]);
   });
@@ -204,6 +213,43 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await context.setOffline(false);
     await page.evaluate(()=>syncOfflinePunchQueue());
     await expect.poll(()=>page.evaluate(()=>inspectOfflineQueue()),{timeout:30000}).toEqual([]);
+
+    const workspaceBinding=await page.evaluate(async currentSlug=>{
+      const sessionRecords=await withStore(OFFLINE_SESSION_STORE,"readonly",store=>idbRequest(store.getAll()));
+      const originalSlug=CFG.slug;
+      CFG.slug=`${currentSlug}-other`;
+      const foreign=await restoreOfflineKioskSession();
+      CFG.slug=originalSlug;
+      const matching=await restoreOfflineKioskSession();
+      return{storedSlug:sessionRecords.at(-1)?.workspaceSlug,foreign:Boolean(foreign),matching:Boolean(matching)};
+    },workspace);
+    expect(workspaceBinding).toEqual({storedSlug:workspace,foreign:false,matching:true});
+
+    const deadLetter=await page.evaluate(async()=>{
+      const employeeId=S.state.employees[0].id;
+      const eventId=crypto.randomUUID();
+      await enqueueOfflinePunch({type:"KIOSK_TRANSITION",eventId,employeeId,target:"in",clientCreatedAt:new Date().toISOString(),clientTimezone:CFG.tz,deviceClockOffset:new Date().getTimezoneOffset()});
+      const originalWorkspace=workspace;
+      const fail=status=>{const error=new Error(status===403?"Gerät gesperrt":"Vorübergehend nicht erreichbar");error.status=status;throw error};
+      try{
+        workspace=async()=>fail(503);
+        await syncOfflinePunchQueue();
+        const first=(await inspectOfflineQueue()).find(record=>record.eventId===eventId);
+        await syncOfflinePunchQueue();
+        const second=(await inspectOfflineQueue()).find(record=>record.eventId===eventId);
+        workspace=async()=>fail(403);
+        await syncOfflinePunchQueue();
+        const terminal=(await inspectOfflineQueue()).find(record=>record.eventId===eventId);
+        return{first,second,terminal};
+      }finally{workspace=originalWorkspace}
+    });
+    expect(deadLetter.first).toMatchObject({status:"pending",retryCount:1});
+    expect(deadLetter.second).toMatchObject({status:"pending",retryCount:2});
+    expect(deadLetter.terminal).toMatchObject({status:"failed",retryCount:3});
+    await expect(page.locator('#aora-offline-status.failed [data-offline-action="discard"]')).toBeVisible();
+    page.once("dialog",dialog=>dialog.accept());
+    await page.locator('#aora-offline-status [data-offline-action="discard"]').click();
+    await expect.poll(()=>page.evaluate(()=>inspectOfflineQueue())).toEqual([]);
 
     const employeeContext=await browser.newContext({permissions:["geolocation"],geolocation:{latitude:52.52,longitude:13.405,accuracy:20}});
     const employee=await employeeContext.newPage();

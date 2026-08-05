@@ -188,7 +188,7 @@ function invitationsPage(){
   return head("Einladungen","E-Mail-Zugänge verfolgen, erneut senden oder widerrufen.")
     +`<div class="invitation-list">${rows.map(invitation=>`<article class="invitation-row">
       <div class="avatar">${esc(initials(invitation.name))}</div>
-      <div class="row-copy"><strong>${esc(invitation.name)}</strong><small>${esc(invitation.email)} · ${invitation.kind==="manager"?"Manager":"Mitarbeiter"} · ${invitationLocationNames(invitation)}</small></div>
+      <div class="row-copy"><strong>${esc(invitation.name)}</strong><small>${esc(invitation.email)} · ${invitation.kind==="manager"?"Manager":"Mitarbeiter"} · ${esc(invitationLocationNames(invitation))}</small></div>
       <span class="status-chip ${invitation.status==="accepted"?"black":""}">${invitation.status==="accepted"?"Aktiv":invitation.status==="revoked"?"Widerrufen":invitation.emailStatus==="failed"?"E-Mail-Fehler":"Offen"}</span>
       ${invitation.status==="pending"?`<div class="invite-actions"><button class="btn outline" data-a="resend-invitation" data-id="${invitation.id}">Erneut senden</button><button class="btn light" data-a="revoke-invitation" data-id="${invitation.id}">Widerrufen</button></div>`:""}
     </article>`).join("")||'<div class="empty">Keine Einladungen vorhanden.</div>'}</div>`;
@@ -270,7 +270,7 @@ function reportsPage(ownerMode=false){
   return head("Berichte","Wochenübersicht für Planung und Arbeitszeit.")+`<div class="admin-kpis">${adminKpi(I.cal,"Plan",fm(stats.planned),"Diese Woche")}${adminKpi(I.clock,"Ist",fm(stats.worked),"Diese Woche")}${adminKpi(I.chart,"Differenz",fm(stats.worked-stats.planned),"Plan vs. Ist")}${adminKpi(I.people,"Mitarbeiter",stats.employees.length,"Aktiv am Standort")}</div>`;
 }
 function newsPage(){
-  return head("Team-News","Mitteilungen für dein Team.",'<button class="btn" data-a="news-modal">Mitteilung erstellen</button>')+`<div class="admin-dashboard">${S.state.announcements.filter(item=>item.audience==="all"||item.audience===S.locationId).map(item=>`<article class="dashboard-card" style="min-height:180px;padding:20px"><div class="caps muted">${item.audience==="all"?"Alle":loc(item.audience)?.name||item.audience}</div><h2 style="margin-top:10px">${esc(item.title)}</h2><p class="small muted" style="margin-top:10px;line-height:1.6">${esc(item.body)}</p></article>`).join("")||'<div class="empty">Keine Mitteilungen.</div>'}</div>`;
+  return head("Team-News","Mitteilungen für dein Team.",'<button class="btn" data-a="news-modal">Mitteilung erstellen</button>')+`<div class="admin-dashboard">${S.state.announcements.filter(item=>item.audience==="all"||item.audience===S.locationId).map(item=>`<article class="dashboard-card" style="min-height:180px;padding:20px"><div class="caps muted">${esc(item.audience==="all"?"Alle":loc(item.audience)?.name||item.audience)}</div><h2 style="margin-top:10px">${esc(item.title)}</h2><p class="small muted" style="margin-top:10px;line-height:1.6">${esc(item.body)}</p></article>`).join("")||'<div class="empty">Keine Mitteilungen.</div>'}</div>`;
 }
 function kioskAdminPage(){
   const devices=S.state.kioskDevices.filter(item=>item.locationId===S.locationId);

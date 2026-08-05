@@ -25,7 +25,7 @@ const files=await walk(appRoot);
 const sources=[];
 for(const path of files)sources.push({path,source:await readFile(path,"utf8")});
 const all=sources.map(item=>item.source).join("\n");
-const byName=name=>sources.find(item=>item.path.endsWith(name))?.source||"";
+const byName=name=>sources.find(item=>item.path.replaceAll("\\","/").endsWith(name))?.source||"";
 
 const renderedA=collect(all,/data-a=\\?["']([a-z0-9-]+)\\?["']/gi);
 const renderedU=union(
