@@ -1,5 +1,5 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root=dirname(fileURLToPath(import.meta.url));
@@ -18,9 +18,10 @@ if(runtimeProjectRef!==expectedProjectRef){
   throw new Error(`Environment CSP build blocked: ${environment} artifact targets unexpected Supabase project ${runtimeProjectRef}.`);
 }
 
-const policy=`connect-src 'self' https://${runtimeProjectRef}.supabase.co wss://${runtimeProjectRef}.supabase.co`;
+const appPolicy=`connect-src 'self' https://${runtimeProjectRef}.supabase.co wss://${runtimeProjectRef}.supabase.co`;
+const privacyPolicy="connect-src 'none'";
 const marker="data-aora-environment-csp";
-const meta=`<meta http-equiv="Content-Security-Policy" ${marker} content="${policy}">`;
+const privacyRoutes=new Set(["datenschutz/index.html","datenschutzbeauftragter/index.html"]);
 
 async function htmlFiles(directory){
   const entries=await readdir(directory,{withFileTypes:true});
@@ -32,15 +33,22 @@ async function htmlFiles(directory){
   }
   return files;
 }
+function artifactPath(path){return relative(output,path).split(sep).join("/")}
+function meta(policy){return `<meta http-equiv="Content-Security-Policy" ${marker} content="${policy}">`}
 
 const files=await htmlFiles(output);
 if(!files.length)throw new Error("Environment CSP build blocked: no HTML artifacts were generated.");
+let privacyCount=0;
 for(const path of files){
   const source=await readFile(path,"utf8");
   const withoutPrevious=source.replace(/\s*<meta[^>]*data-aora-environment-csp[^>]*>/gi,"");
   if(!/<head(?:\s[^>]*)?>/i.test(withoutPrevious))throw new Error(`Environment CSP build blocked: ${path} has no <head>.`);
-  const hardened=withoutPrevious.replace(/<head(\s[^>]*)?>/i,match=>`${match}\n  ${meta}`);
+  const isPrivacy=privacyRoutes.has(artifactPath(path));
+  const policy=isPrivacy?privacyPolicy:appPolicy;
+  if(isPrivacy)privacyCount+=1;
+  const hardened=withoutPrevious.replace(/<head(\s[^>]*)?>/i,head=>`${head}\n  ${meta(policy)}`);
   await writeFile(path,hardened,"utf8");
 }
-await writeFile(resolve(output,"environment-csp.txt"),`${policy}\n`,"utf8");
-console.log(`Environment CSP applied to ${files.length} HTML artifacts for ${environment} (${runtimeProjectRef}).`);
+if(privacyCount!==privacyRoutes.size)throw new Error("Environment CSP build blocked: privacy artifacts are incomplete.");
+await writeFile(resolve(output,"environment-csp.txt"),`${appPolicy}\n`,"utf8");
+console.log(`Environment CSP applied to ${files.length-privacyCount} app and ${privacyCount} privacy artifacts for ${environment} (${runtimeProjectRef}).`);
