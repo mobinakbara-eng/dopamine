@@ -17,6 +17,14 @@ const run=overrides=>{
   };
 };
 const readArtifact=path=>readFileSync(resolve(root,"dist",path),"utf8");
+const assertPrivacyArtifacts=environment=>{
+  for(const path of ["datenschutz/index.html","datenschutzbeauftragter/index.html"]){
+    const html=readArtifact(path);
+    if(!html.includes("data-aora-environment-csp")||!html.includes("connect-src 'none'")||html.includes("supabase.co")){
+      throw new Error(`${environment} privacy artifact ${path} must have zero network access and contain no Supabase endpoint.`);
+    }
+  }
+};
 const assertArtifact=(environment,expectedRef,rejectedRef)=>{
   const runtimeConfig=readArtifact("runtime-config.js");
   const policy=readArtifact("environment-csp.txt").trim();
@@ -31,6 +39,7 @@ const assertArtifact=(environment,expectedRef,rejectedRef)=>{
   if(!employerHtml.includes("data-aora-environment-csp")||!employerHtml.includes(expectedPolicy)||employerHtml.includes(rejectedRef)){
     throw new Error(`${environment} employer artifact must allow connections only to its assigned Supabase project.`);
   }
+  assertPrivacyArtifacts(environment);
 };
 
 const production=run({
@@ -62,4 +71,4 @@ if(staging.status!==0){
 }
 assertArtifact("Staging","xqgkawskftzurbujrpex","lxpmgnllgqdulfjxbdau");
 
-console.log("Environment guard passed: production and staging artifacts have isolated runtime configuration and connect-src policies.");
+console.log("Environment guard passed: app artifacts are environment-isolated and privacy artifacts have no network access.");
