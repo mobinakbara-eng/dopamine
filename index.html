@@ -1,32 +1,23 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
-<meta name="description" content="AoraAI Workforce">
-<base href="/dopamine/">
-<title>AoraAI Workforce</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=730">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="refresh" content="0;url=https://dopamine-blond.vercel.app/arbeitgeber/?workspace=aora-workforce">
+  <title>Aora – Weiterleitung</title>
 </head>
 <body>
-<div id="app" aria-live="polite"><p>AoraAI wird geladen …</p></div>
-<div id="toast-root" aria-live="assertive"></div>
-<script src="modules/utils.js?v=730" defer></script>
-<script src="modules/config.js?v=730" defer></script>
-<script src="modules/logo.js?v=730" defer></script>
-<script src="modules/icons.js?v=730" defer></script>
-<script src="modules/api.js?v=730" defer></script>
-<script src="modules/access.js?v=730" defer></script>
-<script src="modules/employee.js?v=730" defer></script>
-<script src="modules/admin.js?v=730" defer></script>
-<script src="modules/kiosk-helpers.js?v=730" defer></script>
-<script src="modules/kiosk-view.js?v=730" defer></script>
-<script src="modules/modals.js?v=730" defer></script>
-<script src="modules/handlers.js?v=730" defer></script>
-<script src="modules/boot.js?v=730" defer></script>
+  <p>Diese alte Aora-Version wurde eingestellt. Weiterleitung zur aktuellen Demo …</p>
+  <p><a href="https://dopamine-blond.vercel.app/arbeitgeber/?workspace=aora-workforce">Aktuelle Aora-Demo öffnen</a></p>
+  <script>
+    (() => {
+      const target = new URL('https://dopamine-blond.vercel.app/arbeitgeber/');
+      const current = new URL(window.location.href);
+      current.searchParams.forEach((value, key) => target.searchParams.append(key, value));
+      if (!target.searchParams.has('workspace')) target.searchParams.set('workspace', 'aora-workforce');
+      window.location.replace(target.toString());
+    })();
+  </script>
 </body>
 </html>
