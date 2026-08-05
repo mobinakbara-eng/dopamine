@@ -2,10 +2,13 @@
 
 if(typeof CFG!=="undefined")CFG.domainFunction="aora-v8-domain-api";
 
-// Use the compatibility endpoint only for task reads. All other actions go directly
-// to the domain API, avoiding an extra Edge Function hop on normal navigation.
+// Task reads and writes must use the compatibility endpoint until the canonical
+// API no longer contains ambiguous PostgREST relationships. Keeping the full
+// task workflow on one scoped endpoint also prevents read/write authorization
+// drift between employee and manager paths.
 if(typeof globalThis.uCall==="function"&&typeof globalThis.request==="function"){
   const readActions=new Set(["flags","calendar","scheduleBoard","taskTemplates","taskRules","tasks"]);
+  const taskActions=new Set(["tasks","saveTaskAnswer","submitTask","reviewTask"]);
   const inFlight=new Map();
   const cache=new Map();
   const stable=value=>{
@@ -17,7 +20,7 @@ if(typeof globalThis.uCall==="function"&&typeof globalThis.request==="function")
   globalThis.uCall=async function(action,payload={},feature=false){
     if(!S.session?.token)throw new Error("Sitzung fehlt.");
     const read=readActions.has(action)&&!feature;
-    const functionName=feature?CFG.featureFunction:(action==="tasks"?"aora-v8-domain-api-compat":CFG.domainFunction);
+    const functionName=feature?CFG.featureFunction:(taskActions.has(action)?"aora-v8-domain-api-compat":CFG.domainFunction);
     const key=read?JSON.stringify([functionName,action,S.session.subjectId||"",S.locationId||"",stable(payload)]):"";
     const cached=read?cache.get(key):null;
     if(cached&&cached.expires>Date.now())return cached.data;
