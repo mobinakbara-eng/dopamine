@@ -5,6 +5,36 @@ const flags=["canonical_database","calendar_v2","schedule_board_v2","open_shift_
 const required=name=>{const value=process.env[name];if(!value)throw new Error(`Missing CI value: ${name}`);return value};
 const today=()=>new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Berlin"}).format(new Date());
 
+function sanitizeDiagnostic(value){
+  return String(value??"")
+    .replace(/[0-9a-f]{64}/gi,"[redacted-token]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,"[redacted-email]")
+    .replace(/([?&](?:token|apikey|authorization|password)=)[^&\s"']+/gi,"$1[redacted]")
+    .slice(0,1600);
+}
+function captureDiagnostics(page,label){
+  const diagnostics=[];
+  page.on("response",async response=>{
+    let parsed;
+    try{parsed=new URL(response.url())}catch{return}
+    if(!parsed.pathname.includes("/functions/v1/")||response.status()<400)return;
+    let body="";
+    try{body=await response.text()}catch{}
+    diagnostics.push({
+      label,
+      type:"api-response",
+      function:parsed.pathname.split("/").filter(Boolean).at(-1)||"unknown",
+      status:response.status(),
+      body:sanitizeDiagnostic(body)
+    });
+  });
+  page.on("pageerror",error=>diagnostics.push({label,type:"page-error",message:sanitizeDiagnostic(error?.message||error)}));
+  return diagnostics;
+}
+function printDiagnostics(diagnostics){
+  if(diagnostics.length)console.error("AORA_SANITIZED_DIAGNOSTICS",JSON.stringify(diagnostics));
+}
+
 async function login(page,role,email,secret){
   const route=role==="owner"?"/inhaber/":role==="manager"?"/arbeitgeber/":"/arbeitnehmer/";
   await page.goto(`${route}?workspace=${encodeURIComponent(workspace)}`);
@@ -23,6 +53,7 @@ test("unified Calendar, Schedule, Tasks and clock-out gate pass in the visible p
 
   const ownerContext=await context(browser,baseURL);
   const owner=await ownerContext.newPage();
+  const ownerDiagnostics=captureDiagnostics(owner,"owner");
   await login(owner,"owner",required("AORA_OWNER_EMAIL"),required("AORA_OWNER_PASSWORD"));
   await owner.evaluate(async flags=>{
     for(const flagKey of flags)await uCall("updateFeatureFlag",{flagKey,scopeType:"organization",scopeValue:null,enabled:true,rolloutPercentage:100,config:{releaseGate:true}});
@@ -33,6 +64,7 @@ test("unified Calendar, Schedule, Tasks and clock-out gate pass in the visible p
 
   const managerContext=await context(browser,baseURL);
   const manager=await managerContext.newPage();
+  const managerDiagnostics=captureDiagnostics(manager,"manager");
   await login(manager,"manager",required("AORA_MANAGER_EMAIL"),required("AORA_MANAGER_PASSWORD"));
   const setup=await manager.evaluate(async({templateId,date,dueAt})=>{
     const locationId=S.locationId||S.state.locations[0]?.id;
@@ -46,38 +78,49 @@ test("unified Calendar, Schedule, Tasks and clock-out gate pass in the visible p
   expect(setup.shiftId).toMatch(/^shift_/);
   expect(setup.taskId).toMatch(/^task_/);
 
-  await manager.locator('.admin-nav [data-a="admin-view"][data-view="schedule"]').click();
-  await expect(manager.getByText("Weekly Planning Board")).toBeVisible({timeout:30000});
-  await expect(manager.getByText("12:00–14:00").first()).toBeVisible();
-  await manager.locator('.admin-nav [data-a="admin-view"][data-view="tasks"]').click();
-  await expect(manager.getByText("Task Automation")).toBeVisible({timeout:30000});
-  await expect(manager.getByText("Release Opening Checklist").first()).toBeVisible();
+  try{
+    await manager.locator('.admin-nav [data-a="admin-view"][data-view="schedule"]').click();
+    await expect(manager.getByText("Weekly Planning Board")).toBeVisible({timeout:30000});
+    await expect(manager.getByText("12:00–14:00").first()).toBeVisible();
+    await manager.locator('.admin-nav [data-a="admin-view"][data-view="tasks"]').click();
+    await expect(manager.getByText("Task Automation")).toBeVisible({timeout:30000});
+    await expect(manager.getByText("Release Opening Checklist").first()).toBeVisible();
+  }catch(error){
+    printDiagnostics([...ownerDiagnostics,...managerDiagnostics]);
+    throw error;
+  }
 
   const employeeContext=await context(browser,baseURL);
   const employee=await employeeContext.newPage();
+  const employeeDiagnostics=captureDiagnostics(employee,"employee");
   await login(employee,"employee",required("AORA_EMPLOYEE_EMAIL"),required("AORA_EMPLOYEE_PASSWORD"));
-  await employee.locator('.employee-bottom [data-a="employee-view"][data-view="calendar"]').click();
-  await expect(employee.locator(".aora-calendar-page")).toBeVisible({timeout:30000});
-  await expect(employee.locator(".aora-calendar-grid")).toBeVisible();
-  await expect(employee.locator(".aora-cal-sheet")).toBeVisible();
-  await expect(employee.locator(".aora-cal-entry-shift").filter({hasText:/12:00\s*[–-]\s*14:00/}).first()).toBeVisible({timeout:30000});
-  await employee.locator('.employee-bottom [data-u="employee-tasks"]').click();
-  await expect(employee.getByText("Meine Aufgaben")).toBeVisible({timeout:30000});
-  await expect(employee.getByText("Release Opening Checklist").first()).toBeVisible();
+  try{
+    await employee.locator('.employee-bottom [data-a="employee-view"][data-view="calendar"]').click();
+    await expect(employee.locator(".aora-calendar-page")).toBeVisible({timeout:30000});
+    await expect(employee.locator(".aora-calendar-grid")).toBeVisible();
+    await expect(employee.locator(".aora-cal-sheet")).toBeVisible();
+    await expect(employee.locator(".aora-cal-entry-shift").filter({hasText:/12:00\s*[–-]\s*14:00/}).first()).toBeVisible({timeout:30000});
+    await employee.locator('.employee-bottom [data-u="employee-tasks"]').click();
+    await expect(employee.getByText("Meine Aufgaben")).toBeVisible({timeout:30000});
+    await expect(employee.getByText("Release Opening Checklist").first()).toBeVisible();
 
-  const gateBefore=await employee.evaluate(async locationId=>uCall("clockoutGate",{locationId,employeeId:S.session.subjectId}),setup.locationId);
-  expect(gateBefore.allowed).toBe(false);
-  const checkbox=employee.locator('[data-u-task-input][data-item="item_done"]');
-  await checkbox.check();
-  await expect(employee.getByText("Antwort gespeichert.")).toBeVisible({timeout:15000});
-  await employee.locator(`[data-u="task-submit"][data-id="${setup.taskId}"]`).click();
-  await expect(employee.getByText("Aufgabe abgeschlossen.")).toBeVisible({timeout:15000});
-  const gateAfter=await employee.evaluate(async locationId=>uCall("clockoutGate",{locationId,employeeId:S.session.subjectId}),setup.locationId);
-  expect(gateAfter.allowed).toBe(true);
-  expect(gateAfter.blockingCount).toBe(0);
+    const gateBefore=await employee.evaluate(async locationId=>uCall("clockoutGate",{locationId,employeeId:S.session.subjectId}),setup.locationId);
+    expect(gateBefore.allowed).toBe(false);
+    const checkbox=employee.locator('[data-u-task-input][data-item="item_done"]');
+    await checkbox.check();
+    await expect(employee.getByText("Antwort gespeichert.")).toBeVisible({timeout:15000});
+    await employee.locator(`[data-u="task-submit"][data-id="${setup.taskId}"]`).click();
+    await expect(employee.getByText("Aufgabe abgeschlossen.")).toBeVisible({timeout:15000});
+    const gateAfter=await employee.evaluate(async locationId=>uCall("clockoutGate",{locationId,employeeId:S.session.subjectId}),setup.locationId);
+    expect(gateAfter.allowed).toBe(true);
+    expect(gateAfter.blockingCount).toBe(0);
 
-  const registrations=await employee.evaluate(async()=>await navigator.serviceWorker.getRegistrations().then(items=>items.map(item=>item.scope)));
-  expect(new Set(registrations).size).toBe(registrations.length);
+    const registrations=await employee.evaluate(async()=>await navigator.serviceWorker.getRegistrations().then(items=>items.map(item=>item.scope)));
+    expect(new Set(registrations).size).toBe(registrations.length);
+  }catch(error){
+    printDiagnostics([...ownerDiagnostics,...managerDiagnostics,...employeeDiagnostics]);
+    throw error;
+  }
 
   await owner.evaluate(async flags=>{
     for(const flagKey of flags)await uCall("updateFeatureFlag",{flagKey,scopeType:"organization",scopeValue:null,enabled:false,rolloutPercentage:100,config:{releaseGate:true}});
