@@ -1,8 +1,27 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
   "trailingSlash": true,
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        { "type": "host", "value": "dopamine-mobins-projects-4f428afa.vercel.app" }
+      ],
+      "destination": "https://dopamine-blond.vercel.app/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        { "type": "host", "value": "dopamine-git-main-mobins-projects-4f428afa.vercel.app" }
+      ],
+      "destination": "https://dopamine-blond.vercel.app/:path*",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
