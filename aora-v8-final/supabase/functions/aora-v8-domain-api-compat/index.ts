@@ -22,6 +22,7 @@ const TASK_RELATIONS=[
   "task_answers!task_answers_task_instance_fkey(*)",
   "task_evidence!task_evidence_organization_id_task_instance_id_fkey(*)"
 ].join(",");
+const LOCAL_TASK_ACTIONS=new Set(["tasks","saveTaskAnswer","submitTask","reviewTask"]);
 
 class CompatError extends Error{
   status:number;
@@ -52,8 +53,9 @@ function json(body:unknown,status:number,origin:string|null){
 function now(){return new Date().toISOString()}
 function validDate(value:unknown){return /^\d{4}-\d{2}-\d{2}$/.test(String(value||""))}
 function dateDiff(from:string,to:string){return Math.ceil((new Date(`${to}T00:00:00Z`).getTime()-new Date(`${from}T00:00:00Z`).getTime())/86400000)}
+function asInt(value:unknown,fallback=0){return Number.isFinite(Number(value))?Math.trunc(Number(value)):fallback}
 function fail(status:number,code:string,message:string,details?:unknown):never{throw new CompatError(status,code,message,details)}
-function successEnvelope(requestId:string,data:unknown){return{request_id:requestId,data,error:null,version:null,server_time:now()}}
+function successEnvelope(requestId:string,data:unknown,version:number|null=null){return{request_id:requestId,data,error:null,version,server_time:now()}}
 function errorEnvelope(requestId:string,error:unknown){
   const normalized=error instanceof CompatError?error:new CompatError(500,"compat_error",error instanceof Error?error.message:String(error));
   return{status:normalized.status,body:{request_id:requestId,data:null,error:{code:normalized.code,message:normalized.message,details:normalized.details||null},version:null,server_time:now()}};
@@ -97,10 +99,21 @@ async function sessionContext(token:string){
     allowedLocationIds=[String(session.location_id)];
   }else fail(403,"role_forbidden","Rolle ist für Aufgaben nicht freigegeben.");
 
-  return{session,organizationId:String(organization.id),accessRole,allowedLocationIds};
+  return{token,session,organizationId:String(organization.id),accessRole,allowedLocationIds};
+}
+function requireRole(context:any,roles:string[]){
+  if(!roles.includes(String(context.accessRole)))fail(403,"forbidden","Für diese Aktion fehlt die Berechtigung.");
 }
 function requireLocation(context:any,locationId:string){
   if(!context.allowedLocationIds.includes(String(locationId)))fail(403,"location_forbidden","Für diesen Standort fehlt die Berechtigung.");
+}
+function filterEmployeeTask(task:any,subjectId:string){
+  return{
+    ...task,
+    task_assignments:(task.task_assignments||[]).filter((item:any)=>String(item.employee_id)===subjectId),
+    task_answers:(task.task_answers||[]).filter((item:any)=>String(item.employee_id)===subjectId),
+    task_evidence:(task.task_evidence||[]).filter((item:any)=>String(item.uploaded_by)===subjectId)
+  };
 }
 async function enrichTaskItems(tasks:any[],organizationId:string){
   if(!tasks.length)return tasks;
@@ -119,6 +132,23 @@ async function enrichTaskItems(tasks:any[],organizationId:string){
     ...task,
     task_templates:{...(task.task_templates||{}),task_template_items:grouped.get(String(task.template_id))||[]}
   }));
+}
+async function taskAccess(context:any,taskId:string){
+  if(context.accessRole==="kiosk")fail(403,"kiosk_task_write_forbidden","Kiosk darf keine Mitarbeiteraufgaben bearbeiten.");
+  const{data,error}=await service.from("task_instances")
+    .select(TASK_RELATIONS)
+    .eq("organization_id",context.organizationId)
+    .eq("id",taskId)
+    .is("deleted_at",null)
+    .maybeSingle();
+  if(error)fail(500,"database_error",error.message,{hint:error.hint||null,code:error.code||null});
+  if(!data)fail(404,"task_not_found","Aufgabe wurde nicht gefunden.");
+  requireLocation(context,String(data.location_id));
+  const enriched=(await enrichTaskItems([data],context.organizationId))[0];
+  if(context.accessRole!=="employee")return enriched;
+  const subjectId=String(context.session.subject_id);
+  if(!(enriched.task_assignments||[]).some((item:any)=>String(item.employee_id)===subjectId))fail(403,"task_forbidden","Diese Aufgabe ist dem Mitarbeiter nicht zugewiesen.");
+  return filterEmployeeTask(enriched,subjectId);
 }
 async function scopedTasks(body:any,requestId:string){
   const context=await sessionContext(String(body.token||""));
@@ -157,14 +187,118 @@ async function scopedTasks(body:any,requestId:string){
   let scoped=(data||[]).filter((task:any)=>context.accessRole==="owner"||context.allowedLocationIds.includes(String(task.location_id)));
   if(context.accessRole==="employee"){
     const subjectId=String(context.session.subject_id);
-    scoped=scoped.map((task:any)=>({
-      ...task,
-      task_assignments:(task.task_assignments||[]).filter((item:any)=>String(item.employee_id)===subjectId),
-      task_answers:(task.task_answers||[]).filter((item:any)=>String(item.employee_id)===subjectId),
-      task_evidence:(task.task_evidence||[]).filter((item:any)=>String(item.uploaded_by)===subjectId)
-    }));
+    scoped=scoped.map((task:any)=>filterEmployeeTask(task,subjectId));
   }
   return successEnvelope(requestId,await enrichTaskItems(scoped,context.organizationId));
+}
+async function updateTaskAssignmentProgress(context:any,taskId:string,assignmentStatus:"in_progress"|"completed",reviewRequired:boolean){
+  const{data,error}=await service.rpc("aora_update_task_assignment_progress",{
+    p_organization_id:context.organizationId,
+    p_task_instance_id:taskId,
+    p_employee_id:String(context.session.subject_id),
+    p_assignment_status:assignmentStatus,
+    p_review_required:Boolean(reviewRequired)
+  });
+  if(error){
+    const message=String(error.message||"");
+    fail(message.includes("task_assignment_not_found")?403:500,"task_assignment_progress_failed",message||"Aufgabenstatus konnte nicht aktualisiert werden.");
+  }
+  return data||{status:"in_progress"};
+}
+async function saveTaskAnswer(body:any,requestId:string){
+  const context=await sessionContext(String(body.token||""));
+  requireRole(context,["employee"]);
+  const taskId=String(body.taskId||"");
+  const itemId=String(body.itemId||"");
+  if(!taskId||!itemId)fail(400,"task_answer_invalid","Aufgabe und Eingabefeld sind erforderlich.");
+  const task=await taskAccess(context,taskId);
+  if(!["open","in_progress","rejected"].includes(String(task.status)))fail(409,"task_locked","Aufgabe kann nicht mehr bearbeitet werden.");
+  const{data:item,error:itemError}=await service.from("task_template_items")
+    .select("*")
+    .eq("organization_id",context.organizationId)
+    .eq("template_id",task.template_id)
+    .eq("id",itemId)
+    .maybeSingle();
+  if(itemError)fail(500,"database_error",itemError.message);
+  if(!item)fail(404,"task_item_not_found","Aufgabenfeld wurde nicht gefunden.");
+
+  const value=body.value;
+  const expectedVersion=Math.max(0,asInt(body.expectedVersion,0));
+  const employeeId=String(context.session.subject_id);
+  const existing=(task.task_answers||[]).find((answer:any)=>String(answer.template_item_id)===itemId&&String(answer.employee_id)===employeeId);
+  if(existing&&Number(existing.version)!==expectedVersion)fail(409,"version_conflict","Antwort wurde auf einem anderen Gerät geändert.");
+  if(item.answer_type==="number"){
+    const number=Number(value);
+    if(!Number.isFinite(number))fail(400,"invalid_number","Eine gültige Zahl ist erforderlich.");
+    if(item.min_value!=null&&number<Number(item.min_value))fail(400,"below_minimum","Wert liegt unter dem erlaubten Minimum.");
+    if(item.max_value!=null&&number>Number(item.max_value))fail(400,"above_maximum","Wert liegt über dem erlaubten Maximum.");
+  }
+  const row={
+    organization_id:context.organizationId,
+    task_instance_id:taskId,
+    template_item_id:itemId,
+    employee_id:employeeId,
+    value,
+    version:expectedVersion+1,
+    answered_at:now(),
+    updated_at:now()
+  };
+  const{error}=await service.from("task_answers").upsert(row,{onConflict:"organization_id,task_instance_id,template_item_id,employee_id"});
+  if(error)fail(500,"task_answer_failed",error.message);
+  const progress=await updateTaskAssignmentProgress(context,taskId,"in_progress",Boolean(task.task_templates?.review_required));
+  return successEnvelope(requestId,{taskId,itemId,version:expectedVersion+1,taskStatus:progress.status,taskVersion:progress.version},Number(progress.version)||null);
+}
+async function submitTask(body:any,requestId:string){
+  const context=await sessionContext(String(body.token||""));
+  requireRole(context,["employee"]);
+  const taskId=String(body.taskId||"");
+  if(!taskId)fail(400,"task_id_missing","Aufgaben-ID fehlt.");
+  const task=await taskAccess(context,taskId);
+  const items=Array.isArray(task.task_templates?.task_template_items)?task.task_templates.task_template_items:[];
+  const answers=task.task_answers||[];
+  const evidence=task.task_evidence||[];
+  const employeeId=String(context.session.subject_id);
+  const missing:string[]=[];
+  for(const item of items){
+    if(!item.required)continue;
+    if(item.answer_type==="photo"){
+      if(!evidence.some((file:any)=>String(file.template_item_id)===String(item.id)&&String(file.uploaded_by)===employeeId&&!file.deleted_at))missing.push(String(item.label||item.id));
+    }else if(!answers.some((answer:any)=>String(answer.template_item_id)===String(item.id)&&String(answer.employee_id)===employeeId&&answer.value!==null&&answer.value!=="")){
+      missing.push(String(item.label||item.id));
+    }
+  }
+  if(missing.length)fail(422,"required_items_missing","Pflichtfelder sind noch nicht vollständig.",{missing});
+  const progress=await updateTaskAssignmentProgress(context,taskId,"completed",Boolean(task.task_templates?.review_required));
+  return successEnvelope(requestId,{taskId,status:progress.status,version:progress.version},Number(progress.version)||null);
+}
+async function reviewTask(body:any,requestId:string){
+  const context=await sessionContext(String(body.token||""));
+  requireRole(context,["owner","manager"]);
+  const taskId=String(body.taskId||"");
+  const decision=String(body.decision||"");
+  if(!taskId||!["completed","rejected","waived"].includes(decision))fail(400,"invalid_decision","Entscheidung ist ungültig.");
+  const task=await taskAccess(context,taskId);
+  const nextVersion=Number(task.version||0)+1;
+  const{data,error}=await service.from("task_instances").update({
+    status:decision,
+    reviewed_at:now(),
+    reviewed_by:context.session.subject_id,
+    version:nextVersion,
+    updated_at:now(),
+    completed_at:decision==="completed"?now():task.completed_at,
+    payload:{...(task.payload||{}),reviewReason:String(body.reason||"")}
+  }).eq("organization_id",context.organizationId).eq("id",taskId).eq("version",task.version).select("id").maybeSingle();
+  if(error||!data)fail(409,"version_conflict",error?.message||"Aufgabe wurde gleichzeitig geändert.");
+  return successEnvelope(requestId,{taskId,status:decision,version:nextVersion},nextVersion);
+}
+async function handleLocalTaskAction(action:string,body:any,requestId:string){
+  switch(action){
+    case"tasks":return scopedTasks(body,requestId);
+    case"saveTaskAnswer":return saveTaskAnswer(body,requestId);
+    case"submitTask":return submitTask(body,requestId);
+    case"reviewTask":return reviewTask(body,requestId);
+    default:fail(400,"unknown_task_action","Unbekannte Aufgabenaktion.");
+  }
 }
 
 Deno.serve(async(request:Request)=>{
@@ -179,7 +313,8 @@ Deno.serve(async(request:Request)=>{
     const text=await request.text();
     if(new TextEncoder().encode(text).byteLength>MAX_BODY_BYTES)return json({error:{code:"request_too_large",message:"Request too large"}},413,origin);
     const body=text?JSON.parse(text):{};
-    if(String(body.action||"")==="tasks")return json(await scopedTasks(body,requestId),200,origin);
+    const action=String(body.action||"");
+    if(LOCAL_TASK_ACTIONS.has(action))return json(await handleLocalTaskAction(action,body,requestId),200,origin);
 
     const upstream=await fetch(UPSTREAM,{
       method:"POST",
