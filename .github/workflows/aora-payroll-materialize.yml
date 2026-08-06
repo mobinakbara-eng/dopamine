@@ -23,6 +23,7 @@ jobs:
           cat .aora-payload/part-* > /tmp/aora-payload.b64
           base64 -d /tmp/aora-payload.b64 > /tmp/aora-payload.tar.xz
           tar -xJf /tmp/aora-payload.tar.xz -C "$GITHUB_WORKSPACE"
+          node -e 'const fs=require("fs");const p="aora-v8-final/package.json";const j=JSON.parse(fs.readFileSync(p,"utf8"));j.version="8.1.0-production";fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n")'
           rm -rf .aora-payload
           rm -f .github/workflows/aora-payroll-materialize.yml
       - name: Validate source contracts
