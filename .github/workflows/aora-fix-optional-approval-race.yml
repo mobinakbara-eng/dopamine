@@ -20,26 +20,27 @@ jobs:
 
           ui=Path('aora-v8-final/app/modules/optional-timesheet-signature.js')
           s=ui.read_text()
-          old='''    const dialog=button.closest("dialog");button.disabled=true;\n    if(dialog){try{if(typeof dialog.close==="function"&&dialog.open)dialog.close()}catch{}dialog.removeAttribute("open");dialog.hidden=true}\n    try{\n      await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});\n      unsignedIds.add(String(button.dataset.submissionId));unsignedLoadedAt=Date.now();closeApprovalDialogs();toast("Der Nachweis wurde ohne Unterschrift bestätigt.");'''
-          new='''    const dialog=button.closest("dialog");button.disabled=true;button.setAttribute("aria-busy","true");\n    try{\n      await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});\n      unsignedIds.add(String(button.dataset.submissionId));unsignedLoadedAt=Date.now();closeApprovalDialogs();toast("Der Nachweis wurde ohne Unterschrift bestätigt.");'''
-          if old not in s: raise SystemExit('UI start block not found')
-          s=s.replace(old,new)
+          old='''    const dialog=button.closest("dialog");button.disabled=true;\n    if(dialog){try{if(typeof dialog.close==="function"&&dialog.open)dialog.close()}catch{}dialog.removeAttribute("open");dialog.hidden=true}\n    try{\n      await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});'''
+          new='''    const dialog=button.closest("dialog");button.disabled=true;button.setAttribute("aria-busy","true");\n    try{\n      await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});'''
+          if old not in s: raise SystemExit('UI block not found')
+          s=s.replace(old,new,1)
           s=s.replace('''    }finally{if(button.isConnected)button.disabled=false}\n  }\n  async function requestOptional''','''    }finally{if(button.isConnected){button.disabled=false;button.removeAttribute("aria-busy")}}\n  }\n  async function requestOptional''',1)
           ui.write_text(s)
 
           test=Path('aora-v8-final/tests/aora-timesheet-document-signing.spec.mjs')
           t=test.read_text()
-          old='''    await employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click();\n    await expect(employee.locator("#timesheet-document-signing-dialog")).not.toHaveAttribute("open",{timeout:30000});\n    let acknowledged=null;\n    await expect.poll(async()=>{'''
-          new='''    const approval=await runOptionalAction(employee,"approveWithoutSignature",()=>employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click(),[200]);\n    expect(approval.body.submission.status).toBe("approved");\n    expect(approval.body.submission.approval_method).toBe("acknowledgement");\n    expect(approval.body.submission.acknowledgement_hash).toMatch(/^[a-f0-9]{64}$/);\n    await expect(employee.locator("#timesheet-document-signing-dialog")).not.toHaveAttribute("open",{timeout:30000});\n    let acknowledged=null;\n    await expect.poll(async()=>{'''
-          if old not in t: raise SystemExit('test click block not found')
-          test.write_text(t.replace(old,new))
+          old='''    await employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click();\n    await expect(employee.locator("#timesheet-document-signing-dialog")).not.toHaveAttribute("open",{timeout:30000});'''
+          new='''    const approval=await runOptionalAction(employee,"approveWithoutSignature",()=>employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click(),[200]);\n    expect(approval.body.submission.status).toBe("approved");\n    expect(approval.body.submission.approval_method).toBe("acknowledgement");\n    expect(approval.body.submission.acknowledgement_hash).toMatch(/^[a-f0-9]{64}$/);\n    await expect(employee.locator("#timesheet-document-signing-dialog")).not.toHaveAttribute("open",{timeout:30000});'''
+          if old not in t: raise SystemExit('test block not found')
+          test.write_text(t.replace(old,new,1))
 
           fn=Path('aora-v8-final/supabase/functions/aora-v8-timesheet-optional-approval/index.ts')
           f=fn.read_text()
-          old='''  const {data:submission,error:loadError}=await service.from("timesheet_submissions").select("*").eq("organization_id",ctx.organization.id).eq("id",submissionId).eq("employee_id",ctx.session.subject_id).eq("status","submitted").maybeSingle();\n  if(loadError)dbError("Offener Nachweis konnte nicht geladen werden",loadError);\n  if(!submission)fail("Der Nachweis ist nicht mehr zur Bestätigung offen.",409);\n  await assertSnapshot(submission);'''
-          new='''  const {data:submission,error:loadError}=await service.from("timesheet_submissions").select("*").eq("organization_id",ctx.organization.id).eq("id",submissionId).eq("employee_id",ctx.session.subject_id).maybeSingle();\n  if(loadError)dbError("Offener Nachweis konnte nicht geladen werden",loadError);\n  if(!submission)fail("Der Nachweis wurde nicht gefunden.",404);\n  if(["approved","locked"].includes(submission.status)&&submission.approval_method==="acknowledgement"&&submission.acknowledgement_hash)return submission;\n  if(submission.status!=="submitted")fail("Der Nachweis ist nicht mehr zur Bestätigung offen.",409);\n  await assertSnapshot(submission);'''
-          if old not in f: raise SystemExit('backend load block not found')
-          fn.write_text(f.replace(old,new).replace('const WORKFLOW_VERSION="2026-08-06.3";','const WORKFLOW_VERSION="2026-08-06.4";'))
+          target='.eq("employee_id",ctx.session.subject_id).eq("status","submitted").maybeSingle();if(loadError)dbError("Offener Nachweis konnte nicht geladen werden",loadError);if(!submission)fail("Der Nachweis ist nicht mehr zur Bestätigung offen.",409);await assertSnapshot(submission);'
+          repl='.eq("employee_id",ctx.session.subject_id).maybeSingle();if(loadError)dbError("Offener Nachweis konnte nicht geladen werden",loadError);if(!submission)fail("Der Nachweis wurde nicht gefunden.",404);if(["approved","locked"].includes(submission.status)&&submission.approval_method==="acknowledgement"&&submission.acknowledgement_hash)return submission;if(submission.status!=="submitted")fail("Der Nachweis ist nicht mehr zur Bestätigung offen.",409);await assertSnapshot(submission);'
+          if target not in f: raise SystemExit('compact backend block not found')
+          f=f.replace(target,repl,1).replace('const WORKFLOW_VERSION="2026-08-06.3";','const WORKFLOW_VERSION="2026-08-06.4";',1)
+          fn.write_text(f)
           PY
           git config user.name 'mobinakbara-eng'
           git config user.email 'mobinakbara@gmail.com'
