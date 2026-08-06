@@ -22,7 +22,7 @@ assert.match(files.payrollFunction, /aora_close_payroll_period_atomic/);
 assert.match(files.payrollFunction, /payroll-exports/);
 assert.match(files.payrollFunction, /manifest\.json/);
 assert.match(files.optionalFunction, /TIMESHEET_ACKNOWLEDGED_WITHOUT_SIGNATURE/);
-assert.match(files.optionalFunction, /approval_method: "acknowledgement"/);
+assert.match(files.optionalFunction, /approval_method\s*:\s*"acknowledgement"/);
 assert.match(files.migration, /Additive only/);
 assert.match(files.migration, /create table if not exists public\.payroll_periods/);
 assert.match(files.migration, /add column if not exists approval_method/);
