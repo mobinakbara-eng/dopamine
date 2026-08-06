@@ -28,16 +28,15 @@ jobs:
         shell: bash
         run: |
           set +e
-          {
+          (
             cd aora-v8-final
             npm install --no-save
             npm run check
             deno check --node-modules-dir=auto supabase/functions/aora-v8-final-workspace/index.ts
-          } > .github-team-news-check.log 2>&1
+          ) > .github/team-news-check.log 2>&1
           status=$?
-          mv .github-team-news-check.log ../.github/team-news-check.log
-          echo "$status" > ../.github/team-news-check-status
-          cat ../.github/team-news-check.log
+          echo "$status" > .github/team-news-check-status
+          cat .github/team-news-check.log
           exit 0
       - name: Commit patch and diagnostics
         shell: bash
