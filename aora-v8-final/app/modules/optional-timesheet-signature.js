@@ -48,7 +48,7 @@
     if(!consent||!signatureBox||!approve)return;
     const option=document.createElement("label");option.className="docsign-optional-toggle";option.innerHTML='<input type="checkbox" id="docsign-use-signature"><span><strong>Mit Unterschrift bestätigen</strong><small>Optional. Ohne Haken wird nur deine Bestätigung dokumentiert.</small></span>';
     consent.before(option);consent.hidden=true;signatureBox.hidden=true;approve.textContent="Ohne Unterschrift bestätigen";
-    option.querySelector("input").addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});
+    const toggle=option.querySelector("input");toggle.addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});approve.addEventListener("click",event=>{if(toggle.checked)return;event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(approve)},true);
   }
   async function approveWithoutSignature(button){
     const note=String(document.getElementById("docsign-decision-note")?.value||"").trim();button.disabled=true;
@@ -72,9 +72,7 @@
   document.addEventListener("click",event=>{
     const button=event.target?.closest?.("[data-docsign-action]");if(!button)return;
     if(button.dataset.docsignAction==="request"){event.preventDefault();event.stopImmediatePropagation();requestOptional(button);return}
-    if(button.dataset.docsignAction==="decide"&&button.dataset.decision==="approved"){
-      const useSignature=document.getElementById("docsign-use-signature");if(useSignature&&!useSignature.checked){event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(button)}
-    }
+    
   },true);
   const observer=new MutationObserver(()=>{patchCopy();enhanceDialog();applyStatusLabels();if(S?.session)queueMicrotask(()=>refreshUnsigned())});
   const root=document.getElementById("app");if(root)observer.observe(root,{childList:true,subtree:true});
