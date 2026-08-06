@@ -1,0 +1,47 @@
+name: One-shot Team News persistence fix
+
+on:
+  push:
+    branches:
+      - fix/team-news-atomic-persistence
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/team-news-atomic-persistence
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Apply Team News atomic persistence fix
+        run: python3 .github/scripts/fix-team-news-persistence.py
+      - name: Run source, build and Deno checks
+        working-directory: aora-v8-final
+        run: |
+          npm install --no-save
+          npm run check
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-final-workspace/index.ts
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No patch changes remain."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add aora-v8-final/supabase/functions/aora-v8-final-workspace/structural-custom.ts \
+                  aora-v8-final/tests/team-news-atomic-persistence-source.mjs \
+                  aora-v8-final/package.json
+          git commit -m "Persist Team News without legacy proxy recursion"
+          git push origin HEAD:fix/team-news-atomic-persistence
