@@ -41,7 +41,7 @@ export const emailOk = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valu
 export const allowedOrigin = (origin: string | null) => {
   if (!origin) return true;
   try {
-    const url = new URL(origin);
+    const url = new globalThis.URL(origin);
     return url.hostname === "localhost" ||
       url.hostname === "127.0.0.1" ||
       url.hostname.endsWith(".vercel.app");
@@ -524,11 +524,12 @@ export async function sendInvite(
   origin: string | null,
   invitation: any,
   accessRole: "manager" | "employee",
+  workspaceSlug: string,
 ) {
   const redirectOrigin = appOriginForRequest(origin);
   const route = accessRole === "manager" ? "arbeitgeber/" : "arbeitnehmer/";
   const redirectUrl = new globalThis.URL(`/${route}`, redirectOrigin);
-  redirectUrl.searchParams.set("workspace", ctx.organization.slug);
+  redirectUrl.searchParams.set("workspace", workspaceSlug);
   redirectUrl.searchParams.set("email_login", "1");
   redirectUrl.searchParams.set("invitation", invitation.id);
   const redirectTo = redirectUrl.toString();

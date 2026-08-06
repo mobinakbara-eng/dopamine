@@ -25,6 +25,7 @@ export const STRUCTURAL_TYPES = new Set([
   "REVOKE_INVITATION",
   "UPDATE_MANAGER_ACCESS",
   "DEACTIVATE_ACCOUNT",
+  "ADD_ANNOUNCEMENT",
   "CREATE_KIOSK_DEVICE",
   "ROTATE_KIOSK_ACTIVATION",
   "TOGGLE_KIOSK_LOCK",
@@ -342,7 +343,7 @@ export async function applyStructural(
       const input = event.manager || {};
       const name = String(input.name || "").trim();
       const email = String(input.email || "").trim().toLowerCase();
-      const locationIds = [...new Set((input.locationIds || []).map(String))];
+      const locationIds: string[] = [...new Set<string>((input.locationIds || []).map((value: any) => String(value)))];
       if (name.length < 2 || !emailOk(email) || !locationIds.length) {
         throw Object.assign(
           new Error("Name, gültige E-Mail und mindestens ein Laden sind erforderlich."),
@@ -551,7 +552,7 @@ export async function applyStructural(
           status: 404,
         });
       }
-      const locationIds = [...new Set((event.locationIds || []).map(String))];
+      const locationIds: string[] = [...new Set<string>((event.locationIds || []).map((value: any) => String(value)))];
       if (!locationIds.length) {
         throw Object.assign(
           new Error("Mindestens ein gültiger Laden ist erforderlich."),
@@ -630,6 +631,47 @@ export async function applyStructural(
         account.id,
         account.name,
         account.locationId ? { locationId: account.locationId } : null,
+      );
+      break;
+    }
+
+    case "ADD_ANNOUNCEMENT": {
+      const input = event.announcement || {};
+      const title = String(input.title || "").trim();
+      const body = String(input.body || "").trim();
+      const audience = String(input.audience || "").trim();
+      if (!title || title.length > 160 || !body || body.length > 5000) {
+        throw Object.assign(
+          new Error("Titel und Text sind erforderlich und dürfen nicht zu lang sein."),
+          { status: 400 },
+        );
+      }
+      if (audience !== "all") requireLocation(state, audience);
+      if (ctx.accessRole === "manager") {
+        if (audience === "all" || !allowedLocations(ctx).has(audience)) {
+          throw Object.assign(
+            new Error("Manager dürfen Mitteilungen nur an ihre zugewiesenen Standorte senden."),
+            { status: 403 },
+          );
+        }
+      }
+      const announcement = {
+        id: id("announcement"),
+        title,
+        body,
+        audience,
+        createdAt: now(),
+        createdBy: ctx.admin.id,
+      };
+      state.announcements = [announcement, ...(state.announcements || [])];
+      addAudit(
+        state,
+        ctx,
+        "announcement.created",
+        "announcement",
+        announcement.id,
+        title,
+        audience === "all" ? null : { locationId: audience },
       );
       break;
     }
