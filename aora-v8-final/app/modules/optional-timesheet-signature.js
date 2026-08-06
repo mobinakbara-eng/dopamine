@@ -127,6 +127,8 @@
   document.addEventListener("click",event=>{
     const policyButton=event.target?.closest?.("[data-signature-policy]");if(policyButton){event.preventDefault();event.stopImmediatePropagation();savePolicy(policyButton);return}
     const button=event.target?.closest?.("[data-docsign-action]");if(!button)return;
+    if(button.dataset.docsignAction==="refresh-manager"){unsignedLoadedAt=0;queueMicrotask(()=>refreshUnsigned(true));return}
+    if(button.dataset.docsignAction==="refresh-employee"){settingsLoadedAt=0;queueMicrotask(()=>refreshSettings(true));return}
     if(button.dataset.docsignAction==="request"){event.preventDefault();event.stopImmediatePropagation();requestOptional(button);return}
   },true);
   const observer=new MutationObserver(()=>{patchCopy();enhanceManagerPolicy();enhanceDialog();applyStatusLabels();if(S?.session)queueMicrotask(()=>{refreshUnsigned();refreshSettings()})});
