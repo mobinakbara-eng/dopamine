@@ -1,1 +1,0 @@
-connect-src 'self' https://xqgkawskftzurbujrpex.supabase.co wss://xqgkawskftzurbujrpex.supabase.co
