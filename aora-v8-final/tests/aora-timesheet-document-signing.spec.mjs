@@ -173,7 +173,10 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     await expect(employee.locator("#docsign-use-signature")).not.toBeChecked();
     await expect(employee.locator("#docsign-consent")).toBeHidden();
     await expect(employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"})).toBeVisible();
-    await employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click();
+    const approval=await runOptionalAction(employee,"approveWithoutSignature",()=>employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click(),[200]);
+    expect(approval.body.submission.status).toBe("approved");
+    expect(approval.body.submission.approval_method).toBe("acknowledgement");
+    expect(approval.body.submission.acknowledgement_hash).toMatch(/^[a-f0-9]{64}$/);
     await expect(employee.locator("#timesheet-document-signing-dialog")).not.toHaveAttribute("open",{timeout:30000});
     let acknowledged=null;
     await expect.poll(async()=>{

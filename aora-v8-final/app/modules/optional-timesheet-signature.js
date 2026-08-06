@@ -92,8 +92,7 @@
   }
   async function approveWithoutSignature(button){
     const note=String(document.getElementById("docsign-decision-note")?.value||"").trim();
-    const dialog=button.closest("dialog");button.disabled=true;
-    if(dialog){try{if(typeof dialog.close==="function"&&dialog.open)dialog.close()}catch{}dialog.removeAttribute("open");dialog.hidden=true}
+    const dialog=button.closest("dialog");button.disabled=true;button.setAttribute("aria-busy","true");
     try{
       await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});
       unsignedIds.add(String(button.dataset.submissionId));unsignedLoadedAt=Date.now();closeApprovalDialogs();toast("Der Nachweis wurde ohne Unterschrift bestätigt.");
@@ -102,7 +101,7 @@
     }catch(error){
       if(dialog?.isConnected){dialog.hidden=false;try{if(typeof dialog.showModal==="function"&&!dialog.open)dialog.showModal()}catch{}}
       toast(error.message||"Bestätigung konnte nicht gespeichert werden.","error");
-    }finally{if(button.isConnected)button.disabled=false}
+    }finally{if(button.isConnected){button.disabled=false;button.removeAttribute("aria-busy")}}
   }
   async function requestOptional(button){
     button.disabled=true;
