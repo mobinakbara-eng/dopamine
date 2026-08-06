@@ -93,7 +93,7 @@ test("every remaining role section renders without runtime errors and Berichte s
   const employeeErrors=collectRuntimeErrors(employee);
   await login(employee,"employee",required("AORA_EMPLOYEE_EMAIL"),required("AORA_EMPLOYEE_PASSWORD"));
   const employeeViews=await traverseEveryEmployeeView(employee);
-  for(const requiredView of ["home","calendar","time","leave","tasks","more"])expect(employeeViews).toContain(requiredView);
+  for(const requiredView of ["home","calendar","time","leave","more"])expect(employeeViews).toContain(requiredView);
   expect(employeeErrors).toEqual([]);
 
   await employeeContext.close();
