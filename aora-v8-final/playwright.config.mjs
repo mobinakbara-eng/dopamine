@@ -45,7 +45,7 @@ export default defineConfig({
     {
       name:"chromium",
       dependencies:["mobile-layout"],
-      testMatch:/aora-(accessibility|four-role|unified-login|time-correction-clock-hub)\.spec\.mjs/,
+      testMatch:/aora-(accessibility|four-role|unified-login|time-correction-clock-hub|navigation-qa)\.spec\.mjs/,
       use:desktop
     },
     {
