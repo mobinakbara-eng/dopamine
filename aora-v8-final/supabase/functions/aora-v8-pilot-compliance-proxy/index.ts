@@ -3,11 +3,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CORE_URL = `${SUPABASE_URL}/functions/v1/aora-v8-pilot-compliance`;
-const DEFAULT_ORIGIN = "https://aora-v8-hardening.vercel.app";
+const DEFAULT_ORIGIN = "https://dopamine-blond.vercel.app";
 const PREVIEW_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const MAX_BODY_BYTES = 2_500_000;
 const EXACT_ORIGINS = new Set([
   DEFAULT_ORIGIN,
+  "https://dopamine-mobins-projects-4f428afa.vercel.app",
+  "https://dopamine-git-main-mobins-projects-4f428afa.vercel.app",
+  "https://aora-v8-hardening.vercel.app",
   "https://aora-v8-final.vercel.app",
   "https://aora-workforce.vercel.app",
 ]);
