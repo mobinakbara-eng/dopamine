@@ -7,9 +7,11 @@ import { unzipSync, strFromU8 } from "fflate";
 const workspace=process.env.AORA_WORKSPACE_SLUG;
 const testDate=process.env.AORA_TEST_DATE;
 const functionPath="/aora-v8-timesheet-document-signing";
+const optionalFunctionPath="/aora-v8-timesheet-optional-approval";
 
 function required(name){const value=process.env[name];if(!value)throw new Error(`Missing ephemeral CI value: ${name}`);return value}
 function actionResponse(response,action){return response.request().method()==="POST"&&response.url().includes(functionPath)&&String(response.request().postData()||"").includes(`"action":"${action}"`)}
+function optionalActionResponse(response,action){return response.request().method()==="POST"&&response.url().includes(optionalFunctionPath)&&String(response.request().postData()||"").includes(`"action":"${action}"`)}
 function captureErrors(page){
   const errors=[];
   page.on("console",message=>{
@@ -39,10 +41,18 @@ async function openManagerDocuments(page){
   await page.locator('.admin-nav [data-a="admin-view"][data-view="worktime"]').click();
   await expect(page.locator(".worktime-tabs")).toBeVisible({timeout:30000});
   await page.locator('[data-worktime-action="tab"][data-tab="documents"]').click();
-  await expect(page.getByRole("heading",{name:"Erst prüfen und exportieren. Dann gezielt bestätigen lassen."})).toBeVisible({timeout:30000});
+  await expect(page.getByRole("heading",{name:"Erst prüfen und exportieren. Dann einfach bestätigen lassen."})).toBeVisible({timeout:30000});
 }
 async function runAction(page,action,trigger,expected=[200,201]){
   const responsePromise=page.waitForResponse(response=>actionResponse(response,action),{timeout:30000});
+  await trigger();
+  const response=await responsePromise;
+  const body=await response.json().catch(()=>({}));
+  expect(expected).toContain(response.status());
+  return{response,body};
+}
+async function runOptionalAction(page,action,trigger,expected=[200,201]){
+  const responsePromise=page.waitForResponse(response=>optionalActionResponse(response,action),{timeout:30000});
   await trigger();
   const response=await responsePromise;
   const body=await response.json().catch(()=>({}));
@@ -105,7 +115,7 @@ async function drawSignature(page){
 test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
   test.beforeAll(()=>{required("AORA_WORKSPACE_SLUG");required("AORA_TEST_DATE")});
 
-  test("manager preview, correction, one-time employee signature and signed exports",async({browser,baseURL},testInfo)=>{
+  test("manager preview, optional acknowledgement, one-time employee signature and signed exports",async({browser,baseURL},testInfo)=>{
     test.setTimeout(300000);
     const root=testInfo.outputPath("document-signing-evidence"),screenshots=path.join(root,"screenshots"),downloads=path.join(root,"downloads");
     await mkdir(screenshots,{recursive:true});await mkdir(downloads,{recursive:true});
@@ -135,7 +145,7 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     expect(unsignedParsed.text).toContain("Keine Bestaetigung des Mitarbeiters");
     expect(unsignedParsed.text).not.toContain("Bestaetigung und einmalige Unterschrift");
 
-    const requested=await runAction(manager,"requestApproval",()=>manager.locator('[data-docsign-action="request"]').first().click(),[200]);
+    const requested=await runOptionalAction(manager,"requestOptionalApproval",()=>manager.locator('[data-docsign-action="request"]').first().click(),[200]);
     expect(requested.body.submission.status).toBe("submitted");
     await expect(manager.getByText("Wartet auf Mitarbeiter",{exact:true}).first()).toBeVisible({timeout:30000});
     await manager.screenshot({path:path.join(screenshots,"03-manager-request-sent.png"),fullPage:true});
@@ -144,34 +154,40 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     const employee=await employeeContext.newPage(),employeeErrors=captureErrors(employee);
     await login(employee,"employee",required("AORA_EMPLOYEE_EMAIL"),required("AORA_EMPLOYEE_PASSWORD"));
     await employee.locator('.employee-bottom [data-a="employee-view"][data-view="more"]').click();
-    await expect(employee.getByRole("heading",{name:"Prüfen & einmalig unterschreiben"})).toBeVisible({timeout:30000});
+    await expect(employee.getByRole("heading",{name:"Prüfen & optional unterschreiben"})).toBeVisible({timeout:30000});
     await employee.locator('[data-docsign-action="open-employee"]').click();
-    await expect(employee.getByRole("heading",{name:"Du entscheidest bei jedem Nachweis neu."})).toBeVisible({timeout:30000});
+    await expect(employee.getByRole("heading",{name:"Du entscheidest bei jedem Nachweis, ob du unterschreiben möchtest."})).toBeVisible({timeout:30000});
     await employee.screenshot({path:path.join(screenshots,"04-employee-inbox.png"),fullPage:true});
 
     await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
-    await expect(employee.locator("#docsign-consent")).toBeVisible();
-    await expect(employee.getByText("Diese Zeichnung wird nicht als allgemeine Unterschrift gespeichert.")).toBeVisible();
-    await employee.locator("#docsign-decision-note").fill("Bitte Beginn nochmals prüfen.");
-    const declined=await runAction(employee,"decideTimesheet",()=>employee.locator('[data-docsign-action="decide"][data-decision="declined"]').click(),[200]);
-    expect(declined.body.submission.status).toBe("open");
-    expect(declined.body.submission.employee_decision).toBe("declined");
-    await employee.screenshot({path:path.join(screenshots,"05-employee-correction-requested.png"),fullPage:true});
+    await expect(employee.locator("#docsign-use-signature")).toBeVisible();
+    await expect(employee.locator("#docsign-use-signature")).not.toBeChecked();
+    await expect(employee.locator("#docsign-consent")).toBeHidden();
+    await expect(employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"})).toBeVisible();
+    const acknowledged=await runOptionalAction(employee,"approveWithoutSignature",()=>employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click(),[200]);
+    expect(acknowledged.body.submission.status).toBe("approved");
+    expect(acknowledged.body.submission.approval_method).toBe("acknowledgement");
+    expect(acknowledged.body.submission.document_signature_id).toBeNull();
+    expect(acknowledged.body.submission.signed_hash).toBeNull();
+    expect(acknowledged.body.submission.acknowledgement_hash).toMatch(/^[a-f0-9]{64}$/);
+    await employee.screenshot({path:path.join(screenshots,"05-employee-approved-without-signature.png"),fullPage:true});
 
     await manager.locator('[data-docsign-action="refresh-manager"]').click();
-    await expect(manager.getByText("Korrektur angefordert",{exact:true}).first()).toBeVisible({timeout:30000});
-    await expect(manager.getByText("Bitte Beginn nochmals prüfen.").first()).toBeVisible();
-    await manager.screenshot({path:path.join(screenshots,"06-manager-correction-visible.png"),fullPage:true});
+    await expect(manager.getByText("Bestätigt · ohne Unterschrift",{exact:true}).first()).toBeVisible({timeout:30000});
+    await manager.screenshot({path:path.join(screenshots,"06-manager-optional-approval-visible.png"),fullPage:true});
 
     const versionTwo=await runAction(manager,"prepareTimesheet",()=>manager.locator('[data-docsign-action="prepare"]').click(),[200]);
     expect(versionTwo.body.submission.version).toBe(2);
     expect(versionTwo.body.submission.status).toBe("open");
-    await runAction(manager,"requestApproval",()=>manager.locator('[data-docsign-action="request"]').first().click(),[200]);
+    await runOptionalAction(manager,"requestOptionalApproval",()=>manager.locator('[data-docsign-action="request"]').first().click(),[200]);
 
     await employee.locator('[data-docsign-action="refresh-employee"]').click();
     await expect(employee.getByText(/Version 2/).first()).toBeVisible({timeout:30000});
     await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
     await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();
+    await employee.locator("#docsign-use-signature").check();
+    await expect(employee.locator("#docsign-consent")).toBeVisible();
+    await expect(employee.getByText("Diese Zeichnung wird nicht als allgemeine Unterschrift gespeichert.")).toBeVisible();
     await employee.locator("#docsign-consent").check();
     await drawSignature(employee);
     await employee.screenshot({path:path.join(screenshots,"07-employee-one-time-signature.png"),fullPage:true});
