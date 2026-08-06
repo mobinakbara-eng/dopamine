@@ -31,3 +31,10 @@ jobs:
           path: aora-v8-final/dist
           if-no-files-found: error
           retention-days: 2
+      - name: Upload timesheet test source
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-timesheet-test-source-${{ github.sha }}
+          path: aora-v8-final/tests/aora-timesheet-document-signing.spec.mjs
+          if-no-files-found: error
+          retention-days: 2
