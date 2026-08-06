@@ -24,24 +24,35 @@ jobs:
           deno-version: v2.x
       - name: Apply Team News atomic persistence fix
         run: python3 .github/scripts/fix-team-news-persistence.py
-      - name: Run source, build and Deno checks
-        working-directory: aora-v8-final
+      - name: Run checks and capture diagnostics
+        shell: bash
         run: |
-          npm install --no-save
-          npm run check
-          deno check --node-modules-dir=auto supabase/functions/aora-v8-final-workspace/index.ts
-      - name: Commit verified patch
+          set +e
+          {
+            cd aora-v8-final
+            npm install --no-save
+            npm run check
+            deno check --node-modules-dir=auto supabase/functions/aora-v8-final-workspace/index.ts
+          } > .github-team-news-check.log 2>&1
+          status=$?
+          mv .github-team-news-check.log ../.github/team-news-check.log
+          echo "$status" > ../.github/team-news-check-status
+          cat ../.github/team-news-check.log
+          exit 0
+      - name: Commit patch and diagnostics
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo "No patch changes remain."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add aora-v8-final/supabase/functions/aora-v8-final-workspace/structural-custom.ts \
                   aora-v8-final/tests/team-news-atomic-persistence-source.mjs \
-                  aora-v8-final/package.json
+                  aora-v8-final/package.json \
+                  .github/team-news-check.log \
+                  .github/team-news-check-status
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
           git commit -m "Persist Team News without legacy proxy recursion"
           git push origin HEAD:fix/team-news-atomic-persistence
