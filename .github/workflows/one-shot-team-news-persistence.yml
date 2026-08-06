@@ -45,6 +45,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add aora-v8-final/supabase/functions/aora-v8-final-workspace/structural-custom.ts \
+                  aora-v8-final/supabase/functions/aora-v8-final-workspace/core.ts \
+                  aora-v8-final/supabase/functions/aora-v8-final-workspace/structural.ts \
                   aora-v8-final/tests/team-news-atomic-persistence-source.mjs \
                   aora-v8-final/package.json \
                   .github/team-news-check.log \
