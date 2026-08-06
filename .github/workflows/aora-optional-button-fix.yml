@@ -24,23 +24,12 @@ jobs:
           from pathlib import Path
           path=Path('aora-v8-final/app/modules/optional-timesheet-signature.js')
           text=path.read_text()
-          old='''    option.querySelector("input").addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});
-          }'''
-          new='''    const toggle=option.querySelector("input");
-              toggle.addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});
-              approve.addEventListener("click",event=>{
-                if(toggle.checked)return;
-                event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(approve);
-              },true);
-          }'''
-          old_handler='''    if(button.dataset.docsignAction==="decide"&&button.dataset.decision==="approved"){
-              const useSignature=document.getElementById("docsign-use-signature");if(useSignature&&!useSignature.checked){event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(button)}
-            }
-          },true);'''
-          new_handler='''  },true);'''
+          old='option.querySelector("input").addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});'
+          new='const toggle=option.querySelector("input");toggle.addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});approve.addEventListener("click",event=>{if(toggle.checked)return;event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(approve)},true);'
+          old_handler='if(button.dataset.docsignAction==="decide"&&button.dataset.decision==="approved"){\n      const useSignature=document.getElementById("docsign-use-signature");if(useSignature&&!useSignature.checked){event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(button)}\n    }'
           if old not in text: raise SystemExit('dialog binding marker not found')
           if old_handler not in text: raise SystemExit('legacy optional handler marker not found')
-          text=text.replace(old,new,1).replace(old_handler,new_handler,1)
+          text=text.replace(old,new,1).replace(old_handler,'',1)
           path.write_text(text)
           PY
           node --check aora-v8-final/app/modules/optional-timesheet-signature.js
