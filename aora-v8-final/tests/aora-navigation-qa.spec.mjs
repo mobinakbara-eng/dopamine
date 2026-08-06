@@ -14,19 +14,27 @@ async function login(page,role,email,password){
 
 function collectRuntimeErrors(page){
   const errors=[];
-  page.on("pageerror",error=>errors.push(error.message));
+  page.on("pageerror",error=>errors.push(`page:${error.message}`));
+  page.on("console",message=>{if(message.type()==="error")errors.push(`console:${message.text()}`)});
   return errors;
 }
 
 async function traverseAdminViews(page,views){
   await expect(page.locator('.admin-nav [data-view="reports"]')).toHaveCount(0);
-  await expect(page.getByRole("button",{name:"Berichte",exact:true})).toHaveCount(0);
+  await expect(page.locator('.admin-nav').getByRole("button",{name:"Berichte",exact:true})).toHaveCount(0);
   for(const view of views){
     const button=page.locator(`.admin-nav [data-a="admin-view"][data-view="${view}"]`);
     await expect(button).toBeVisible();
     await button.click();
     await expect(page.locator(".admin-content")).toBeVisible();
     await expect.poll(()=>page.evaluate(()=>S.adminView)).toBe(view);
+    if(view==="worktime"){
+      await expect(page.getByRole("heading",{name:"Stempeln, prüfen, ändern und abschließen."})).toBeVisible();
+    }
+    if(view==="compliance"){
+      await expect(page.getByRole("heading",{name:"Compliance, Exporte und Zeitkorrekturen"})).toBeVisible();
+      await expect(page.locator(".compliance-alert")).toHaveCount(0);
+    }
   }
 }
 
@@ -35,7 +43,7 @@ test("all remaining role sections render without runtime errors and Berichte sta
   const owner=await ownerContext.newPage();
   const ownerErrors=collectRuntimeErrors(owner);
   await login(owner,"owner",required("AORA_OWNER_EMAIL"),required("AORA_OWNER_PASSWORD"));
-  await traverseAdminViews(owner,["owner-overview","locations","managers","invitations","operations","settings"]);
+  await traverseAdminViews(owner,["owner-overview","locations","managers","invitations","operations","worktime","compliance","settings"]);
   await owner.evaluate(()=>{S.adminView="reports";renderAdmin()});
   await expect.poll(()=>owner.evaluate(()=>S.adminView)).toBe("owner-overview");
   await expect(owner.locator('.admin-nav [data-view="reports"]')).toHaveCount(0);
@@ -45,7 +53,7 @@ test("all remaining role sections render without runtime errors and Berichte sta
   const manager=await managerContext.newPage();
   const managerErrors=collectRuntimeErrors(manager);
   await login(manager,"manager",required("AORA_MANAGER_EMAIL"),required("AORA_MANAGER_PASSWORD"));
-  await traverseAdminViews(manager,["overview","schedule","time","leave","employees","news","kiosk","settings"]);
+  await traverseAdminViews(manager,["overview","schedule","worktime","leave","employees","news","kiosk","compliance","settings"]);
   await manager.evaluate(()=>{S.adminView="reports";renderAdmin()});
   await expect.poll(()=>manager.evaluate(()=>S.adminView)).toBe("overview");
   await expect(manager.locator('.admin-nav [data-view="reports"]')).toHaveCount(0);
