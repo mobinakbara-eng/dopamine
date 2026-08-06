@@ -131,6 +131,8 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     const manager=await managerContext.newPage(),managerErrors=captureErrors(manager);
     await login(manager,"manager",required("AORA_MANAGER_EMAIL"),required("AORA_MANAGER_PASSWORD"));
     await openManagerDocuments(manager);
+    await expect(manager.getByText("Unterschrift für diesen Mitarbeiter",{exact:true})).toBeVisible({timeout:30000});
+    await expect(manager.getByRole("button",{name:"Optional",exact:true})).toHaveClass(/active/);
     await manager.screenshot({path:path.join(screenshots,"01-manager-empty-workflow.png"),fullPage:true});
 
     await manager.locator("#docsign-date-from").fill(testDate);
@@ -191,6 +193,10 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     await expect(manager.getByText("Bestätigt · ohne Unterschrift",{exact:true}).first()).toBeVisible({timeout:30000});
     await manager.screenshot({path:path.join(screenshots,"06-manager-optional-approval-visible.png"),fullPage:true});
 
+    await manager.getByRole("button",{name:"Erforderlich",exact:true}).click();
+    await expect(manager.getByRole("button",{name:"Erforderlich",exact:true})).toHaveClass(/active/);
+    const policy=await directOptionalCall(manager,"signatureSettings");
+    expect(policy.status).toBe(200);expect(policy.body.policies.some(item=>item.signature_required===true)).toBe(true);
     const versionTwo=await runAction(manager,"prepareTimesheet",()=>manager.locator('[data-docsign-action="prepare"]').click(),[200]);
     expect(versionTwo.body.submission.version).toBe(2);
     expect(versionTwo.body.submission.status).toBe("open");
@@ -200,7 +206,8 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     await expect(employee.getByText(/Version 2/).first()).toBeVisible({timeout:30000});
     await employee.locator(`[data-docsign-action="view"][data-submission-id="${submissionId}"]`).click();
     await expect(employee.getByText("Arbeitszeitnachweis · Version 2")).toBeVisible();
-    await employee.locator("#docsign-use-signature").check();
+    await expect(employee.locator("#docsign-use-signature")).toHaveCount(0);
+    await expect(employee.getByText("Unterschrift erforderlich",{exact:true})).toBeVisible();
     await expect(employee.locator("#docsign-consent")).toBeVisible();
     await expect(employee.getByText("Diese Zeichnung wird nicht als allgemeine Unterschrift gespeichert.")).toBeVisible();
     await employee.locator("#docsign-consent").check();

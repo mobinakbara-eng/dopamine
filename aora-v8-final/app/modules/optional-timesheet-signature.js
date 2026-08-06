@@ -5,10 +5,14 @@
   window.__aoraOptionalTimesheetSignatureInstalled=true;
   const OPTIONAL_FUNCTION="aora-v8-timesheet-optional-approval";
   const DOCUMENT_FUNCTION="aora-v8-timesheet-document-signing";
-  let unsignedIds=new Set(),lastDialogSubmissionId="",refreshing=false;
+  let unsignedIds=new Set(),requiredIds=new Set(),policies=new Map(),lastDialogSubmissionId="",refreshing=false;
   function callOptional(action,payload={}){return request(OPTIONAL_FUNCTION,{action,token:S.session?.token,...payload})}
   function callDocument(action,payload={}){return request(DOCUMENT_FUNCTION,{action,token:S.session?.token,...payload})}
   function currentDate(){return typeof berlin==="function"?berlin().date:new Date().toISOString().slice(0,10)}
+  async function refreshSettings(){
+    if(!S?.session)return;
+    try{const data=await callOptional("signatureSettings");policies=new Map((data.policies||[]).map(item=>[String(item.employee_id),Boolean(item.signature_required)]));requiredIds=new Set((data.submissions||[]).filter(item=>item.signature_required).map(item=>String(item.id)));enhanceManagerPolicy();enhanceDialog()}catch(error){console.warn("Signature settings could not be loaded",error)}
+  }
   async function refreshUnsigned(force=false){
     if(refreshing||!S?.session)return;
     if(!force&&unsignedIds.size)return applyStatusLabels();
@@ -46,12 +50,24 @@
       dialog.removeAttribute("open");
     }
   }
+  function enhanceManagerPolicy(){
+    const select=document.getElementById("docsign-employee-select");if(!select)return;
+    const host=select.closest("label")?.parentElement;if(!host||host.querySelector(".docsign-policy-control"))return;
+    const employeeId=String(select.value||"");const required=policies.get(employeeId)===true;
+    const box=document.createElement("div");box.className="docsign-policy-control";box.innerHTML=`<span><strong>Unterschrift für diesen Mitarbeiter</strong><small>Gilt für neu gesendete Nachweise.</small></span><div><button type="button" data-signature-policy="optional" data-employee-id="${employeeId}" class="${required?"":"active"}">Optional</button><button type="button" data-signature-policy="required" data-employee-id="${employeeId}" class="${required?"active":""}">Erforderlich</button></div>`;host.appendChild(box);
+  }
+  async function savePolicy(button){
+    const required=button.dataset.signaturePolicy==="required",employeeId=String(button.dataset.employeeId||"");button.disabled=true;
+    try{await callOptional("setSignatureRequirement",{employeeId,signatureRequired:required});policies.set(employeeId,required);document.querySelector(".docsign-policy-control")?.remove();enhanceManagerPolicy();toast(required?"Unterschrift ist für neue Nachweise erforderlich.":"Unterschrift ist für neue Nachweise optional.")}catch(error){toast(error.message||"Einstellung konnte nicht gespeichert werden.","error")}finally{if(button.isConnected)button.disabled=false}
+  }
   function enhanceDialog(){
     const dialog=document.getElementById("timesheet-document-signing-dialog");
     const decision=dialog?.querySelector(".docsign-decision");if(!decision||decision.dataset.optionalReady==="true")return;
     decision.dataset.optionalReady="true";
     const consent=decision.querySelector(".docsign-signature-consent"),signatureBox=decision.querySelector(".docsign-signature-box"),approve=decision.querySelector('[data-docsign-action="decide"][data-decision="approved"]');
     if(!consent||!signatureBox||!approve)return;
+    const required=requiredIds.has(String(approve.dataset.submissionId));
+    if(required){consent.hidden=false;signatureBox.hidden=false;approve.textContent="Bestätigen & unterschreiben";const note=document.createElement("div");note.className="docsign-required-note";note.innerHTML="<strong>Unterschrift erforderlich</strong><small>Der Manager hat die Unterschrift für diesen Nachweis verpflichtend eingestellt.</small>";consent.before(note);return}
     const option=document.createElement("label");option.className="docsign-optional-toggle";option.innerHTML='<input type="checkbox" id="docsign-use-signature"><span><strong>Mit Unterschrift bestätigen</strong><small>Optional. Ohne Haken wird nur deine Bestätigung dokumentiert.</small></span>';
     consent.before(option);consent.hidden=true;signatureBox.hidden=true;approve.textContent="Ohne Unterschrift bestätigen";
     const toggle=option.querySelector("input");
@@ -99,12 +115,13 @@
     const prepare=event.target?.closest?.('[data-docnotice-action="prepare-send"]');if(prepare){event.preventDefault();event.stopImmediatePropagation();prepareAndRequest(prepare);return}
   },true);
   document.addEventListener("click",event=>{
+    const policyButton=event.target?.closest?.("[data-signature-policy]");if(policyButton){event.preventDefault();event.stopImmediatePropagation();savePolicy(policyButton);return}
     const button=event.target?.closest?.("[data-docsign-action]");if(!button)return;
     if(button.dataset.docsignAction==="request"){event.preventDefault();event.stopImmediatePropagation();requestOptional(button);return}
   },true);
-  const observer=new MutationObserver(()=>{patchCopy();enhanceDialog();applyStatusLabels();if(S?.session)queueMicrotask(()=>refreshUnsigned())});
+  const observer=new MutationObserver(()=>{patchCopy();enhanceManagerPolicy();enhanceDialog();applyStatusLabels();if(S?.session)queueMicrotask(()=>{refreshUnsigned();refreshSettings()})});
   const root=document.getElementById("app");if(root)observer.observe(root,{childList:true,subtree:true});
   const dialogObserver=new MutationObserver(()=>{enhanceDialog();patchCopy(document.getElementById("timesheet-document-signing-dialog")||document);applyStatusLabels()});
   dialogObserver.observe(document.body,{childList:true,subtree:true});
-  queueMicrotask(()=>{patchCopy();refreshUnsigned(true)});
+  queueMicrotask(()=>{patchCopy();refreshUnsigned(true);refreshSettings()});
 })();

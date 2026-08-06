@@ -6,7 +6,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const service = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-const WORKFLOW_VERSION = "2026-08-06.1";
+const WORKFLOW_VERSION = "2026-08-06.2";
 const DEFAULT_ORIGIN = "https://dopamine-mobins-projects-4f428afa.vercel.app";
 const TEAM_SUFFIX = "-mobins-projects-4f428afa.vercel.app";
 const EXACT_ORIGINS = new Set([
@@ -174,6 +174,52 @@ async function getSubmission(ctx: any, submissionId: string) {
   return data;
 }
 
+async function signaturePolicy(ctx: any, employeeId: string) {
+  const { data } = await service.from("employee_timesheet_signature_policies")
+    .select("signature_required")
+    .eq("organization_id", ctx.organization.id)
+    .eq("employee_id", employeeId)
+    .maybeSingle();
+  return Boolean(data?.signature_required);
+}
+async function signatureSettings(ctx: any) {
+  if (["owner", "manager"].includes(ctx.accessRole)) {
+    let employeeIds = ctx.state.employees
+      .filter((item: any) => item.active !== false && item.status !== "revoked")
+      .filter((item: any) => canAccessEmployee(ctx, String(item.id), item.locationId || item.primaryLocationId || null))
+      .map((item: any) => String(item.id));
+    if (!employeeIds.length) return { policies: [], submissions: [] };
+    const { data, error } = await service.from("employee_timesheet_signature_policies")
+      .select("employee_id,signature_required,updated_at,updated_by")
+      .eq("organization_id", ctx.organization.id)
+      .in("employee_id", employeeIds);
+    if (error) throw error;
+    return { policies: data || [], submissions: [] };
+  }
+  requireEmployee(ctx);
+  const { data, error } = await service.from("timesheet_submissions")
+    .select("id,signature_required,status")
+    .eq("organization_id", ctx.organization.id)
+    .eq("employee_id", ctx.session.subject_id)
+    .in("status", ["submitted", "approved", "locked"])
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return { policies: [], submissions: data || [] };
+}
+async function setSignatureRequirement(ctx: any, employeeId: string, required: boolean) {
+  requireManager(ctx);
+  const employee = ctx.state.employees.find((item: any) => String(item.id) === employeeId && item.active !== false && item.status !== "revoked");
+  if (!employee) fail("Mitarbeiter wurde nicht gefunden.", 404);
+  const locationId = employee.locationId || employee.primaryLocationId || null;
+  if (!canAccessEmployee(ctx, employeeId, locationId)) fail("Kein Zugriff auf diesen Mitarbeiter.", 403);
+  const row = { organization_id: ctx.organization.id, employee_id: employeeId, signature_required: required, updated_at: new Date().toISOString(), updated_by: String(ctx.session.subject_id) };
+  const { data, error } = await service.from("employee_timesheet_signature_policies").upsert(row, { onConflict: "organization_id,employee_id" }).select("employee_id,signature_required,updated_at,updated_by").single();
+  if (error) throw error;
+  await service.from("audit_logs").insert({ organization_id: ctx.organization.id, id: crypto.randomUUID(), action: "TIMESHEET_SIGNATURE_POLICY_CHANGED", actor: ctx.session.subject_id, actor_type: ctx.accessRole, actor_id: ctx.session.subject_id, entity: "employee", entity_type: "employee", entity_id: employeeId, created_at: new Date().toISOString(), payload: { signatureRequired: required }, metadata: { source: "timesheet-optional-approval", workflowVersion: WORKFLOW_VERSION } });
+  return data;
+}
+
 async function requestOptionalApproval(ctx: any, submissionId: string) {
   requireManager(ctx);
   const submission = await getSubmission(ctx, submissionId);
@@ -184,6 +230,7 @@ async function requestOptionalApproval(ctx: any, submissionId: string) {
     fail("Offene oder fehlende Zeitbuchungen müssen vor der Mitarbeiterbestätigung korrigiert werden.", 409);
   }
   const now = new Date().toISOString();
+  const signatureRequired = await signaturePolicy(ctx, String(submission.employee_id));
   const { data: updated, error } = await service.from("timesheet_submissions").update({
     status: "submitted",
     submitted_at: now,
@@ -198,6 +245,7 @@ async function requestOptionalApproval(ctx: any, submissionId: string) {
     acknowledgement_hash: null,
     acknowledged_at: null,
     acknowledged_by: null,
+    signature_required: signatureRequired,
   }).eq("organization_id", ctx.organization.id).eq("id", submission.id).select("*").single();
   if (error) throw error;
   await service.from("notifications").insert({
@@ -207,17 +255,20 @@ async function requestOptionalApproval(ctx: any, submissionId: string) {
     location_id: submission.location_id || null,
     type: "timesheet_approval",
     title: "Arbeitszeitnachweis prüfen",
-    body: `Bitte prüfe den Arbeitszeitnachweis für ${displayDate(submission.date_from)} bis ${displayDate(submission.date_to)}. Du kannst ihn mit oder ohne Unterschrift bestätigen.`,
+    body: signatureRequired
+      ? `Bitte prüfe und unterschreibe den Arbeitszeitnachweis für ${displayDate(submission.date_from)} bis ${displayDate(submission.date_to)}.`
+      : `Bitte prüfe den Arbeitszeitnachweis für ${displayDate(submission.date_from)} bis ${displayDate(submission.date_to)}. Du kannst ihn mit oder ohne Unterschrift bestätigen.`,
     related_entity_type: "timesheet_submission",
     related_entity_id: submission.id,
     read: false,
     created_at: now,
-    payload: { source: "timesheet-optional-approval", signatureOptional: true, workflowVersion: WORKFLOW_VERSION },
+    payload: { source: "timesheet-optional-approval", signatureOptional: !signatureRequired, signatureRequired, workflowVersion: WORKFLOW_VERSION },
   });
   await audit(ctx, "TIMESHEET_OPTIONAL_APPROVAL_REQUESTED", submission, {
     employeeId: submission.employee_id,
     version: submission.version,
     snapshotHash: submission.snapshot_hash,
+    signatureRequired,
   });
   return updated;
 }
@@ -233,6 +284,7 @@ async function approveWithoutSignature(ctx: any, submissionId: string, note: str
     .maybeSingle();
   if (!submission) fail("Der Nachweis ist nicht mehr zur Bestätigung offen.", 409);
   await assertSnapshot(submission);
+  if (submission.signature_required) fail("Für diesen Nachweis ist die Unterschrift verpflichtend.", 409);
   const acknowledgedAt = new Date().toISOString();
   const acknowledgementHash = await sha256([
     submission.snapshot_hash,
@@ -267,7 +319,7 @@ async function approveWithoutSignature(ctx: any, submissionId: string, note: str
 
 async function unsignedApprovals(ctx: any) {
   let query = service.from("timesheet_submissions")
-    .select("id,employee_id,location_id,approval_method,acknowledged_at,status")
+    .select("id,employee_id,location_id,approval_method,acknowledged_at,status,signature_required")
     .eq("organization_id", ctx.organization.id)
     .eq("approval_method", "acknowledgement")
     .in("status", ["approved", "locked"])
@@ -293,6 +345,12 @@ Deno.serve(async (request: Request) => {
   try {
     const ctx = await context(String(body.token || ""));
     const action = String(body.action || "");
+    if (action === "signatureSettings") {
+      return json({ ...(await signatureSettings(ctx)), workflowVersion: WORKFLOW_VERSION }, 200, origin);
+    }
+    if (action === "setSignatureRequirement") {
+      return json({ policy: await setSignatureRequirement(ctx, String(body.employeeId || ""), Boolean(body.signatureRequired)) }, 200, origin);
+    }
     if (action === "requestOptionalApproval") {
       return json({ submission: await requestOptionalApproval(ctx, String(body.submissionId || "")) }, 200, origin);
     }
