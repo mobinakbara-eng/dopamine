@@ -1,0 +1,33 @@
+name: Aora payroll browser artifact
+on:
+  push:
+    branches:
+      - agent/aora-payroll-simple-optional-signature
+    paths:
+      - ".github/workflows/aora-payroll-browser-artifact.yml"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Build staging artifact
+        env:
+          AORA_DEPLOY_ENV: staging
+        run: npm run build
+      - name: Upload exact browser artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aora-payroll-browser-${{ github.sha }}
+          path: aora-v8-final/dist
+          if-no-files-found: error
+          retention-days: 2
