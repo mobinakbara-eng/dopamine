@@ -25,6 +25,7 @@ export const STRUCTURAL_TYPES = new Set([
   "REVOKE_INVITATION",
   "UPDATE_MANAGER_ACCESS",
   "DEACTIVATE_ACCOUNT",
+  "ADD_ANNOUNCEMENT",
   "CREATE_KIOSK_DEVICE",
   "ROTATE_KIOSK_ACTIVATION",
   "TOGGLE_KIOSK_LOCK",
@@ -630,6 +631,47 @@ export async function applyStructural(
         account.id,
         account.name,
         account.locationId ? { locationId: account.locationId } : null,
+      );
+      break;
+    }
+
+    case "ADD_ANNOUNCEMENT": {
+      const input = event.announcement || {};
+      const title = String(input.title || "").trim();
+      const body = String(input.body || "").trim();
+      const audience = String(input.audience || "").trim();
+      if (!title || title.length > 160 || !body || body.length > 5000) {
+        throw Object.assign(
+          new Error("Titel und Text sind erforderlich und dürfen nicht zu lang sein."),
+          { status: 400 },
+        );
+      }
+      if (audience !== "all") requireLocation(state, audience);
+      if (ctx.accessRole === "manager") {
+        if (audience === "all" || !allowedLocations(ctx).has(audience)) {
+          throw Object.assign(
+            new Error("Manager dürfen Mitteilungen nur an ihre zugewiesenen Standorte senden."),
+            { status: 403 },
+          );
+        }
+      }
+      const announcement = {
+        id: id("announcement"),
+        title,
+        body,
+        audience,
+        createdAt: now(),
+        createdBy: ctx.admin.id,
+      };
+      state.announcements = [announcement, ...(state.announcements || [])];
+      addAudit(
+        state,
+        ctx,
+        "announcement.created",
+        "announcement",
+        announcement.id,
+        title,
+        audience === "all" ? null : { locationId: audience },
       );
       break;
     }
