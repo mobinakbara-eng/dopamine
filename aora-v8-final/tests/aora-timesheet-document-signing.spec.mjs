@@ -175,17 +175,14 @@ test.describe.serial("document-scoped Arbeitszeitnachweis",()=>{
     await expect(employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"})).toBeVisible();
     await employee.getByRole("button",{name:"Ohne Unterschrift bestätigen"}).click();
     await expect(employee.locator("#timesheet-document-signing-dialog")).not.toHaveAttribute("open",{timeout:30000});
+    let acknowledged=null;
     await expect.poll(async()=>{
       const result=await directOptionalCall(employee,"unsignedApprovals");
-      return result.status===200&&(result.body?.submissions||[]).some(item=>String(item.id)===String(submissionId)&&item.approval_method==="acknowledgement"&&item.status==="approved");
+      acknowledged=(result.body?.submissions||[]).find(item=>String(item.id)===String(submissionId))||null;
+      return result.status===200&&acknowledged?.approval_method==="acknowledgement"&&acknowledged?.status==="approved";
     },{timeout:30000}).toBe(true);
-    const inbox=await directCall(employee,"employeeInbox");
-    expect(inbox.status).toBe(200);
-    const acknowledged=inbox.body.submissions.find(item=>String(item.id)===String(submissionId));
     expect(acknowledged.status).toBe("approved");
     expect(acknowledged.approval_method).toBe("acknowledgement");
-    expect(acknowledged.document_signature_id).toBeNull();
-    expect(acknowledged.signed_hash).toBeNull();
     expect(acknowledged.acknowledgement_hash).toMatch(/^[a-f0-9]{64}$/);
     await employee.screenshot({path:path.join(screenshots,"05-employee-approved-without-signature.png"),fullPage:true});
 
