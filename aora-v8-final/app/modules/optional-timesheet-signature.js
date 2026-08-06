@@ -40,6 +40,12 @@
       }
     }
   }
+  function closeApprovalDialogs(){
+    for(const dialog of document.querySelectorAll("#timesheet-document-signing-dialog")){
+      try{if(typeof dialog.close==="function")dialog.close()}catch{}
+      dialog.removeAttribute("open");
+    }
+  }
   function enhanceDialog(){
     const dialog=document.getElementById("timesheet-document-signing-dialog");
     const decision=dialog?.querySelector(".docsign-decision");if(!decision||decision.dataset.optionalReady==="true")return;
@@ -52,8 +58,16 @@
   }
   async function approveWithoutSignature(button){
     const note=String(document.getElementById("docsign-decision-note")?.value||"").trim();button.disabled=true;
-    try{await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});document.getElementById("timesheet-document-signing-dialog")?.close();toast("Der Nachweis wurde ohne Unterschrift bestätigt.");unsignedIds.add(String(button.dataset.submissionId));document.querySelector('[data-docsign-action="refresh-employee"]')?.click();setTimeout(()=>{patchCopy();applyStatusLabels()},150)}
-    catch(error){toast(error.message||"Bestätigung konnte nicht gespeichert werden.","error")}finally{if(button.isConnected)button.disabled=false}
+    try{
+      await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});
+      unsignedIds.add(String(button.dataset.submissionId));
+      closeApprovalDialogs();
+      toast("Der Nachweis wurde ohne Unterschrift bestätigt.");
+      document.querySelector('[data-docsign-action="refresh-employee"]')?.click();
+      setTimeout(()=>{closeApprovalDialogs();patchCopy();applyStatusLabels()},150);
+    }
+    catch(error){toast(error.message||"Bestätigung konnte nicht gespeichert werden.","error")}
+    finally{if(button.isConnected)button.disabled=false}
   }
   async function requestOptional(button){
     button.disabled=true;try{await callOptional("requestOptionalApproval",{submissionId:button.dataset.submissionId});toast("Der Nachweis wurde zur Prüfung gesendet. Die Unterschrift ist optional.");document.querySelector('[data-docsign-action="refresh-manager"]')?.click()}
@@ -72,7 +86,6 @@
   document.addEventListener("click",event=>{
     const button=event.target?.closest?.("[data-docsign-action]");if(!button)return;
     if(button.dataset.docsignAction==="request"){event.preventDefault();event.stopImmediatePropagation();requestOptional(button);return}
-    
   },true);
   const observer=new MutationObserver(()=>{patchCopy();enhanceDialog();applyStatusLabels();if(S?.session)queueMicrotask(()=>refreshUnsigned())});
   const root=document.getElementById("app");if(root)observer.observe(root,{childList:true,subtree:true});
