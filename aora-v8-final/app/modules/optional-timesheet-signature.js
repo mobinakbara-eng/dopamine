@@ -42,7 +42,7 @@
   }
   function closeApprovalDialogs(){
     for(const dialog of document.querySelectorAll("#timesheet-document-signing-dialog")){
-      try{if(typeof dialog.close==="function")dialog.close()}catch{}
+      try{if(typeof dialog.close==="function"&&dialog.open)dialog.close()}catch{}
       dialog.removeAttribute("open");
     }
   }
@@ -54,19 +54,34 @@
     if(!consent||!signatureBox||!approve)return;
     const option=document.createElement("label");option.className="docsign-optional-toggle";option.innerHTML='<input type="checkbox" id="docsign-use-signature"><span><strong>Mit Unterschrift bestätigen</strong><small>Optional. Ohne Haken wird nur deine Bestätigung dokumentiert.</small></span>';
     consent.before(option);consent.hidden=true;signatureBox.hidden=true;approve.textContent="Ohne Unterschrift bestätigen";
-    const toggle=option.querySelector("input");toggle.addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});approve.addEventListener("click",event=>{if(toggle.checked)return;event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(approve)},true);
+    const toggle=option.querySelector("input");
+    toggle.addEventListener("change",event=>{const checked=event.target.checked;consent.hidden=!checked;signatureBox.hidden=!checked;approve.textContent=checked?"Bestätigen & unterschreiben":"Ohne Unterschrift bestätigen"});
+    approve.addEventListener("click",event=>{if(toggle.checked)return;event.preventDefault();event.stopImmediatePropagation();approveWithoutSignature(approve)},true);
   }
   async function approveWithoutSignature(button){
-    const note=String(document.getElementById("docsign-decision-note")?.value||"").trim();button.disabled=true;
+    const note=String(document.getElementById("docsign-decision-note")?.value||"").trim();
+    const dialog=button.closest("dialog");
+    button.disabled=true;
+    if(dialog){
+      try{if(typeof dialog.close==="function"&&dialog.open)dialog.close()}catch{}
+      dialog.removeAttribute("open");
+      dialog.hidden=true;
+    }
     try{
       await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});
       unsignedIds.add(String(button.dataset.submissionId));
       closeApprovalDialogs();
       toast("Der Nachweis wurde ohne Unterschrift bestätigt.");
-      document.querySelector('[data-docsign-action="refresh-employee"]')?.click();
+      queueMicrotask(()=>document.querySelector('[data-docsign-action="refresh-employee"]')?.click());
       setTimeout(()=>{closeApprovalDialogs();patchCopy();applyStatusLabels()},150);
     }
-    catch(error){toast(error.message||"Bestätigung konnte nicht gespeichert werden.","error")}
+    catch(error){
+      if(dialog?.isConnected){
+        dialog.hidden=false;
+        try{if(typeof dialog.showModal==="function"&&!dialog.open)dialog.showModal()}catch{}
+      }
+      toast(error.message||"Bestätigung konnte nicht gespeichert werden.","error");
+    }
     finally{if(button.isConnected)button.disabled=false}
   }
   async function requestOptional(button){
