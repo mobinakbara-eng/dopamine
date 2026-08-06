@@ -343,7 +343,7 @@ export async function applyStructural(
       const input = event.manager || {};
       const name = String(input.name || "").trim();
       const email = String(input.email || "").trim().toLowerCase();
-      const locationIds = [...new Set((input.locationIds || []).map(String))];
+      const locationIds: string[] = [...new Set<string>((input.locationIds || []).map((value: any) => String(value)))];
       if (name.length < 2 || !emailOk(email) || !locationIds.length) {
         throw Object.assign(
           new Error("Name, gültige E-Mail und mindestens ein Laden sind erforderlich."),
@@ -552,7 +552,7 @@ export async function applyStructural(
           status: 404,
         });
       }
-      const locationIds = [...new Set((event.locationIds || []).map(String))];
+      const locationIds: string[] = [...new Set<string>((event.locationIds || []).map((value: any) => String(value)))];
       if (!locationIds.length) {
         throw Object.assign(
           new Error("Mindestens ein gültiger Laden ist erforderlich."),

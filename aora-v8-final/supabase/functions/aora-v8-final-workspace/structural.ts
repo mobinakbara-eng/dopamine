@@ -614,7 +614,7 @@ export async function applyStructural(
   let emailResult: any = null;
 
   if (invitation && inviteRole) {
-    emailResult = await sendInvite(origin, invitation, inviteRole);
+    emailResult = await sendInvite(origin, invitation, inviteRole, ctx.organization.slug);
     const { data: fresh, error: freshError } = await service
       .from("workspace_snapshots")
       .select("state,revision")
