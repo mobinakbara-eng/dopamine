@@ -1,0 +1,40 @@
+name: Apply optional approval E2E fix
+on:
+  push:
+    branches:
+      - agent/aora-zero-cost-release-hardening
+    paths:
+      - ".github/workflows/aora-optional-e2e-fix.yml"
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aora-zero-cost-release-hardening
+          fetch-depth: 0
+      - name: Apply reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .aora-fixes/optional-e2e.patch.b64 > /tmp/optional-e2e.patch
+          git apply --check /tmp/optional-e2e.patch
+          git apply /tmp/optional-e2e.patch
+          node --check aora-v8-final/tests/aora-timesheet-document-signing.spec.mjs
+          rm -rf .aora-fixes
+          rm -f .github/workflows/aora-optional-e2e-fix.yml
+      - name: Validate source
+        working-directory: aora-v8-final
+        run: npm run check
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Make optional approval E2E assert observable state"
+          git push origin HEAD:agent/aora-zero-cost-release-hardening
