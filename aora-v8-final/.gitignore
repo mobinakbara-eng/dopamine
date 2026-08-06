@@ -1,4 +1,4 @@
-# Generated browser and test artifacts
+# Generated browser, report, and test artifacts
 dist/
 playwright-report/
 test-results/
