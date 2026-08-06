@@ -5,7 +5,7 @@
   window.__aoraOptionalTimesheetSignatureInstalled=true;
   const OPTIONAL_FUNCTION="aora-v8-timesheet-optional-approval";
   const DOCUMENT_FUNCTION="aora-v8-timesheet-document-signing";
-  let unsignedIds=new Set(),requiredIds=new Set(),policies=new Map(),lastDialogSubmissionId="",refreshing=false,settingsRefreshing=false,settingsLoadedAt=0;
+  let unsignedIds=new Set(),requiredIds=new Set(),policies=new Map(),lastDialogSubmissionId="",refreshing=false,settingsRefreshing=false,settingsLoadedAt=0,unsignedLoadedAt=0;
   function callOptional(action,payload={}){return request(OPTIONAL_FUNCTION,{action,token:S.session?.token,...payload})}
   function callDocument(action,payload={}){return request(DOCUMENT_FUNCTION,{action,token:S.session?.token,...payload})}
   function currentDate(){return typeof berlin==="function"?berlin().date:new Date().toISOString().slice(0,10)}
@@ -23,9 +23,9 @@
   }
   async function refreshUnsigned(force=false){
     if(refreshing||!S?.session)return;
-    if(!force&&unsignedIds.size)return applyStatusLabels();
+    if(!force&&unsignedLoadedAt&&Date.now()-unsignedLoadedAt<10000)return applyStatusLabels();
     refreshing=true;
-    try{const data=await callOptional("unsignedApprovals");unsignedIds=new Set((data.submissions||[]).map(item=>String(item.id)));applyStatusLabels()}
+    try{const data=await callOptional("unsignedApprovals");unsignedIds=new Set((data.submissions||[]).map(item=>String(item.id)));unsignedLoadedAt=Date.now();applyStatusLabels()}
     catch(error){console.warn("Optional approval status could not be loaded",error)}finally{refreshing=false}
   }
   function setText(root,from,to){
@@ -96,7 +96,7 @@
     if(dialog){try{if(typeof dialog.close==="function"&&dialog.open)dialog.close()}catch{}dialog.removeAttribute("open");dialog.hidden=true}
     try{
       await callOptional("approveWithoutSignature",{submissionId:button.dataset.submissionId,note});
-      unsignedIds.add(String(button.dataset.submissionId));closeApprovalDialogs();toast("Der Nachweis wurde ohne Unterschrift bestätigt.");
+      unsignedIds.add(String(button.dataset.submissionId));unsignedLoadedAt=Date.now();closeApprovalDialogs();toast("Der Nachweis wurde ohne Unterschrift bestätigt.");
       queueMicrotask(()=>document.querySelector('[data-docsign-action="refresh-employee"]')?.click());
       setTimeout(()=>{closeApprovalDialogs();patchCopy();applyStatusLabels()},150);
     }catch(error){
