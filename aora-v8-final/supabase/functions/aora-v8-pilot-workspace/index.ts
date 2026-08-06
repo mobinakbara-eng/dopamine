@@ -185,6 +185,7 @@ function scopeManagerState(ctx: any, sourceInput: any) {
     timeEntries: source.timeEntries.filter((item: any) => locations.has(String(item.locationId))),
     leaveRequests: source.leaveRequests.filter((item: any) => employeeIds.has(String(item.employeeId))),
     correctionRequests: source.correctionRequests.filter((item: any) => employeeIds.has(String(item.employeeId))),
+    announcements: source.announcements.filter((item: any) => item.audience === "all" || locations.has(String(item.audience))),
     notifications: source.notifications.filter((item: any) => employeeIds.has(String(item.employeeId)) || locations.has(String(item.locationId))),
     kioskDevices: source.kioskDevices.filter((item: any) => locations.has(String(item.locationId))),
     clockRequests: source.clockRequests.filter((item: any) => locations.has(String(item.locationId))),
@@ -204,6 +205,8 @@ function eventLocationIds(state: any, event: any) {
   const values = new Set<string>();
   const add = (value: any) => { if (value != null && value !== "") values.add(String(value)); };
   add(event?.locationId); add(event?.shift?.locationId); add(event?.employee?.locationId); add(event?.patch?.locationId); add(event?.assignment?.locationId);
+  const announcementAudience = event?.announcement?.audience;
+  if (announcementAudience && announcementAudience !== "all") add(announcementAudience);
   add(state.shifts.find((item: any) => item.id === event?.id || item.id === event?.shiftId)?.locationId);
   add(state.employees.find((item: any) => item.id === event?.id || item.id === event?.employeeId)?.locationId);
   add(state.timeEntries.find((item: any) => item.id === event?.id || item.id === event?.entryId)?.locationId);
@@ -212,8 +215,17 @@ function eventLocationIds(state: any, event: any) {
 }
 function guardManagerEvent(ctx: any, event: any) {
   const locations = allowedLocations(ctx);
+  if (!event?.type) throw Object.assign(new Error("Aktion fehlt."), { status: 400 });
+  if (event.type === "ADD_ANNOUNCEMENT" && event?.announcement?.audience === "all") {
+    throw Object.assign(new Error("Manager dürfen Mitteilungen nur an ihre zugewiesenen Standorte senden."), { status: 403 });
+  }
   const eventLocations = eventLocationIds(ctx.state, event);
-  if (!event?.type || !eventLocations.length || eventLocations.some((locationId) => !locations.has(locationId))) throw Object.assign(new Error("Kein Zugriff auf diesen Standort."), { status: 403 });
+  if (!eventLocations.length) {
+    throw Object.assign(new Error("Der Standort dieser Aktion konnte nicht sicher bestimmt werden."), { status: 403 });
+  }
+  if (eventLocations.some((locationId) => !locations.has(locationId))) {
+    throw Object.assign(new Error("Kein Zugriff auf diesen Standort."), { status: 403 });
+  }
 }
 function upstreamFor(ctx: any) { return ctx.organization.slug === PRIMARY_PILOT_SLUG ? HARDENING_WORKSPACE : LEGACY_WORKSPACE; }
 async function loadCurrent(ctx: any) {

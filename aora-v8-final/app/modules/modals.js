@@ -94,8 +94,24 @@ function newsModal(){
   </form>`);
   backdrop.querySelector("form").addEventListener("submit",async event=>{
     event.preventDefault();
-    const announcement=Object.fromEntries(new FormData(event.currentTarget));
-    try{await apply({type:"ADD_ANNOUNCEMENT",announcement});backdrop.remove()}catch{}
+    const form=event.currentTarget;
+    const submit=form.querySelector('button[type="submit"]');
+    if(submit?.disabled)return;
+    if(submit)submit.disabled=true;
+    const announcement=Object.fromEntries(new FormData(form));
+    announcement.title=String(announcement.title||"").trim();
+    announcement.body=String(announcement.body||"").trim();
+    if(!announcement.title||!announcement.body){
+      if(submit)submit.disabled=false;
+      return toast("Titel und Text dürfen nicht leer sein.","error");
+    }
+    try{
+      await apply({type:"ADD_ANNOUNCEMENT",announcement});
+      backdrop.remove();
+      toast("Mitteilung wurde veröffentlicht.");
+    }catch{
+      if(submit?.isConnected)submit.disabled=false;
+    }
   });
 }
 function kioskHelpModal(){
