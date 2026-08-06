@@ -1,0 +1,32 @@
+name: Fix manager unsigned approval refresh
+on:
+  push:
+    branches: [agent/aora-zero-cost-release-hardening]
+    paths: [.github/workflows/aora-fix-manager-refresh-cache.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aora-zero-cost-release-hardening
+      - name: Force optional approval refresh on manager refresh
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('aora-v8-final/app/modules/optional-timesheet-signature.js')
+          s=p.read_text()
+          old='''    const button=event.target?.closest?.("[data-docsign-action]");if(!button)return;\n    if(button.dataset.docsignAction==="request"){event.preventDefault();event.stopImmediatePropagation();requestOptional(button);return}'''
+          new='''    const button=event.target?.closest?.("[data-docsign-action]");if(!button)return;\n    if(button.dataset.docsignAction==="refresh-manager"){unsignedLoadedAt=0;queueMicrotask(()=>refreshUnsigned(true));return}\n    if(button.dataset.docsignAction==="refresh-employee"){settingsLoadedAt=0;queueMicrotask(()=>refreshSettings(true));return}\n    if(button.dataset.docsignAction==="request"){event.preventDefault();event.stopImmediatePropagation();requestOptional(button);return}'''
+          if old not in s:
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old,new))
+          PY
+          git config user.name 'mobinakbara-eng'
+          git config user.email 'mobinakbara@gmail.com'
+          git add aora-v8-final/app/modules/optional-timesheet-signature.js
+          git commit -m 'Force signature status refresh from manager controls'
+          git push origin HEAD:agent/aora-zero-cost-release-hardening
