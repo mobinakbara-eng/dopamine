@@ -1,0 +1,36 @@
+name: Aora Shared Shift Task Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "aora-v8-final/app/modules/manager-task-automation.js"
+      - "aora-v8-final/supabase/functions/aora-v8-task-scheduler/**"
+      - "aora-v8-final/supabase/migrations/*shared_on_shift_tasks.sql"
+      - "aora-v8-final/tests/aora-manager-task-redesign-source.mjs"
+      - ".github/workflows/aora-shared-task-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared-task-source:
+    name: Shared on-shift scheduler and source gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check task scheduler
+        run: deno check --node-modules-dir=auto supabase/functions/aora-v8-task-scheduler/scheduler.ts
+      - name: Validate manager task source contracts
+        run: node tests/aora-manager-task-redesign-source.mjs
