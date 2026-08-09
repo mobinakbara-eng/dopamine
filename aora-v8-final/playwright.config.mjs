@@ -38,6 +38,7 @@ export default defineConfig({
     },
     {
       name:"unified-release",
+      dependencies:["composer-scroll-layout"],
       testMatch:/aora-unified-release\.spec\.mjs/,
       use:desktop
     },
