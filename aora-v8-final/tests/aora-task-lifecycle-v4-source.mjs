@@ -7,8 +7,9 @@ const lifecycle=fs.readFileSync(new URL("../app/modules/task-lifecycle-v4.js",im
 const edge=fs.readFileSync(new URL("../supabase/functions/aora-v8-task-lifecycle/index.ts",import.meta.url),"utf8");
 const migration=fs.readFileSync(new URL("../supabase/migrations/202608091335_task_template_and_instance_lifecycle.sql",import.meta.url),"utf8");
 const permissionMigration=fs.readFileSync(new URL("../supabase/migrations/202608091455_restrict_task_lifecycle_rpc.sql",import.meta.url),"utf8");
+const ruleMigration=fs.readFileSync(new URL("../supabase/migrations/202608092115_task_rule_soft_delete.sql",import.meta.url),"utf8");
 
-assert.match(index,/task-experience-v3\.js\?v=849[\s\S]*manager-task-composer-v3\.js\?v=850[\s\S]*task-lifecycle-v4\.js\?v=850/);
+assert.match(index,/task-experience-v3\.js\?v=849[\s\S]*manager-task-composer-v3\.js\?v=850[\s\S]*task-lifecycle-v4\.js\?v=851/);
 assert.match(index,/task-lifecycle-v4\.css\?v=850/);
 
 for(const marker of[
@@ -32,6 +33,7 @@ assert.ok(!composer.includes('name="shiftId"'));
 for(const marker of[
   "setTemplateActive",
   "deleteTemplate",
+  "deleteRule",
   "cancelTask",
   "deleteTask",
   "Deaktivieren",
@@ -43,6 +45,7 @@ for(const marker of[
 for(const marker of[
   'action==="setTemplateActive"',
   'action==="deleteTemplate"',
+  'action==="deleteRule"',
   'action==="cancelTask"',
   'action==="deleteTask"',
   "manager_required",
@@ -52,6 +55,10 @@ for(const marker of[
   "aora_cancel_task_instance",
   "aora_soft_delete_task_instance"
 ])assert.ok(edge.includes(marker),`Missing lifecycle Edge contract: ${marker}`);
+
+for(const marker of["aora_soft_delete_task_rule","task_rule_not_found","deleted_at=v_now","version=version+1","grant execute"]){
+  assert.ok(ruleMigration.includes(marker),`Missing task rule lifecycle SQL contract: ${marker}`);
+}
 
 for(const marker of[
   "create or replace function public.aora_set_task_template_active",
