@@ -203,7 +203,7 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await manager.locator('.admin-nav [data-view="leave"]').click();
     const leaveRow=manager.locator(".leave-row").filter({hasText:futureStart}).first();
     await expect(leaveRow).toBeVisible();
-    await leaveRow.locator('[data-decision="approved"]').click();
+    await workspaceEvent(manager,"DECIDE_LEAVE",()=>leaveRow.locator('[data-decision="approved"]').click());
 
     await manager.locator('.admin-nav [data-view="worktime"]').click();
     await manager.locator('[data-worktime-action="tab"][data-tab="changes"]').click();

@@ -6,6 +6,7 @@ const composer=fs.readFileSync(new URL("../app/modules/manager-task-composer-v3.
 const lifecycle=fs.readFileSync(new URL("../app/modules/task-lifecycle-v4.js",import.meta.url),"utf8");
 const edge=fs.readFileSync(new URL("../supabase/functions/aora-v8-task-lifecycle/index.ts",import.meta.url),"utf8");
 const migration=fs.readFileSync(new URL("../supabase/migrations/202608091335_task_template_and_instance_lifecycle.sql",import.meta.url),"utf8");
+const permissionMigration=fs.readFileSync(new URL("../supabase/migrations/202608091455_restrict_task_lifecycle_rpc.sql",import.meta.url),"utf8");
 
 assert.match(index,/task-experience-v3\.js\?v=849[\s\S]*manager-task-composer-v3\.js\?v=850[\s\S]*task-lifecycle-v4\.js\?v=850/);
 assert.match(index,/task-lifecycle-v4\.css\?v=850/);
@@ -63,5 +64,14 @@ for(const marker of[
   "related_entity_type='task'",
   "grant execute on function public.aora_set_task_template_active"
 ])assert.ok(migration.includes(marker),`Missing lifecycle SQL contract: ${marker}`);
+
+for(const marker of[
+  "revoke all on function public.aora_set_task_template_active",
+  "revoke all on function public.aora_soft_delete_task_template",
+  "revoke all on function public.aora_cancel_task_instance",
+  "revoke all on function public.aora_soft_delete_task_instance",
+  "from public, anon, authenticated",
+  "to service_role"
+])assert.ok(permissionMigration.includes(marker),`Missing task lifecycle RPC permission hardening: ${marker}`);
 
 console.log("Aora task lifecycle v4 source gate passed.");

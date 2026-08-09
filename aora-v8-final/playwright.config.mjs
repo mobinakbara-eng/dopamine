@@ -27,12 +27,18 @@ export default defineConfig({
   },
   projects:[
     {
+      name:"composer-scroll-layout",
+      testMatch:/aora-task-composer-scroll-layout\.spec\.mjs/,
+      use:mobile
+    },
+    {
       name:"privacy-public",
       testMatch:/aora-privacy\.spec\.mjs/,
       use:desktop
     },
     {
       name:"unified-release",
+      dependencies:["composer-scroll-layout"],
       testMatch:/aora-unified-release\.spec\.mjs/,
       use:desktop
     },
@@ -45,7 +51,7 @@ export default defineConfig({
     {
       name:"chromium",
       dependencies:["mobile-layout"],
-      testMatch:/aora-(accessibility|four-role|unified-login|time-correction-clock-hub|navigation-qa|manager-task-composer)\.spec\.mjs/,
+      testMatch:/aora-(accessibility|four-role|unified-login|time-correction-clock-hub|navigation-qa|manager-task-composer|task-runtime)\.spec\.mjs/,
       use:desktop
     },
     {

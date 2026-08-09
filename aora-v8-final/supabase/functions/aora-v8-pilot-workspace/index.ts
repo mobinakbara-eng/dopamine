@@ -201,6 +201,41 @@ function scopeManagerState(ctx: any, sourceInput: any) {
     audit: source.audit.filter((item: any) => !item.metadata?.locationId || locations.has(String(item.metadata.locationId))).slice(0, 250),
   };
 }
+function scopeEmployeeState(ctx: any, sourceInput: any) {
+  const source = normalize(sourceInput);
+  const employeeId = String(ctx.session.subject_id);
+  const employee = source.employees.find((item: any) => String(item.id) === employeeId);
+  if (!employee) throw Object.assign(new Error("Mitarbeiter wurde im Arbeitsbereich nicht gefunden."), { status: 409 });
+  const locationId = String(employee.locationId || ctx.session.location_id || "");
+  const assignments = source.checklistAssignments.filter((item: any) => String(item.employeeId) === employeeId);
+  const templateIds = new Set(assignments.map((item: any) => String(item.templateId)));
+  const employeeAnnouncements = source.announcements.filter((item: any) => item.audience === "all" || String(item.audience) === locationId);
+  return {
+    ...source,
+    admins: [],
+    locations: source.locations.filter((item: any) => String(item.id) === locationId),
+    employees: [employee],
+    shifts: source.shifts.filter((item: any) => String(item.employeeId) === employeeId || (item.status === "open" && String(item.locationId) === locationId)),
+    timeEntries: source.timeEntries.filter((item: any) => String(item.employeeId) === employeeId),
+    leaveRequests: source.leaveRequests.filter((item: any) => String(item.employeeId) === employeeId),
+    correctionRequests: source.correctionRequests.filter((item: any) => String(item.employeeId) === employeeId),
+    announcements: employeeAnnouncements,
+    notifications: source.notifications.filter((item: any) => String(item.employeeId) === employeeId),
+    kioskDevices: source.kioskDevices.filter((item: any) => String(item.locationId) === locationId),
+    audit: [],
+    clockRequests: source.clockRequests.filter((item: any) => String(item.employeeId) === employeeId),
+    availabilityRules: source.availabilityRules.filter((item: any) => String(item.employeeId) === employeeId),
+    shiftRequests: source.shiftRequests.filter((item: any) => String(item.employeeId) === employeeId || String(item.targetEmployeeId) === employeeId),
+    checklistTemplates: source.checklistTemplates.filter((item: any) => templateIds.has(String(item.id))),
+    checklistAssignments: assignments,
+    dailyLogs: [],
+    timesheetPeriods: [],
+    staffingRequirements: [],
+    shiftFeedback: source.shiftFeedback.filter((item: any) => String(item.employeeId) === employeeId),
+    shiftTemplates: source.shiftTemplates.filter((item: any) => !item.locationId || String(item.locationId) === locationId),
+    invitations: [],
+  };
+}
 function eventLocationIds(state: any, event: any) {
   const values = new Set<string>();
   const add = (value: any) => { if (value != null && value !== "") values.add(String(value)); };
@@ -354,25 +389,33 @@ Deno.serve(async (request: Request) => {
     };
 
     if (body.action === "load" && (ctx.accessRole === "owner" || ctx.accessRole === "manager")) return reply({ state: scopeManagerState(ctx, ctx.state), revision: ctx.snapshot.revision, session }, 200, origin);
+    if (body.action === "load" && ctx.accessRole === "employee") return reply({ state: scopeEmployeeState(ctx, ctx.state), revision: ctx.snapshot.revision, session }, 200, origin);
     if (body.action === "apply" && ctx.accessRole === "manager") guardManagerEvent(ctx, body.event);
     if (body.action === "apply" && ctx.session.role === "kiosk") return reply({ error: "Kiosk-Buchungen müssen über den Pilot-Kiosk-Endpunkt gesendet werden." }, 409, origin);
 
     const legacy = await callFunction(LEGACY_WORKSPACE, body);
     if (!legacy.ok) return reply(legacy.data, legacy.status, origin);
+    let canonicalState = legacy.data?.state;
+    let canonicalRevision = legacy.data?.revision;
     if (body.action === "apply" && legacy.data?.state) {
       const { data: canonicalSnapshot, error: canonicalSnapshotError } = await service
         .from("workspace_snapshots")
-        .select("state")
+        .select("state,revision")
         .eq("organization_id", ctx.organization.id)
         .single();
       if (canonicalSnapshotError || !canonicalSnapshot) throw canonicalSnapshotError || new Error("Arbeitsbereich konnte nach der Änderung nicht geladen werden.");
+      canonicalState = canonicalSnapshot.state;
+      canonicalRevision = canonicalSnapshot.revision;
       const { error: managerProjectionError } = await service.rpc("aora_sync_manager_location_access", {
         p_organization_id: ctx.organization.id,
         p_state: canonicalSnapshot.state,
       });
       if (managerProjectionError) throw managerProjectionError;
     }
-    return reply({ ...legacy.data, state: scopeManagerState(ctx, legacy.data.state), session: { ...(legacy.data.session || {}), ...session } }, 200, origin);
+    const scopedState = ctx.accessRole === "employee"
+      ? scopeEmployeeState(ctx, canonicalState)
+      : scopeManagerState(ctx, canonicalState);
+    return reply({ ...legacy.data, state: scopedState, revision: canonicalRevision, session: { ...(legacy.data.session || {}), ...session } }, 200, origin);
   } catch (error: any) {
     const status = Number(error?.status || 500);
     const message = error instanceof Error ? error.message : String(error);

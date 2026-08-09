@@ -11,6 +11,9 @@ if(typeof globalThis.uCall==="function"&&typeof globalThis.request==="function")
   const taskActions=new Set(["tasks","saveTaskAnswer","submitTask","reviewTask"]);
   const inFlight=new Map();
   const cache=new Map();
+  globalThis.uInvalidateDomainCache=function(){
+    cache.clear();
+  };
   const stable=value=>{
     if(Array.isArray(value))return value.map(stable);
     if(value&&typeof value==="object")return Object.keys(value).sort().reduce((out,key)=>(out[key]=stable(value[key]),out),{});
@@ -21,7 +24,17 @@ if(typeof globalThis.uCall==="function"&&typeof globalThis.request==="function")
     if(!S.session?.token)throw new Error("Sitzung fehlt.");
     const read=readActions.has(action)&&!feature;
     const functionName=feature?CFG.featureFunction:(taskActions.has(action)?"aora-v8-domain-api-compat":CFG.domainFunction);
-    const key=read?JSON.stringify([functionName,action,S.session.subjectId||"",S.locationId||"",stable(payload)]):"";
+    // Session and organization are part of the cache boundary. Subject/location IDs
+    // are tenant-local and can legitimately repeat in another workspace.
+    const key=read?JSON.stringify([
+      functionName,
+      action,
+      S.session.organizationId||"",
+      S.session.token||"",
+      S.session.subjectId||"",
+      S.locationId||"",
+      stable(payload)
+    ]):"";
     const cached=read?cache.get(key):null;
     if(cached&&cached.expires>Date.now())return cached.data;
     if(read&&inFlight.has(key))return inFlight.get(key);
