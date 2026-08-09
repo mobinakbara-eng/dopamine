@@ -6,9 +6,15 @@ on:
       - main
     paths:
       - "aora-v8-final/app/modules/manager-task-automation.js"
+      - "aora-v8-final/app/modules/manager-task-composer-v2.js"
+      - "aora-v8-final/app/manager-task-composer-v2.css"
+      - "aora-v8-final/app/index.html"
       - "aora-v8-final/supabase/functions/aora-v8-task-scheduler/**"
+      - "aora-v8-final/supabase/functions/aora-v8-feature-actions/**"
       - "aora-v8-final/supabase/migrations/*shared_on_shift_tasks.sql"
+      - "aora-v8-final/supabase/migrations/*mandatory_task_clockout_scope.sql"
       - "aora-v8-final/tests/aora-manager-task-redesign-source.mjs"
+      - "aora-v8-final/tests/aora-task-composer-v2-source.mjs"
       - ".github/workflows/aora-shared-task-ci.yml"
   workflow_dispatch:
 
@@ -17,7 +23,7 @@ permissions:
 
 jobs:
   shared-task-source:
-    name: Shared on-shift scheduler and source gate
+    name: Shared tasks, mandatory clockout and source gate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,5 +38,9 @@ jobs:
           deno-version: v2.x
       - name: Type-check task scheduler
         run: deno check --node-modules-dir=auto supabase/functions/aora-v8-task-scheduler/scheduler.ts
-      - name: Validate manager task source contracts
+      - name: Type-check feature actions
+        run: deno check --node-modules-dir=auto supabase/functions/aora-v8-feature-actions/index.ts
+      - name: Validate manager task redesign source contracts
         run: node tests/aora-manager-task-redesign-source.mjs
+      - name: Validate mandatory task composer source contracts
+        run: node tests/aora-task-composer-v2-source.mjs
