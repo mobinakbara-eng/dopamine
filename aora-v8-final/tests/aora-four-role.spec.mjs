@@ -8,6 +8,7 @@ const pathFor={owner:"/inhaber/",manager:"/arbeitgeber/",employee:"/arbeitnehmer
 const shellFor={owner:".admin-app",manager:".admin-app",employee:".employee-app",kiosk:".kiosk-app"};
 const env=name=>{const value=process.env[name];if(!value)throw new Error(`Missing ${name}`);return value};
 const correctionReason=()=>`Agent QA correction ${workspace}`;
+const newsTitle=()=>`Manager News QA ${workspace}`;
 const futureStart="2026-08-10";
 const futureEnd="2026-08-11";
 
@@ -141,6 +142,16 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     await page.locator('.admin-nav [data-view="worktime"]').click();
     await expect(page.locator(".worktime-tabs button")).toHaveCount(5);
 
+    await page.locator('.admin-nav [data-view="news"]').click();
+    await page.locator('[data-a="news-modal"]').click();
+    const newsModal=page.locator(".modal-backdrop .modal").last();
+    await newsModal.locator('input[name="title"]').fill(newsTitle());
+    await newsModal.locator('textarea[name="body"]').fill("Diese Mitteilung wurde durch den Manager-End-to-End-Test veröffentlicht.");
+    const announcement=await workspaceEvent(page,"ADD_ANNOUNCEMENT",()=>newsModal.locator('button[type="submit"]').click());
+    expect(announcement.state.announcements.some(item=>item.title===newsTitle())).toBe(true);
+    await expect(newsModal).toBeHidden({timeout:30000});
+    await expect(page.getByRole("heading",{name:newsTitle()})).toBeVisible();
+
     await page.locator('.admin-nav [data-view="kiosk"]').click();
     await page.locator('[data-a="kiosk-create-modal"]').click();
     const modal=page.locator(".modal-backdrop .modal").last();
@@ -164,6 +175,7 @@ test.describe.serial("Aora isolated four-role and unified-worktime gate",()=>{
     const errors=diagnostics(page);
     await page.setViewportSize({width:390,height:844});
     await login(page,"employee",env("AORA_EMPLOYEE_EMAIL"),env("AORA_EMPLOYEE_PASSWORD"));
+    expect(await page.evaluate(title=>S.state.announcements.some(item=>item.title===title),newsTitle())).toBe(true);
     const tabs=await page.locator('.employee-bottom [data-a="employee-view"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.view));
     expect(tabs).toEqual(["home","calendar","time","leave","more"]);
     for(const view of tabs){await page.locator(`.employee-bottom [data-view="${view}"]`).click();await healthy(page);await assertNoHorizontalOverflow(page)}
