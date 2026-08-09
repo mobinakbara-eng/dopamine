@@ -17,6 +17,11 @@ class ApiError extends Error{
 const now=()=>new Date().toISOString();
 const id=(prefix:string)=>`${prefix}_${crypto.randomUUID().replaceAll("-","")}`;
 const clone=<T>(value:T):T=>structuredClone(value);
+function currentDateInZone(timeZone:string){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const map=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+}
 function allowed(origin:string|null){if(!origin||EXACT.has(origin))return true;try{const url=new globalThis.URL(origin);return["localhost","127.0.0.1"].includes(url.hostname)||(url.protocol==="https:"&&url.hostname.endsWith(SUFFIX))}catch{return false}}
 function headers(origin:string|null){return{"Access-Control-Allow-Origin":origin&&allowed(origin)?origin:DEFAULT_ORIGIN,"Access-Control-Allow-Headers":"content-type,x-request-id","Access-Control-Allow-Methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store",Vary:"Origin"}}
 function ok(requestId:string,data:unknown,origin:string|null,status=200){return new Response(JSON.stringify({request_id:requestId,data,error:null,server_time:now()}),{status,headers:headers(origin)})}
@@ -197,7 +202,7 @@ async function createManualTask(ctx:any,body:any){
   const required=body.required==null?templateBlocksClockout:(body.required===true||String(body.required).toLowerCase()==="true");
   const rawIdempotency=String(body.idempotencyKey||crypto.randomUUID());
   const idempotencyKey=/^[a-zA-Z0-9_-]{8,128}$/.test(rawIdempotency)?rawIdempotency:crypto.randomUUID();
-  const scheduledFor=new Date(`${date}T12:00:00Z`).toISOString();
+  const scheduledFor=date===currentDateInZone(timezone)?now():new Date(`${date}T12:00:00Z`).toISOString();
 
   const created:string[]=[];
   const assignees:(string|null)[]=employeeIds.length?employeeIds:[null];
