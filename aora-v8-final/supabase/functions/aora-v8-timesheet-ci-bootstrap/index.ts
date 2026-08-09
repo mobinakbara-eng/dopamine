@@ -18,6 +18,7 @@ const ALLOWED_HEADS = new Set([
   "agent/aora-time-workflow-sync",
   "agent/aora-unified-worktime-center",
   "agent/aora-zero-cost-release-hardening",
+  "agent/aora-manager-task-redesign",
 ]);
 const ITERATIONS = 210000;
 const encoder = new TextEncoder();
