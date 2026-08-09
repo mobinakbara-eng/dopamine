@@ -23,15 +23,18 @@ async function primeTaskUi(page){
     S.u=S.u||{};
     S.u.tasks=S.u.tasks||{};
     S.u.tasks.managerData={
-      ...(S.u.tasks.managerData||{}),
+      locationId:S.locationId,
       templates:[{
         id:"qa_composer_template",
         title:"Closing Check",
+        category:"closing",
         active:true,
         review_required:false,
         clockout_policy:"WARN_ONLY",
         task_template_items:[{id:"qa_item",label:"Closing prüfen",required:true,answer_type:"checkbox"}]
-      }]
+      }],
+      rules:[{id:"qa_rule",active:true,trigger_type:"fixed_time",assignment_strategy:"shared_on_shift",task_templates:{title:"Closing Check"}}],
+      tasks:[{id:"qa_task",status:"open",due_at:new Date(Date.now()+3600000).toISOString(),blocking_clockout:true,payload:{title:"Closing Check"},task_templates:{title:"Closing Check"},task_assignments:[{employee_id:"qa_employee",status:"assigned"}]}]
     };
     if(!Array.isArray(S.state.employees)||!S.state.employees.length){
       S.state.employees=[{id:"qa_employee",name:"QA Employee",role:"Mitarbeiter",locationId:S.locationId,active:true}];
@@ -39,28 +42,47 @@ async function primeTaskUi(page){
   });
 }
 
-test.describe.serial("Manager task composer v2 browser contract",()=>{
+test.describe.serial("Manager task composer v3 browser contract",()=>{
   test.beforeAll(()=>env("AORA_WORKSPACE_SLUG"));
 
-  test("manual task creator stays simple and exposes Pflichtaufgabe",async({page})=>{
+  test("manual task creator exposes photo, employee, deadline and mandatory controls",async({page})=>{
     await loginManager(page);
     await primeTaskUi(page);
     await page.evaluate(()=>uManualTaskDialog());
 
-    const dialog=page.locator('.aora-composer-dialog[data-composer="manual"]');
+    const dialog=page.locator('.aora-composer-dialog[data-composer="manual-v3"]');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("heading",{name:"Aufgabe erstellen"})).toBeVisible();
-    await expect(dialog.getByText("Nur das Nötige",{exact:false})).toBeVisible();
+    await expect(dialog.getByText("Foto zur Aufgabe",{exact:true})).toBeVisible();
+    await expect(dialog.locator('[name="managerReference"]')).toHaveCount(1);
+    await expect(dialog.getByText("Foto-Nachweis vom Mitarbeiter erforderlich",{exact:true})).toBeVisible();
+    await expect(dialog.locator('[name="photoEvidenceRequired"]')).toHaveCount(1);
     await expect(dialog.locator('[name="required"]')).toBeVisible();
+    await expect(dialog.locator('[name="employeeIds"]')).toHaveCount(1);
+    await expect(dialog.locator('[name="date"]')).toBeVisible();
+    await expect(dialog.locator('[name="dueTime"]')).toBeVisible();
     await expect(dialog).not.toContainText("Priorität");
     await expect(dialog).not.toContainText("Schichtbezug");
     await expect(dialog).not.toContainText("Clock-out Policy");
-    await expect(dialog.locator('[name="employeeIds"]')).toHaveCount(1);
 
     await dialog.locator('[name="employeeIds"]').check();
     await dialog.locator('[name="required"]').check();
+    await dialog.locator('[name="photoEvidenceRequired"]').check();
     await expect(dialog.locator('[data-composer-summary]')).toContainText("Pflichtaufgabe");
-    await expect(dialog.locator('[data-composer-summary]')).toContainText("Ausstempeln erst nach Abschluss");
+    await expect(dialog.locator('[data-composer-summary]')).toContainText("Foto-Nachweis erforderlich");
+  });
+
+  test("manager page exposes safe template and task lifecycle controls",async({page})=>{
+    await loginManager(page);
+    await primeTaskUi(page);
+    const html=await page.evaluate(()=>uManagerTasksPage());
+    await page.locator("#app").evaluate((node,value)=>{node.innerHTML=value},html);
+
+    await expect(page.getByRole("heading",{name:"Templates"})).toBeVisible();
+    await expect(page.locator('[data-aora-template-state][data-id="qa_composer_template"]')).toHaveText("Deaktivieren");
+    await expect(page.locator('[data-aora-template-delete][data-id="qa_composer_template"]')).toHaveText("Löschen");
+    await expect(page.locator('[data-aora-task-cancel][data-id="qa_task"]')).toHaveText("Abbrechen");
+    await expect(page.locator('[data-aora-task-delete][data-id="qa_task"]')).toHaveText("Löschen");
   });
 
   test("automation defaults to one shared on-shift task and supports mandatory mode",async({page})=>{
