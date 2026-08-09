@@ -27,12 +27,18 @@ export default defineConfig({
   },
   projects:[
     {
+      name:"composer-scroll-layout",
+      testMatch:/aora-task-composer-scroll-layout\.spec\.mjs/,
+      use:mobile
+    },
+    {
       name:"privacy-public",
       testMatch:/aora-privacy\.spec\.mjs/,
       use:desktop
     },
     {
       name:"unified-release",
+      dependencies:["composer-scroll-layout"],
       testMatch:/aora-unified-release\.spec\.mjs/,
       use:desktop
     },
