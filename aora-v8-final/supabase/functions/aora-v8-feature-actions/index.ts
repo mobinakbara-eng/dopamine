@@ -183,6 +183,7 @@ async function createManualTask(ctx:any,body:any){
     const shift=await db.from("shifts").select("id,location_id,shift_date,deleted_at").eq("organization_id",ctx.organizationId).eq("id",shiftId).is("deleted_at",null).maybeSingle();
     if(shift.error||!shift.data)throw new ApiError(404,"shift_not_found","Die ausgewählte Schicht wurde nicht gefunden.");
     if(String(shift.data.location_id)!==locationId)throw new ApiError(403,"shift_location_forbidden","Die ausgewählte Schicht gehört zu einem anderen Standort.");
+    if(String(shift.data.shift_date)!==date)throw new ApiError(400,"shift_date_mismatch","Die ausgewählte Schicht gehört zu einem anderen Tag.");
   }
 
   const title=String(body.title||template.data.title||"").trim();
@@ -192,6 +193,8 @@ async function createManualTask(ctx:any,body:any){
   const priority=String(body.priority||"normal");
   if(!["low","normal","high","urgent"].includes(priority))throw new ApiError(400,"invalid_priority","Priorität ist ungültig.");
   const timezone=String(body.timezone||"Europe/Berlin").slice(0,64);
+  const templateBlocksClockout=["MANAGER_OVERRIDE","STRICT_BLOCK"].includes(String(template.data.clockout_policy));
+  const required=body.required==null?templateBlocksClockout:(body.required===true||String(body.required).toLowerCase()==="true");
   const rawIdempotency=String(body.idempotencyKey||crypto.randomUUID());
   const idempotencyKey=/^[a-zA-Z0-9_-]{8,128}$/.test(rawIdempotency)?rawIdempotency:crypto.randomUUID();
   const scheduledFor=new Date(`${date}T12:00:00Z`).toISOString();
@@ -210,15 +213,15 @@ async function createManualTask(ctx:any,body:any){
       p_scheduled_for:scheduledFor,
       p_due_at:dueAt.toISOString(),
       p_instance_date:date,
-      p_blocking_clockout:["MANAGER_OVERRIDE","STRICT_BLOCK"].includes(String(template.data.clockout_policy)),
+      p_blocking_clockout:required,
       p_title:title,
-      p_payload:{manual:true,createdBy:ctx.subjectId,title,instructions,priority,shiftId,timezone,idempotencyKey}
+      p_payload:{manual:true,createdBy:ctx.subjectId,title,instructions,priority,required,clockoutPolicy:required?"MANAGER_OVERRIDE":"WARN_ONLY",shiftId,timezone,idempotencyKey}
     });
     if(result.error)throw new ApiError(500,"task_create_failed",result.error.message);
     const taskId=String(result.data?.taskId||"");
     if(taskId&&!created.includes(taskId))created.push(taskId);
   }
-  return{taskIds:created,assigneeCount:employeeIds.length,title,priority,dueAt:dueAt.toISOString(),idempotencyKey};
+  return{taskIds:created,assigneeCount:employeeIds.length,title,priority,required,dueAt:dueAt.toISOString(),idempotencyKey};
 }
 
 Deno.serve(async request=>{
