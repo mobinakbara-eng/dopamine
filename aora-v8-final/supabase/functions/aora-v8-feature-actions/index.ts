@@ -157,7 +157,7 @@ async function createManualTask(ctx:any,body:any){
   const locationId=String(body.locationId||"");
   requireLocation(ctx,locationId);
   const templateId=String(body.templateId||"");
-  const employeeIds=[...new Set((Array.isArray(body.employeeIds)?body.employeeIds:[]).map(String).filter(Boolean))];
+  const employeeIds:string[]=[...new Set<string>((Array.isArray(body.employeeIds)?body.employeeIds:[]).map((value:unknown)=>String(value)).filter(Boolean))];
   const date=String(body.date||new Date().toISOString().slice(0,10));
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new ApiError(400,"invalid_task_date","Aufgabendatum ist ungültig.");
   if(!templateId)throw new ApiError(400,"invalid_task","Vorlage fehlt.");
@@ -200,7 +200,7 @@ async function createManualTask(ctx:any,body:any){
   const scheduledFor=new Date(`${date}T12:00:00Z`).toISOString();
 
   const created:string[]=[];
-  const assignees=employeeIds.length?employeeIds:[null];
+  const assignees:(string|null)[]=employeeIds.length?employeeIds:[null];
   for(const employeeId of assignees){
     const result=await db.rpc("aora_create_scheduled_task_atomic",{
       p_organization_id:ctx.organizationId,
