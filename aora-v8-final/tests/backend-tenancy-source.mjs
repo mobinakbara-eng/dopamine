@@ -9,6 +9,10 @@ const rules = fs.readFileSync(
   new URL("../supabase/functions/aora-v8-pilot-workspace-rules/index.ts", import.meta.url),
   "utf8",
 );
+const pilotWorkspace = fs.readFileSync(
+  new URL("../supabase/functions/aora-v8-pilot-workspace/index.ts", import.meta.url),
+  "utf8",
+);
 const migration = fs.readFileSync(
   new URL("../supabase/migrations/202608050100_task_answer_employee_scope.sql", import.meta.url),
   "utf8",
@@ -56,6 +60,15 @@ includesAll(rules, [
   'from("employee_location_access")',
   "await requireEmployeeLocation(ctx, String(shift.employeeId), String(shift.locationId))",
 ], "pilot rule employee/location binding");
+
+includesAll(pilotWorkspace, [
+  "function scopeEmployeeState",
+  "employees: [employee]",
+  "clockRequests: source.clockRequests.filter",
+  'body.action === "load" && ctx.accessRole === "employee"',
+  '.select("state,revision")',
+  "? scopeEmployeeState(ctx, canonicalState)",
+], "pilot employee canonical state scope");
 
 assert.match(
   migration,

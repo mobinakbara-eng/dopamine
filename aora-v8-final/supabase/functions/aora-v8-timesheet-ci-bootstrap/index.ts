@@ -19,6 +19,7 @@ const ALLOWED_HEADS = new Set([
   "agent/aora-unified-worktime-center",
   "agent/aora-zero-cost-release-hardening",
   "agent/aora-manager-task-redesign",
+  "agent/aora-task-root-cause",
 ]);
 const ITERATIONS = 210000;
 const encoder = new TextEncoder();

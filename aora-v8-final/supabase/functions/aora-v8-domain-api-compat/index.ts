@@ -258,6 +258,9 @@ async function submitTask(body:any,requestId:string){
   const answers=task.task_answers||[];
   const evidence=task.task_evidence||[];
   const employeeId=String(context.session.subject_id);
+  if(task.payload?.photoEvidenceRequired===true&&!evidence.some((file:any)=>String(file.template_item_id)==="__aora_employee_photo__"&&String(file.uploaded_by)===employeeId&&!file.deleted_at)){
+    fail(422,"photo_evidence_required","Bitte zuerst ein Foto als Nachweis hochladen.");
+  }
   const missing:string[]=[];
   for(const item of items){
     if(!item.required)continue;
@@ -309,11 +312,12 @@ Deno.serve(async(request:Request)=>{
   const length=Number(request.headers.get("content-length")||0);
   if(length>MAX_BODY_BYTES)return json({error:{code:"request_too_large",message:"Request too large"}},413,origin);
   const requestId=request.headers.get("x-request-id")||crypto.randomUUID();
+  let action="";
   try{
     const text=await request.text();
     if(new TextEncoder().encode(text).byteLength>MAX_BODY_BYTES)return json({error:{code:"request_too_large",message:"Request too large"}},413,origin);
     const body=text?JSON.parse(text):{};
-    const action=String(body.action||"");
+    action=String(body.action||"");
     if(LOCAL_TASK_ACTIONS.has(action))return json(await handleLocalTaskAction(action,body,requestId),200,origin);
 
     const upstream=await fetch(UPSTREAM,{
@@ -327,7 +331,9 @@ Deno.serve(async(request:Request)=>{
     return json(envelope,upstream.status,origin);
   }catch(error){
     const failure=errorEnvelope(requestId,error);
-    console.warn("aora-domain-compat-rejected",{requestId,status:failure.status,code:failure.body.error.code,message:failure.body.error.message});
+    const event={requestId,action:action||"unknown",status:failure.status,code:failure.body.error.code,message:failure.body.error.message,details:failure.body.error.details};
+    if(failure.status>=500)console.error("aora-domain-compat-failed",event);
+    else console.warn("aora-domain-compat-rejected",event);
     return json(failure.body,failure.status,origin);
   }
 });

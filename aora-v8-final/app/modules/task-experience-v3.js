@@ -55,24 +55,35 @@
   globalThis.uEnsureEmployeeTasks=async function(force=false){
     if(!uFlag("task_automation"))return;
     const range=currentTaskRange();
-    const key=`${S.session?.subjectId||""}:${range.from}:${range.to}`;
-    if(S.u.tasks.loading)return;
-    if(!force&&S.u.tasks.employeeAttemptKey===key)return;
-    S.u.tasks.employeeAttemptKey=key;
+    const sessionToken=String(S.session?.token||"");
+    const organizationId=String(S.session?.organizationId||"");
+    const subjectId=String(S.session?.subjectId||"");
+    const key=`${organizationId}:${subjectId}:${range.from}:${range.to}`;
+    const loadKey=`${sessionToken}:${key}`;
+    if(S.u.tasks.loading&&S.u.tasks.employeeLoadingKey===loadKey)return;
+    if(!force&&S.u.tasks.employeeAttemptKey===loadKey)return;
+    if(force)globalThis.uInvalidateDomainCache?.();
+    S.u.tasks.employeeAttemptKey=loadKey;
+    S.u.tasks.employeeLoadingKey=loadKey;
     S.u.tasks.loading=true;
     S.u.tasks.error="";
     render();
     try{
       const data=await previousCall("tasks",range);
+      if(String(S.session?.token||"")!==sessionToken||String(S.session?.organizationId||"")!==organizationId||String(S.session?.subjectId||"")!==subjectId)return;
       S.u.tasks.data=Array.isArray(data)?data:[];
-      S.u.tasks.employeeKey=key;
+      S.u.tasks.employeeKey=loadKey;
       if(S.u.tasks.selected&&!S.u.tasks.data.some(item=>item.id===S.u.tasks.selected))S.u.tasks.selected=null;
       if(!S.u.tasks.selected&&S.u.tasks.data.length)S.u.tasks.selected=S.u.tasks.data[0].id;
     }catch(error){
+      if(String(S.session?.token||"")!==sessionToken||String(S.session?.organizationId||"")!==organizationId||String(S.session?.subjectId||"")!==subjectId)return;
       S.u.tasks.error=errorMessage(error);
     }finally{
-      S.u.tasks.loading=false;
-      render();
+      if(S.u.tasks.employeeLoadingKey===loadKey){
+        S.u.tasks.loading=false;
+        S.u.tasks.employeeLoadingKey="";
+        render();
+      }
     }
   };
 
@@ -80,25 +91,37 @@
     globalThis.uEnsureManagerTasks=async function(force=false){
       if(!uFlag("task_automation")||!S.locationId)return;
       const range=currentTaskRange();
-      const key=`${S.locationId}:${range.from}:${range.to}`;
-      if(S.u.tasks.managerLoading)return;
-      if(!force&&S.u.tasks.managerAttemptKey===key)return;
-      S.u.tasks.managerAttemptKey=key;
+      const sessionToken=String(S.session?.token||"");
+      const organizationId=String(S.session?.organizationId||"");
+      const subjectId=String(S.session?.subjectId||"");
+      const locationId=String(S.locationId||"");
+      const key=`${organizationId}:${subjectId}:${locationId}:${range.from}:${range.to}`;
+      const loadKey=`${sessionToken}:${key}`;
+      if(S.u.tasks.managerLoading&&S.u.tasks.managerLoadingKey===loadKey)return;
+      if(!force&&S.u.tasks.managerAttemptKey===loadKey)return;
+      if(force)globalThis.uInvalidateDomainCache?.();
+      S.u.tasks.managerAttemptKey=loadKey;
+      S.u.tasks.managerLoadingKey=loadKey;
       S.u.tasks.managerLoading=true;
       S.u.tasks.managerError="";
       render();
       try{
         const[templates,rules,tasks]=await Promise.all([
-          previousCall("taskTemplates",{locationId:S.locationId}),
-          previousCall("taskRules",{locationId:S.locationId}),
-          previousCall("tasks",{locationId:S.locationId,...range})
+          previousCall("taskTemplates",{locationId}),
+          previousCall("taskRules",{locationId}),
+          previousCall("tasks",{locationId,...range})
         ]);
-        S.u.tasks.managerData={locationId:S.locationId,templates:templates||[],rules:rules||[],tasks:tasks||[]};
+        if(String(S.session?.token||"")!==sessionToken||String(S.session?.organizationId||"")!==organizationId||String(S.session?.subjectId||"")!==subjectId||String(S.locationId||"")!==locationId)return;
+        S.u.tasks.managerData={locationId,templates:templates||[],rules:rules||[],tasks:tasks||[]};
       }catch(error){
+        if(String(S.session?.token||"")!==sessionToken||String(S.session?.organizationId||"")!==organizationId||String(S.session?.subjectId||"")!==subjectId||String(S.locationId||"")!==locationId)return;
         S.u.tasks.managerError=errorMessage(error);
       }finally{
-        S.u.tasks.managerLoading=false;
-        render();
+        if(S.u.tasks.managerLoadingKey===loadKey){
+          S.u.tasks.managerLoading=false;
+          S.u.tasks.managerLoadingKey="";
+          render();
+        }
       }
     };
   }
