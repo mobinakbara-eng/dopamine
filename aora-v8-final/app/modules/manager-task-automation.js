@@ -13,12 +13,29 @@
     dialog.querySelector('[data-fixed-time]')?.toggleAttribute("hidden",trigger!=="fixed_time");
     dialog.querySelector('[data-offset-minutes]')?.toggleAttribute("hidden",!["before_shift_end","after_shift_start"].includes(trigger));
     dialog.querySelector('[data-one-person]')?.toggleAttribute("hidden",assignment!=="one_on_shift");
+    dialog.querySelector('[data-shared-task]')?.toggleAttribute("hidden",assignment!=="shared_on_shift");
     const summary=dialog.querySelector('[data-automation-summary]');
     if(!summary)return;
     const time=String(dialog.querySelector('[name="time"]')?.value||"22:00");
-    const selectedDays=[...dialog.querySelectorAll('[name="weekdays"]:checked')].map(input=>input.closest("label")?.textContent?.trim()).filter(Boolean);
-    const assignmentText=assignment==="one_on_shift"?"genau 1 Person im Dienst (faire Rotation)":assignment==="shift_leader"?"Schichtleitung im Dienst":"alle Personen im Dienst";
-    const triggerText=trigger==="fixed_time"?`${selectedDays.length===7?"täglich":selectedDays.join(", ")} um ${time}`:trigger==="shift_start"?"bei Schichtbeginn":trigger==="shift_end"?"bei Schichtende":trigger==="before_shift_end"?"vor Schichtende":"nach Schichtbeginn";
+    const selectedDays=[...dialog.querySelectorAll('[name="weekdays"]:checked')]
+      .map(input=>input.closest("label")?.textContent?.trim())
+      .filter(Boolean);
+    const assignmentText=assignment==="one_on_shift"
+      ?"genau 1 Person im Dienst (faire Rotation)"
+      :assignment==="shift_leader"
+        ?"Schichtleitung im Dienst"
+        :assignment==="shared_on_shift"
+          ?"alle Personen im Dienst – gemeinsame Aufgabe, 1 Abschluss reicht"
+          :"alle Personen im Dienst – jede Person hat ihre eigene Aufgabe";
+    const triggerText=trigger==="fixed_time"
+      ?`${selectedDays.length===7?"täglich":selectedDays.join(", ")} um ${time}`
+      :trigger==="shift_start"
+        ?"bei Schichtbeginn"
+        :trigger==="shift_end"
+          ?"bei Schichtende"
+          :trigger==="before_shift_end"
+            ?"vor Schichtende"
+            :"nach Schichtbeginn";
     summary.innerHTML=`<strong>${uHtml(triggerText)}</strong><span>Aufgabe geht an ${uHtml(assignmentText)}.</span>`;
   }
 
@@ -33,7 +50,7 @@
       <div class="aora-automation-body">
         <section class="aora-task-section"><div class="aora-task-section-title"><span>1</span><div><strong>Aufgabe</strong><small>Welche Checkliste soll automatisch erstellt werden?</small></div></div><div class="u-field"><label>Vorlage</label><select name="templateId" required>${templates.map(item=>`<option value="${item.id}">${uHtml(item.title)}</option>`).join("")}</select></div></section>
         <section class="aora-task-section"><div class="aora-task-section-title"><span>2</span><div><strong>Wann?</strong><small>Zum Beispiel jeden Abend um 22:00.</small></div></div><div class="u-form-grid"><div class="u-field"><label>Auslöser</label><select name="triggerType"><option value="fixed_time" selected>Feste Uhrzeit</option><option value="shift_start">Schichtbeginn</option><option value="shift_end">Schichtende</option><option value="before_shift_end">Vor Schichtende</option><option value="after_shift_start">Nach Schichtbeginn</option></select></div><div class="u-field" data-fixed-time><label>Uhrzeit</label><input name="time" type="time" value="22:00" required></div><div class="u-field full" data-fixed-time><label>Tage</label><div class="aora-weekday-picker">${weekdays.map(([value,label])=>`<label><input type="checkbox" name="weekdays" value="${value}" checked><span>${label}</span></label>`).join("")}</div></div><div class="u-field" data-offset-minutes hidden><label>Abstand (Minuten)</label><input name="triggerMinutes" type="number" min="0" max="720" value="30"></div></div></section>
-        <section class="aora-task-section"><div class="aora-task-section-title"><span>3</span><div><strong>Wer bekommt sie?</strong><small>Aora prüft die echte Schicht zum Ausführungszeitpunkt.</small></div></div><div class="u-form-grid"><div class="u-field full"><label>Zuweisung</label><select name="strategy"><option value="all_on_shift">Alle, die zu diesem Zeitpunkt im Dienst sind</option><option value="one_on_shift">Genau 1 Person aus der laufenden Schicht</option><option value="shift_leader">Schichtleitung, wenn im Dienst</option></select></div><div class="u-field full" data-one-person hidden><label>Auswahl bei mehreren Personen</label><select name="selection"><option value="least_recent" selected>Faire Rotation – wer diese Aufgabe am längsten nicht hatte</option></select><small class="aora-field-note">Sind z. B. um 22:00 zwei Personen im Dienst, erhält nur eine die Aufgabe. Beim nächsten Mal wird bevorzugt die andere Person gewählt.</small></div></div></section>
+        <section class="aora-task-section"><div class="aora-task-section-title"><span>3</span><div><strong>Wer bekommt sie?</strong><small>Aora prüft die echte Schicht zum Ausführungszeitpunkt.</small></div></div><div class="u-form-grid"><div class="u-field full"><label>Zuweisung</label><select name="strategy"><option value="all_on_shift">Alle im Dienst – jede Person erledigt ihre eigene Aufgabe</option><option value="shared_on_shift">Gemeinsam – alle im Dienst sehen dieselbe Aufgabe, 1 Person erledigt für alle</option><option value="one_on_shift">Genau 1 Person aus der laufenden Schicht</option><option value="shift_leader">Schichtleitung, wenn im Dienst</option></select></div><div class="u-field full" data-shared-task hidden><small class="aora-field-note"><strong>Gemeinsame Schichtaufgabe:</strong> Sind um 22:00 z. B. zwei Personen im Dienst, bekommen beide dieselbe Aufgabe. Sobald eine Person sie vollständig abschließt, wird sie für das gesamte Team als erledigt markiert; die andere Person muss sie nicht mehr durchführen.</small></div><div class="u-field full" data-one-person hidden><label>Auswahl bei mehreren Personen</label><select name="selection"><option value="least_recent" selected>Faire Rotation – wer diese Aufgabe am längsten nicht hatte</option></select><small class="aora-field-note">Sind z. B. um 22:00 zwei Personen im Dienst, erhält nur eine die Aufgabe. Beim nächsten Mal wird bevorzugt die andere Person gewählt.</small></div></div></section>
         <section class="aora-task-section"><div class="aora-task-section-title"><span>4</span><div><strong>Deadline & Abschluss</strong><small>Die bestehende Aora Review- und Clock-out-Logik bleibt erhalten.</small></div></div><div class="u-form-grid"><div class="u-field"><label>Deadline nach Auslösung</label><div class="aora-inline-input"><input name="dueOffset" type="number" min="0" max="1440" value="30"><span>Min.</span></div></div><div class="u-field"><label>Clock-out Policy</label><select name="policy"><option value="WARN_ONLY">Nur warnen</option><option value="MANAGER_OVERRIDE" selected>Manager-Freigabe möglich</option><option value="STRICT_BLOCK">Ausstempeln blockieren</option></select></div></div></section>
         <div class="aora-automation-summary" data-automation-summary></div>
       </div>
@@ -61,7 +78,11 @@
           weekdays:selectedDays,
           minutes:Number(form.get("triggerMinutes")||0)
         };
-        const assignmentConfig=strategy==="one_on_shift"?{selection:String(form.get("selection")||"least_recent")}:{selection:"on_shift"};
+        const assignmentConfig=strategy==="one_on_shift"
+          ?{selection:String(form.get("selection")||"least_recent")}
+          :strategy==="shared_on_shift"
+            ?{selection:"on_shift",completionMode:"ANY_ASSIGNEE"}
+            :{selection:"on_shift"};
         await uCall("saveTaskRule",{rule:{
           locationId:S.locationId,
           templateId:String(form.get("templateId")||""),
