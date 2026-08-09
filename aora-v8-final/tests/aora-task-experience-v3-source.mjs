@@ -14,7 +14,7 @@ const [index,ui,styles,media,composer,lifecycle,lifecycleEdge,lifecycleSql]=awai
   read("supabase/migrations/202608091335_task_template_and_instance_lifecycle.sql")
 ]);
 
-for(const marker of ["task-experience-v3.css?v=849","modules/task-experience-v3.js?v=849","task-lifecycle-v4.css?v=850","modules/manager-task-composer-v3.js?v=850","modules/task-lifecycle-v4.js?v=850"]){
+for(const marker of ["task-experience-v3.css?v=849","modules/task-experience-v3.js?v=849","task-lifecycle-v4.css?v=850","modules/manager-task-composer-v3.js?v=850","modules/task-lifecycle-v4.js?v=851"]){
   if(!index.includes(marker))throw new Error(`Task experience asset missing: ${marker}`);
 }
 if(index.indexOf("modules/task-experience-v3.js?v=849")<index.indexOf("modules/domain-patch-routing.js?v=827")){
@@ -23,10 +23,10 @@ if(index.indexOf("modules/task-experience-v3.js?v=849")<index.indexOf("modules/d
 if(index.indexOf("modules/manager-task-composer-v3.js?v=850")<index.indexOf("modules/task-experience-v3.js?v=849")){
   throw new Error("Intrinsic manager task composer must load after task experience v3.");
 }
-if(index.indexOf("modules/task-lifecycle-v4.js?v=850")<index.indexOf("modules/manager-task-composer-v3.js?v=850")){
+if(index.indexOf("modules/task-lifecycle-v4.js?v=851")<index.indexOf("modules/manager-task-composer-v3.js?v=850")){
   throw new Error("Task lifecycle controls must load after the final manager composer.");
 }
-if(index.indexOf("modules/task-lifecycle-v4.js?v=850")>index.indexOf("modules/handlers.js?v=822")){
+if(index.indexOf("modules/task-lifecycle-v4.js?v=851")>index.indexOf("modules/handlers.js?v=822")){
   throw new Error("Task lifecycle UI must load before handlers initialize.");
 }
 
@@ -70,10 +70,10 @@ for(const forbidden of ['name="priority"','name="shiftId"',"Clock-out Policy"]){
   if(composer.includes(forbidden))throw new Error(`Manager composer should not expose technical control: ${forbidden}`);
 }
 
-for(const marker of ["setTemplateActive","deleteTemplate","cancelTask","deleteTask","Deaktivieren","Aktivieren","Abbrechen","Soft-Delete"]){
+for(const marker of ["setTemplateActive","deleteTemplate","deleteRule","cancelTask","deleteTask","Deaktivieren","Aktivieren","Abbrechen","Soft-Delete"]){
   if(!lifecycle.includes(marker))throw new Error(`Task lifecycle UI marker missing: ${marker}`);
 }
-for(const marker of ['action==="setTemplateActive"','action==="deleteTemplate"','action==="cancelTask"','action==="deleteTask"',"manager_required","global_template_forbidden","aora_set_task_template_active","aora_soft_delete_task_template","aora_cancel_task_instance","aora_soft_delete_task_instance"]){
+for(const marker of ['action==="setTemplateActive"','action==="deleteTemplate"','action==="deleteRule"','action==="cancelTask"','action==="deleteTask"',"manager_required","global_template_forbidden","aora_set_task_template_active","aora_soft_delete_task_template","aora_soft_delete_task_rule","aora_cancel_task_instance","aora_soft_delete_task_instance"]){
   if(!lifecycleEdge.includes(marker))throw new Error(`Task lifecycle Edge marker missing: ${marker}`);
 }
 for(const marker of ["aora_set_task_template_active","_aoraPausedByTemplate","aora_soft_delete_task_template","aora_cancel_task_instance","blocking_clockout=false","aora_soft_delete_task_instance","related_entity_type='task'"]){

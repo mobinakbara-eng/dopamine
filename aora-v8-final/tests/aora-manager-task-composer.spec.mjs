@@ -81,8 +81,41 @@ test.describe.serial("Manager task composer v3 browser contract",()=>{
     await expect(page.getByRole("heading",{name:"Templates"})).toBeVisible();
     await expect(page.locator('[data-aora-template-state][data-id="qa_composer_template"]')).toHaveText("Deaktivieren");
     await expect(page.locator('[data-aora-template-delete][data-id="qa_composer_template"]')).toHaveText("Löschen");
+    await expect(page.locator('[data-aora-rule-delete][data-id="qa_rule"]')).toHaveText("Löschen");
     await expect(page.locator('[data-aora-task-cancel][data-id="qa_task"]')).toHaveText("Abbrechen");
     await expect(page.locator('[data-aora-task-delete][data-id="qa_task"]')).toHaveText("Löschen");
+  });
+
+  test("template and automation delete controls execute exactly one lifecycle action",async({page})=>{
+    await loginManager(page);
+    await primeTaskUi(page);
+    await page.evaluate(()=>{
+      window.__qaLifecycleCalls=[];
+      window.request=async(functionName,payload)=>{
+        if(functionName==="aora-v8-task-lifecycle"){
+          window.__qaLifecycleCalls.push({functionName,action:payload.action,templateId:payload.templateId||null,ruleId:payload.ruleId||null});
+          return{data:payload.action==="deleteTemplate"?{deleted:true,deletedRules:1}:{deleted:true},error:null};
+        }
+        if(["taskTemplates","taskRules","tasks"].includes(payload.action))return{data:[],error:null};
+        return{data:{},error:null};
+      };
+    });
+    page.on("dialog",dialog=>dialog.accept());
+
+    let html=await page.evaluate(()=>uManagerTasksPage());
+    await page.locator("#app").evaluate((node,value)=>{node.innerHTML=value},html);
+    await page.locator('[data-aora-template-delete][data-id="qa_composer_template"]').click();
+    await expect.poll(()=>page.evaluate(()=>window.__qaLifecycleCalls.filter(call=>call.action==="deleteTemplate").length)).toBe(1);
+
+    await primeTaskUi(page);
+    html=await page.evaluate(()=>uManagerTasksPage());
+    await page.locator("#app").evaluate((node,value)=>{node.innerHTML=value},html);
+    await page.locator('[data-aora-rule-delete][data-id="qa_rule"]').click();
+    await expect.poll(()=>page.evaluate(()=>window.__qaLifecycleCalls.filter(call=>call.action==="deleteRule").length)).toBe(1);
+    expect(await page.evaluate(()=>window.__qaLifecycleCalls.filter(call=>["deleteTemplate","deleteRule"].includes(call.action)))).toEqual([
+      {functionName:"aora-v8-task-lifecycle",action:"deleteTemplate",templateId:"qa_composer_template",ruleId:null},
+      {functionName:"aora-v8-task-lifecycle",action:"deleteRule",templateId:null,ruleId:"qa_rule"}
+    ]);
   });
 
   test("automation defaults to one shared on-shift task and supports mandatory mode",async({page})=>{

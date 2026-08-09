@@ -32,6 +32,15 @@
       </div>
     </article>`;
   }
+  function ruleCard(rule){
+    const title=rule.task_templates?.title||rule.id;
+    return`<article class="u-item-card aora-lifecycle-card ${rule.active?"":"is-inactive"}">
+      <div class="aora-lifecycle-card-head"><div><h3>${uHtml(title)}</h3><p>${uHtml(rule.trigger_type)} · ${uHtml(rule.assignment_strategy)}</p></div><span class="pill ${rule.active?"":"muted"}">${rule.active?"Aktiv":"Pausiert"}</span></div>
+      <div class="u-actions aora-lifecycle-actions">
+        <button type="button" class="u-btn danger" data-aora-rule-delete data-id="${uHtml(rule.id)}" data-title="${uHtml(title)}">Löschen</button>
+      </div>
+    </article>`;
+  }
   function taskCard(task){
     const status=String(task.status||"");
     const finished=["completed","waived","cancelled"].includes(status);
@@ -63,7 +72,7 @@
       <div class="u-template-grid">${(data.templates||[]).map(templateCard).join("")||uEmpty("Noch keine Vorlage.")}</div>
 
       <div class="aora-section-heading"><div><h2>Automatisierungen</h2><p>Eine deaktivierte Vorlage pausiert ihre abhängigen Regeln automatisch.</p></div></div>
-      <div class="u-template-grid">${(data.rules||[]).map(rule=>`<article class="u-item-card aora-lifecycle-card ${rule.active?"":"is-inactive"}"><div class="aora-lifecycle-card-head"><div><h3>${uHtml(rule.task_templates?.title||rule.id)}</h3><p>${uHtml(rule.trigger_type)} · ${uHtml(rule.assignment_strategy)}</p></div><span class="pill ${rule.active?"":"muted"}">${rule.active?"Aktiv":"Pausiert"}</span></div></article>`).join("")||uEmpty("Keine Automatisierung.")}</div>
+      <div class="u-template-grid">${(data.rules||[]).map(ruleCard).join("")||uEmpty("Keine Automatisierung.")}</div>
 
       <div class="aora-section-heading"><div><h2>Aktuelle Aufgaben</h2><p>Offene Aufgaben können abgebrochen werden. Löschen ist ein Soft-Delete und entfernt die Aufgabe aus den normalen Listen, ohne Audit-/Historiedaten hart zu vernichten.</p></div></div>
       <div class="u-template-grid">${(data.tasks||[]).map(taskCard).join("")||uEmpty("Keine Aufgaben.")}</div>
@@ -73,10 +82,11 @@
   document.addEventListener("click",async event=>{
     const stateButton=event.target.closest?.("[data-aora-template-state]");
     const templateDelete=event.target.closest?.("[data-aora-template-delete]");
+    const ruleDelete=event.target.closest?.("[data-aora-rule-delete]");
     const taskCancel=event.target.closest?.("[data-aora-task-cancel]");
     const taskDelete=event.target.closest?.("[data-aora-task-delete]");
-    if(!stateButton&&!templateDelete&&!taskCancel&&!taskDelete)return;
-    const button=stateButton||templateDelete||taskCancel||taskDelete;
+    if(!stateButton&&!templateDelete&&!ruleDelete&&!taskCancel&&!taskDelete)return;
+    const button=stateButton||templateDelete||ruleDelete||taskCancel||taskDelete;
     if(button.disabled)return;
     button.disabled=true;
     try{
@@ -90,6 +100,11 @@
         if(!confirm(`„${title}“ löschen? Abhängige Automatisierungen werden beendet. Bereits erstellte/abgeschlossene Aufgaben bleiben als Historie erhalten.`))return;
         const result=await lifecycleCall("deleteTemplate",{templateId:String(templateDelete.dataset.id||""),reason:"Vom Manager in der Aufgabenverwaltung gelöscht"});
         toast(`Template gelöscht${result?.deletedRules?` · ${result.deletedRules} Automatisierung(en) beendet`:""}.`,"success");
+      }else if(ruleDelete){
+        const title=String(ruleDelete.dataset.title||"Automatisierung");
+        if(!confirm(`Automatisierung für „${title}“ löschen? Bereits erzeugte Aufgaben und deren Historie bleiben erhalten.`))return;
+        await lifecycleCall("deleteRule",{ruleId:String(ruleDelete.dataset.id||""),reason:"Vom Manager in der Aufgabenverwaltung gelöscht"});
+        toast("Automatisierung gelöscht.","success");
       }else if(taskCancel){
         if(!confirm("Aufgabe abbrechen? Sie blockiert danach auch das Ausstempeln nicht mehr."))return;
         await lifecycleCall("cancelTask",{taskId:String(taskCancel.dataset.id||""),reason:"Vom Manager in der Aufgabenverwaltung abgebrochen"});

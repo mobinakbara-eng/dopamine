@@ -94,6 +94,19 @@ async function templateAccess(ctx:any,templateId:string){
   return data;
 }
 
+async function ruleAccess(ctx:any,ruleId:string){
+  if(!ruleId)fail(400,"rule_required","Automatisierung fehlt.");
+  const{data,error}=await service.from("task_rules")
+    .select("id,location_id,template_id,active,deleted_at")
+    .eq("organization_id",ctx.organizationId)
+    .eq("id",ruleId)
+    .maybeSingle();
+  if(error)fail(500,"database_error",error.message);
+  if(!data||data.deleted_at)fail(404,"rule_not_found","Automatisierung wurde nicht gefunden.");
+  requireLocation(ctx,String(data.location_id));
+  return data;
+}
+
 async function taskAccess(ctx:any,taskId:string){
   if(!taskId)fail(400,"task_required","Aufgabe fehlt.");
   const{data,error}=await service.from("task_instances")
@@ -131,6 +144,20 @@ async function deleteTemplate(ctx:any,body:any){
     p_reason:reason
   });
   if(error)fail(error.message?.includes("task_template_not_found")?404:500,"template_delete_failed",error.message);
+  return data;
+}
+
+async function deleteRule(ctx:any,body:any){
+  const ruleId=String(body.ruleId||"");
+  await ruleAccess(ctx,ruleId);
+  const reason=String(body.reason||"Vom Manager gelöscht").trim().slice(0,500)||"Vom Manager gelöscht";
+  const{data,error}=await service.rpc("aora_soft_delete_task_rule",{
+    p_organization_id:ctx.organizationId,
+    p_rule_id:ruleId,
+    p_actor_id:String(ctx.session.subject_id),
+    p_reason:reason
+  });
+  if(error)fail(error.message?.includes("task_rule_not_found")?404:500,"rule_delete_failed",error.message);
   return data;
 }
 
@@ -179,6 +206,7 @@ Deno.serve(async request=>{
     let data:unknown;
     if(action==="setTemplateActive")data=await setTemplateActive(ctx,body);
     else if(action==="deleteTemplate")data=await deleteTemplate(ctx,body);
+    else if(action==="deleteRule")data=await deleteRule(ctx,body);
     else if(action==="cancelTask")data=await cancelTask(ctx,body);
     else if(action==="deleteTask")data=await deleteTask(ctx,body);
     else fail(400,"unknown_action","Unbekannte Aktion.");
