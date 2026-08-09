@@ -56,7 +56,7 @@
     const reviewTasks=(data.tasks||[]).filter(item=>item.status==="submitted").length;
     return`<section class="u-task-shell aora-task-management-v4">
       ${error?`<div class="u-warning-panel aora-task-load-error"><span>${uHtml(error)}</span><button type="button" class="u-btn secondary" data-aora-task-retry="manager">Erneut laden</button></div>`:""}
-      <div class="u-toolbar"><div><div class="caps muted">Aufgaben & Checklisten</div><h1>Aufgaben</h1></div><div class="u-toolbar-group">${uButton("Template erstellen","template-new",``,"secondary")}${uButton("Automatische Aufgabe","rule-new",``,"secondary")}${uButton("Aufgabe erstellen","manual-task-new",``,"")}</div></div>
+      <div class="u-toolbar"><div><div class="caps muted">Task Automation</div><h1>Aufgaben</h1></div><div class="u-toolbar-group">${uButton("Template erstellen","template-new",``,"secondary")}${uButton("Automatische Aufgabe","rule-new",``,"secondary")}${uButton("Aufgabe erstellen","manual-task-new",``,"")}</div></div>
       <div class="u-board-summary"><div class="u-summary-card"><strong>${activeTemplates}</strong><small>Aktive Templates</small></div><div class="u-summary-card"><strong>${activeRules}</strong><small>Automatisierungen</small></div><div class="u-summary-card"><strong>${openTasks}</strong><small>Offene Aufgaben</small></div><div class="u-summary-card"><strong>${reviewTasks}</strong><small>Zur Prüfung</small></div></div>
 
       <div class="aora-section-heading"><div><h2>Templates</h2><p>Deaktivieren pausiert abhängige Automatisierungen. Löschen entfernt nur die Vorlage aus der aktiven Verwaltung; historische Aufgaben bleiben erhalten.</p></div></div>
