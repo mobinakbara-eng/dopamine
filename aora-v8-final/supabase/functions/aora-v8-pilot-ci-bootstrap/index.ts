@@ -20,7 +20,8 @@ const ALLOWED_HEADS=new Set([
   "agent/aora-relational-foundation",
   "agent/aora-access-hardening",
   "agent/aora-workforce-features",
-  "agent/aora-zero-cost-release-hardening"
+  "agent/aora-zero-cost-release-hardening",
+  "agent/aora-manager-task-redesign"
 ]);
 const ALLOWED_BASES=new Set([
   "agent/aora-v8-final",

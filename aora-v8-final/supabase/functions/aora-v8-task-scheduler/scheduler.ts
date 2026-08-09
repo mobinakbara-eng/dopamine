@@ -12,22 +12,544 @@ const id=(prefix:string)=>`${prefix}_${crypto.randomUUID().replaceAll("-","")}`;
 const asTime=(value:unknown)=>/^\d{2}:\d{2}$/.test(String(value||""))?String(value):null;
 const minutes=(value:unknown)=>Number.isFinite(Number(value))?Math.trunc(Number(value)):0;
 const weekdayKeys=["sun","mon","tue","wed","thu","fri","sat"];
-async function secret(name:string){const{data,error}=await db.rpc("aora_get_runtime_secret",{p_name:name});if(error)throw new Error(error.message);return String(data||"")}
-function json(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}})}
-function localParts(date:Date,timeZone:string){const parts=new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23",weekday:"short"}).formatToParts(date);const map=Object.fromEntries(parts.map(part=>[part.type,part.value]));return{date:`${map.year}-${map.month}-${map.day}`,weekday:String(map.weekday||"").slice(0,3).toLowerCase(),year:Number(map.year),month:Number(map.month),day:Number(map.day),hour:Number(map.hour),minute:Number(map.minute),second:Number(map.second)}}
-function zoneOffsetMs(date:Date,timeZone:string){const p=localParts(date,timeZone);return Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second)-date.getTime()}
-function zonedDateTime(dateText:string,timeText:string,timeZone:string){const[y,m,d]=dateText.split("-").map(Number);const[h,min]=timeText.split(":").map(Number);let stamp=Date.UTC(y,m-1,d,h,min,0);for(let i=0;i<3;i++)stamp=Date.UTC(y,m-1,d,h,min,0)-zoneOffsetMs(new Date(stamp),timeZone);return new Date(stamp)}
-function addDays(dateText:string,days:number){const date=new Date(`${dateText}T00:00:00Z`);date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10)}
-function inWindow(candidate:Date,runAt:Date){return candidate.getTime()>=runAt.getTime()-WINDOW_PAST_MS&&candidate.getTime()<=runAt.getTime()+WINDOW_FUTURE_MS}
-function statusEligible(status:string){return["published","confirmed","pending_confirmation"].includes(status)}
-function normalizedShift(row:any){const payload=row.payload||{};return{id:String(row.id),employeeId:row.employee_id??payload.employeeId??null,locationId:String(row.location_id??payload.locationId??""),date:String(row.shift_date??payload.date??""),start:String(row.starts_at??payload.start??"").slice(0,5),end:String(row.ends_at??payload.end??"").slice(0,5),status:String(row.status??payload.status??"draft")}}
-function shiftBounds(shift:any,timeZone:string){const start=zonedDateTime(shift.date,shift.start,timeZone);let end=zonedDateTime(shift.date,shift.end,timeZone);if(end<=start)end=zonedDateTime(addDays(shift.date,1),shift.end,timeZone);return{start,end}}
-function ruleCandidates(rule:any,location:any,shifts:any[],runAt:Date){const timeZone=String(location.timezone||"Europe/Berlin");const candidates:{scheduledFor:Date,shiftId:string|null,localDate:string}[]=[];const config=rule.trigger_config||{};const localToday=localParts(runAt,timeZone).date;const dates=[addDays(localToday,-1),localToday,addDays(localToday,1)];if(rule.trigger_type==="fixed_time"){const time=asTime(config.time);if(!time)return candidates;for(const date of dates){const candidate=zonedDateTime(date,time,timeZone);const key=localParts(candidate,timeZone).weekday;const allowed=Array.isArray(config.weekdays)?config.weekdays.map((item:any)=>String(item).toLowerCase()):null;if((!allowed||!allowed.length||allowed.includes(key)||allowed.includes(String(weekdayKeys.indexOf(key))))&&inWindow(candidate,runAt))candidates.push({scheduledFor:candidate,shiftId:null,localDate:date})}}
-if(["shift_start","shift_end","before_shift_end","after_shift_start"].includes(rule.trigger_type)){for(const shift of shifts.filter(item=>item.locationId===rule.location_id&&item.employeeId&&statusEligible(item.status))){const bounds=shiftBounds(shift,timeZone);let candidate=rule.trigger_type.includes("end")?bounds.end:bounds.start;const offset=Math.abs(minutes(config.minutes??rule.due_offset_minutes));if(rule.trigger_type==="before_shift_end")candidate=new Date(bounds.end.getTime()-offset*60000);if(rule.trigger_type==="after_shift_start")candidate=new Date(bounds.start.getTime()+offset*60000);if(inWindow(candidate,runAt))candidates.push({scheduledFor:candidate,shiftId:shift.id,localDate:localParts(candidate,timeZone).date})}}
-if(["location_open","location_close"].includes(rule.trigger_type)){const hours=location.payload?.openingHours||{};for(const date of dates){const weekday=localParts(zonedDateTime(date,"12:00",timeZone),timeZone).weekday;const entry=hours[weekday]||hours[String(weekdayKeys.indexOf(weekday))]||null;const value=entry&&(rule.trigger_type==="location_open"?(entry.open||entry.start):(entry.close||entry.end));const time=asTime(value);if(!time)continue;const candidate=zonedDateTime(date,time,timeZone);if(inWindow(candidate,runAt))candidates.push({scheduledFor:candidate,shiftId:null,localDate:date})}}return candidates}
-async function employeesAt(organizationId:string,locationId:string,scheduledFor:Date,shifts:any[],strategy:string,config:any,timeZone:string){const{data:employees,error}=await db.from("employees").select("id,name,role,role_title,location_id,primary_location_id,active,deleted_at").eq("organization_id",organizationId).eq("active",true).is("deleted_at",null);if(error)throw new Error(error.message);const eligible=(employees||[]).filter((employee:any)=>[employee.primary_location_id,employee.location_id].includes(locationId));const onShiftIds=new Set(shifts.filter(shift=>{if(shift.locationId!==locationId||!shift.employeeId||!statusEligible(shift.status))return false;const bounds=shiftBounds(shift,timeZone);return scheduledFor>=bounds.start&&scheduledFor<=bounds.end}).map(shift=>String(shift.employeeId)));if(strategy==="specific_employee")return eligible.filter((employee:any)=>String(employee.id)===String(config.employeeId)).map((employee:any)=>String(employee.id));if(strategy==="specific_role")return eligible.filter((employee:any)=>String(employee.role_title||employee.role||"").toLowerCase()===String(config.role||"").toLowerCase()&&(!onShiftIds.size||onShiftIds.has(String(employee.id)))).map((employee:any)=>String(employee.id));const onShift=eligible.filter((employee:any)=>onShiftIds.has(String(employee.id)));if(strategy==="shift_leader")return onShift.filter((employee:any)=>/lead|leiter|manager/i.test(String(employee.role_title||employee.role||""))).slice(0,1).map((employee:any)=>String(employee.id));if(strategy==="one_on_shift")return onShift.slice(0,1).map((employee:any)=>String(employee.id));if(strategy==="round_robin"){if(!onShift.length)return[];return[String(onShift[Math.abs(Math.floor(scheduledFor.getTime()/60000))%onShift.length].id)]}if(strategy==="first_claim")return[null];return onShift.map((employee:any)=>String(employee.id))}
-async function notifyOpenTask(organizationId:string,employeeId:string,locationId:string,taskId:string,title:string,dueAt:string){const key=`task-open:${taskId}:employee:${employeeId}`;const noteId=id("note");const{error}=await db.from("notifications").upsert({organization_id:organizationId,id:noteId,employee_id:employeeId,location_id:locationId,type:"task_available",title,body:`Offene Aufgabe · fällig bis ${new Date(dueAt).toLocaleString("de-DE")}`,related_entity_type:"task",related_entity_id:taskId,read:false,created_at:nowIso(),payload:{taskId,dueAt,firstClaim:true},idempotency_key:key},{onConflict:"organization_id,idempotency_key",ignoreDuplicates:true});if(error)throw new Error(error.message);const{data:note}=await db.from("notifications").select("id").eq("organization_id",organizationId).eq("idempotency_key",key).maybeSingle();if(note?.id)await db.from("notification_deliveries").upsert([{organization_id:organizationId,notification_id:note.id,channel:"in_app",status:"delivered",attempts:1,idempotency_key:`${key}:in_app`,sent_at:nowIso(),delivered_at:nowIso()},{organization_id:organizationId,notification_id:note.id,channel:"web_push",status:"pending",attempts:0,idempotency_key:`${key}:web_push`,next_attempt_at:nowIso()}],{onConflict:"organization_id,idempotency_key",ignoreDuplicates:true})}
-async function processRule(rule:any,template:any,location:any,shifts:any[],runAt:Date){const candidates=ruleCandidates(rule,location,shifts,runAt);let generated=0,notifications=0;const errors:string[]=[];for(const candidate of candidates){let assignees:(string|null)[]=[];try{assignees=await employeesAt(rule.organization_id,rule.location_id,candidate.scheduledFor,shifts,rule.assignment_strategy,rule.assignment_config||{},String(location.timezone||"Europe/Berlin"))}catch(error){errors.push(error instanceof Error?error.message:String(error));continue}if(!assignees.length)continue;for(const employeeId of assignees){const dueAt=new Date(candidate.scheduledFor.getTime()+minutes(rule.due_offset_minutes)*60000);const{data,error}=await db.rpc("aora_create_scheduled_task_atomic",{p_organization_id:rule.organization_id,p_rule_id:rule.id,p_template_id:template.id,p_template_version:Number(template.version||template.source_version||1),p_location_id:rule.location_id,p_shift_id:candidate.shiftId,p_employee_id:employeeId,p_scheduled_for:candidate.scheduledFor.toISOString(),p_due_at:dueAt.toISOString(),p_instance_date:candidate.localDate,p_blocking_clockout:["MANAGER_OVERRIDE","STRICT_BLOCK"].includes(rule.clockout_policy),p_title:template.title,p_payload:{scheduler:true,assignmentStrategy:rule.assignment_strategy,triggerType:rule.trigger_type}});if(error){errors.push(error.message);continue}if(data?.created){generated++;notifications+=Number(data.notificationCount||0);if(employeeId===null){const potential=await employeesAt(rule.organization_id,rule.location_id,candidate.scheduledFor,shifts,"all_on_shift",{},String(location.timezone||"Europe/Berlin"));for(const candidateEmployee of potential){try{await notifyOpenTask(rule.organization_id,String(candidateEmployee),rule.location_id,String(data.taskId),`${template.title} – offen`,dueAt.toISOString());notifications++}catch(error){errors.push(error instanceof Error?error.message:String(error))}}}}}}
-await db.from("task_rules").update({last_run_at:runAt.toISOString(),updated_at:nowIso()}).eq("organization_id",rule.organization_id).eq("id",rule.id);return{generated,notifications,errors}}
 
-Deno.serve(async request=>{if(request.method!=="POST")return json({error:"method_not_allowed"},405);try{const expected=await secret("aora_scheduler_token");if(!expected||request.headers.get("x-aora-job-token")!==expected)return json({error:"forbidden"},403);const body=await request.json().catch(()=>({}));const runAt=body.scheduled_for?new Date(body.scheduled_for):new Date();if(Number.isNaN(runAt.getTime()))return json({error:"invalid_scheduled_for"},400);const{data:rules,error:rulesError}=await db.from("task_rules").select("*").eq("active",true).is("deleted_at",null).limit(MAX_RULES);if(rulesError)throw new Error(rulesError.message);if(!rules?.length)return json({ok:true,generated:0,notifications:0,errors:0,server_time:nowIso()});const orgs=[...new Set(rules.map((rule:any)=>String(rule.organization_id)))];const locationsNeeded=[...new Set(rules.map((rule:any)=>String(rule.location_id)))];const templatesNeeded=[...new Set(rules.map((rule:any)=>String(rule.template_id)))];const today=runAt.toISOString().slice(0,10);const[{data:locations,error:locationError},{data:templates,error:templateError},{data:shiftRows,error:shiftError}]=await Promise.all([db.from("locations").select("id,organization_id,name,timezone,payload,active,deleted_at").in("id",locationsNeeded).eq("active",true).is("deleted_at",null),db.from("task_templates").select("id,organization_id,title,version,source_version,active,deleted_at").in("id",templatesNeeded).eq("active",true).is("deleted_at",null),db.from("shifts").select("id,organization_id,employee_id,location_id,shift_date,starts_at,ends_at,status,payload,deleted_at").in("organization_id",orgs).gte("shift_date",addDays(today,-2)).lte("shift_date",addDays(today,2)).is("deleted_at",null)]);if(locationError||templateError||shiftError)throw new Error(locationError?.message||templateError?.message||shiftError?.message);const locationMap=new Map((locations||[]).map((item:any)=>[`${item.organization_id}:${item.id}`,item]));const templateMap=new Map((templates||[]).map((item:any)=>[`${item.organization_id}:${item.id}`,item]));const shifts=(shiftRows||[]).map(normalizedShift);let generated=0,notifications=0,errorCount=0;const details:any[]=[];for(const rule of rules){const location=locationMap.get(`${rule.organization_id}:${rule.location_id}`);const template=templateMap.get(`${rule.organization_id}:${rule.template_id}`);if(!location||!template){errorCount++;details.push({ruleId:rule.id,errors:["missing_location_or_template"]});continue}const result=await processRule(rule,template,location,shifts,runAt);generated+=result.generated;notifications+=result.notifications;errorCount+=result.errors.length;if(result.errors.length)details.push({ruleId:rule.id,errors:result.errors.slice(0,5)})}await db.from("scheduler_runs").insert({job_type:"task_generation",scheduled_for:runAt.toISOString(),started_at:runAt.toISOString(),completed_at:nowIso(),status:errorCount?(generated?"partial":"failed"):"completed",generated_count:generated,notification_count:notifications,error_count:errorCount,details:{rules:rules.length,errors:details}});return json({ok:errorCount===0,generated,notifications,errors:errorCount,rules:rules.length,server_time:nowIso()},errorCount&&!generated?500:200)}catch(error){console.error("aora-task-scheduler",error);return json({error:"scheduler_failed",message:error instanceof Error?error.message:String(error)},500)}});
+async function secret(name:string){
+  const{data,error}=await db.rpc("aora_get_runtime_secret",{p_name:name});
+  if(error)throw new Error(error.message);
+  return String(data||"");
+}
+
+function json(data:unknown,status=200){
+  return new Response(JSON.stringify(data),{
+    status,
+    headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}
+  });
+}
+
+function localParts(date:Date,timeZone:string){
+  const parts=new Intl.DateTimeFormat("en-CA",{
+    timeZone,
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit",
+    hour:"2-digit",
+    minute:"2-digit",
+    second:"2-digit",
+    hourCycle:"h23",
+    weekday:"short"
+  }).formatToParts(date);
+  const map=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return{
+    date:`${map.year}-${map.month}-${map.day}`,
+    weekday:String(map.weekday||"").slice(0,3).toLowerCase(),
+    year:Number(map.year),
+    month:Number(map.month),
+    day:Number(map.day),
+    hour:Number(map.hour),
+    minute:Number(map.minute),
+    second:Number(map.second)
+  };
+}
+
+function zoneOffsetMs(date:Date,timeZone:string){
+  const p=localParts(date,timeZone);
+  return Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second)-date.getTime();
+}
+
+function zonedDateTime(dateText:string,timeText:string,timeZone:string){
+  const[y,m,d]=dateText.split("-").map(Number);
+  const[h,min]=timeText.split(":").map(Number);
+  let stamp=Date.UTC(y,m-1,d,h,min,0);
+  for(let i=0;i<3;i++)stamp=Date.UTC(y,m-1,d,h,min,0)-zoneOffsetMs(new Date(stamp),timeZone);
+  return new Date(stamp);
+}
+
+function addDays(dateText:string,days:number){
+  const date=new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate()+days);
+  return date.toISOString().slice(0,10);
+}
+
+function inWindow(candidate:Date,runAt:Date){
+  return candidate.getTime()>=runAt.getTime()-WINDOW_PAST_MS
+    &&candidate.getTime()<=runAt.getTime()+WINDOW_FUTURE_MS;
+}
+
+function statusEligible(status:string){
+  return["published","confirmed","pending_confirmation"].includes(status);
+}
+
+function normalizedShift(row:any){
+  const payload=row.payload||{};
+  return{
+    id:String(row.id),
+    employeeId:row.employee_id??payload.employeeId??null,
+    locationId:String(row.location_id??payload.locationId??""),
+    date:String(row.shift_date??payload.date??""),
+    start:String(row.starts_at??payload.start??"").slice(0,5),
+    end:String(row.ends_at??payload.end??"").slice(0,5),
+    status:String(row.status??payload.status??"draft")
+  };
+}
+
+function shiftBounds(shift:any,timeZone:string){
+  const start=zonedDateTime(shift.date,shift.start,timeZone);
+  let end=zonedDateTime(shift.date,shift.end,timeZone);
+  if(end<=start)end=zonedDateTime(addDays(shift.date,1),shift.end,timeZone);
+  return{start,end};
+}
+
+function ruleCandidates(rule:any,location:any,shifts:any[],runAt:Date){
+  const timeZone=String(location.timezone||"Europe/Berlin");
+  const candidates:{scheduledFor:Date,shiftId:string|null,localDate:string}[]=[];
+  const config=rule.trigger_config||{};
+  const localToday=localParts(runAt,timeZone).date;
+  const dates=[addDays(localToday,-1),localToday,addDays(localToday,1)];
+
+  if(rule.trigger_type==="fixed_time"){
+    const time=asTime(config.time);
+    if(!time)return candidates;
+    for(const date of dates){
+      const candidate=zonedDateTime(date,time,timeZone);
+      const key=localParts(candidate,timeZone).weekday;
+      const allowed=Array.isArray(config.weekdays)
+        ?config.weekdays.map((item:any)=>String(item).toLowerCase())
+        :null;
+      if((!allowed||!allowed.length||allowed.includes(key)||allowed.includes(String(weekdayKeys.indexOf(key))))&&inWindow(candidate,runAt)){
+        candidates.push({scheduledFor:candidate,shiftId:null,localDate:date});
+      }
+    }
+  }
+
+  if(["shift_start","shift_end","before_shift_end","after_shift_start"].includes(rule.trigger_type)){
+    for(const shift of shifts.filter(item=>item.locationId===rule.location_id&&item.employeeId&&statusEligible(item.status))){
+      const bounds=shiftBounds(shift,timeZone);
+      let candidate=rule.trigger_type.includes("end")?bounds.end:bounds.start;
+      const offset=Math.abs(minutes(config.minutes??rule.due_offset_minutes));
+      if(rule.trigger_type==="before_shift_end")candidate=new Date(bounds.end.getTime()-offset*60000);
+      if(rule.trigger_type==="after_shift_start")candidate=new Date(bounds.start.getTime()+offset*60000);
+      if(inWindow(candidate,runAt)){
+        candidates.push({
+          scheduledFor:candidate,
+          shiftId:shift.id,
+          localDate:localParts(candidate,timeZone).date
+        });
+      }
+    }
+  }
+
+  if(["location_open","location_close"].includes(rule.trigger_type)){
+    const hours=location.payload?.openingHours||{};
+    for(const date of dates){
+      const weekday=localParts(zonedDateTime(date,"12:00",timeZone),timeZone).weekday;
+      const entry=hours[weekday]||hours[String(weekdayKeys.indexOf(weekday))]||null;
+      const value=entry&&(rule.trigger_type==="location_open"
+        ?(entry.open||entry.start)
+        :(entry.close||entry.end));
+      const time=asTime(value);
+      if(!time)continue;
+      const candidate=zonedDateTime(date,time,timeZone);
+      if(inWindow(candidate,runAt))candidates.push({scheduledFor:candidate,shiftId:null,localDate:date});
+    }
+  }
+
+  return candidates;
+}
+
+async function leastRecentlyAssigned(organizationId:string,locationId:string,ruleId:string,onShift:any[]){
+  if(!ruleId||onShift.length<2)return onShift;
+  const{data:instances,error:instanceError}=await db.from("task_instances")
+    .select("id,scheduled_for")
+    .eq("organization_id",organizationId)
+    .eq("location_id",locationId)
+    .eq("rule_id",ruleId)
+    .is("deleted_at",null)
+    .order("scheduled_for",{ascending:false})
+    .limit(200);
+  if(instanceError)throw new Error(instanceError.message);
+  const instanceIds=(instances||[]).map((item:any)=>String(item.id));
+  if(!instanceIds.length)return onShift;
+  const{data:assignments,error:assignmentError}=await db.from("task_assignments")
+    .select("employee_id,assigned_at,task_instance_id")
+    .eq("organization_id",organizationId)
+    .in("task_instance_id",instanceIds);
+  if(assignmentError)throw new Error(assignmentError.message);
+  const latest=new Map<string,number>();
+  for(const assignment of assignments||[]){
+    const employeeId=String(assignment.employee_id||"");
+    const stamp=new Date(assignment.assigned_at||0).getTime();
+    if(employeeId&&stamp>(latest.get(employeeId)||0))latest.set(employeeId,stamp);
+  }
+  return[...onShift].sort((a:any,b:any)=>{
+    const aStamp=latest.get(String(a.id))||0;
+    const bStamp=latest.get(String(b.id))||0;
+    if(aStamp!==bStamp)return aStamp-bStamp;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
+async function employeesAt(
+  organizationId:string,
+  locationId:string,
+  scheduledFor:Date,
+  shifts:any[],
+  strategy:string,
+  config:any,
+  timeZone:string
+){
+  const[{data:employees,error},{data:accessRows,error:accessError}]=await Promise.all([
+    db.from("employees")
+      .select("id,name,role,role_title,location_id,primary_location_id,active,deleted_at")
+      .eq("organization_id",organizationId)
+      .eq("active",true)
+      .is("deleted_at",null),
+    db.from("employee_location_access")
+      .select("employee_id")
+      .eq("organization_id",organizationId)
+      .eq("location_id",locationId)
+  ]);
+  if(error||accessError)throw new Error(error?.message||accessError?.message);
+
+  const explicitAccess=new Set((accessRows||[]).map((row:any)=>String(row.employee_id)));
+  const eligible=(employees||[]).filter((employee:any)=>
+    [employee.primary_location_id,employee.location_id].map(String).includes(locationId)
+    ||explicitAccess.has(String(employee.id))
+  );
+
+  const onShiftIds=new Set(
+    shifts.filter(shift=>{
+      if(shift.locationId!==locationId||!shift.employeeId||!statusEligible(shift.status))return false;
+      const bounds=shiftBounds(shift,timeZone);
+      return scheduledFor>=bounds.start&&scheduledFor<=bounds.end;
+    }).map(shift=>String(shift.employeeId))
+  );
+
+  if(strategy==="specific_employee"){
+    return eligible
+      .filter((employee:any)=>String(employee.id)===String(config.employeeId))
+      .map((employee:any)=>String(employee.id));
+  }
+
+  if(strategy==="specific_role"){
+    return eligible
+      .filter((employee:any)=>
+        String(employee.role_title||employee.role||"").toLowerCase()===String(config.role||"").toLowerCase()
+        &&(!onShiftIds.size||onShiftIds.has(String(employee.id)))
+      )
+      .map((employee:any)=>String(employee.id));
+  }
+
+  let onShift=eligible.filter((employee:any)=>onShiftIds.has(String(employee.id)));
+
+  if(strategy==="shift_leader"){
+    return onShift
+      .filter((employee:any)=>/lead|leiter|manager/i.test(String(employee.role_title||employee.role||"")))
+      .slice(0,1)
+      .map((employee:any)=>String(employee.id));
+  }
+
+  if(strategy==="one_on_shift"){
+    if(String(config.selection||"least_recent")==="least_recent"){
+      onShift=await leastRecentlyAssigned(organizationId,locationId,String(config.ruleId||""),onShift);
+    }
+    return onShift.slice(0,1).map((employee:any)=>String(employee.id));
+  }
+
+  if(strategy==="round_robin"){
+    if(!onShift.length)return[];
+    return[String(onShift[Math.abs(Math.floor(scheduledFor.getTime()/60000))%onShift.length].id)];
+  }
+
+  if(strategy==="first_claim")return[null];
+
+  // all_on_shift and shared_on_shift both resolve the same audience.
+  // processRule decides whether that audience receives separate tasks or one shared task.
+  return onShift.map((employee:any)=>String(employee.id));
+}
+
+async function notifyOpenTask(
+  organizationId:string,
+  employeeId:string,
+  locationId:string,
+  taskId:string,
+  title:string,
+  dueAt:string
+){
+  const key=`task-open:${taskId}:employee:${employeeId}`;
+  const noteId=id("note");
+  const{error}=await db.from("notifications").upsert({
+    organization_id:organizationId,
+    id:noteId,
+    employee_id:employeeId,
+    location_id:locationId,
+    type:"task_available",
+    title,
+    body:`Offene Aufgabe · fällig bis ${new Date(dueAt).toLocaleString("de-DE")}`,
+    related_entity_type:"task",
+    related_entity_id:taskId,
+    read:false,
+    created_at:nowIso(),
+    payload:{taskId,dueAt,firstClaim:true},
+    idempotency_key:key
+  },{onConflict:"organization_id,idempotency_key",ignoreDuplicates:true});
+  if(error)throw new Error(error.message);
+
+  const{data:note}=await db.from("notifications")
+    .select("id")
+    .eq("organization_id",organizationId)
+    .eq("idempotency_key",key)
+    .maybeSingle();
+
+  if(note?.id){
+    await db.from("notification_deliveries").upsert([
+      {
+        organization_id:organizationId,
+        notification_id:note.id,
+        channel:"in_app",
+        status:"delivered",
+        attempts:1,
+        idempotency_key:`${key}:in_app`,
+        sent_at:nowIso(),
+        delivered_at:nowIso()
+      },
+      {
+        organization_id:organizationId,
+        notification_id:note.id,
+        channel:"web_push",
+        status:"pending",
+        attempts:0,
+        idempotency_key:`${key}:web_push`,
+        next_attempt_at:nowIso()
+      }
+    ],{onConflict:"organization_id,idempotency_key",ignoreDuplicates:true});
+  }
+}
+
+async function processRule(rule:any,template:any,location:any,shifts:any[],runAt:Date){
+  const candidates=ruleCandidates(rule,location,shifts,runAt);
+  let generated=0,notifications=0;
+  const errors:string[]=[];
+
+  for(const candidate of candidates){
+    let assignees:(string|null)[]=[];
+    try{
+      assignees=await employeesAt(
+        rule.organization_id,
+        rule.location_id,
+        candidate.scheduledFor,
+        shifts,
+        rule.assignment_strategy,
+        {...(rule.assignment_config||{}),ruleId:rule.id},
+        String(location.timezone||"Europe/Berlin")
+      );
+    }catch(error){
+      errors.push(error instanceof Error?error.message:String(error));
+      continue;
+    }
+
+    if(!assignees.length)continue;
+    const dueAt=new Date(candidate.scheduledFor.getTime()+minutes(rule.due_offset_minutes)*60000);
+
+    if(rule.assignment_strategy==="shared_on_shift"){
+      const employeeIds=[...new Set(assignees.filter(Boolean).map(String))];
+      if(!employeeIds.length)continue;
+      const{data,error}=await db.rpc("aora_create_shared_scheduled_task_atomic",{
+        p_organization_id:rule.organization_id,
+        p_rule_id:rule.id,
+        p_template_id:template.id,
+        p_template_version:Number(template.version||template.source_version||1),
+        p_location_id:rule.location_id,
+        p_shift_id:candidate.shiftId,
+        p_employee_ids:employeeIds,
+        p_scheduled_for:candidate.scheduledFor.toISOString(),
+        p_due_at:dueAt.toISOString(),
+        p_instance_date:candidate.localDate,
+        p_blocking_clockout:["MANAGER_OVERRIDE","STRICT_BLOCK"].includes(rule.clockout_policy),
+        p_title:template.title,
+        p_payload:{
+          scheduler:true,
+          assignmentStrategy:"shared_on_shift",
+          completionMode:"ANY_ASSIGNEE",
+          triggerType:rule.trigger_type
+        }
+      });
+      if(error){
+        errors.push(error.message);
+        continue;
+      }
+      if(data?.created){
+        generated++;
+        notifications+=Number(data.notificationCount||0);
+      }
+      continue;
+    }
+
+    for(const employeeId of assignees){
+      const{data,error}=await db.rpc("aora_create_scheduled_task_atomic",{
+        p_organization_id:rule.organization_id,
+        p_rule_id:rule.id,
+        p_template_id:template.id,
+        p_template_version:Number(template.version||template.source_version||1),
+        p_location_id:rule.location_id,
+        p_shift_id:candidate.shiftId,
+        p_employee_id:employeeId,
+        p_scheduled_for:candidate.scheduledFor.toISOString(),
+        p_due_at:dueAt.toISOString(),
+        p_instance_date:candidate.localDate,
+        p_blocking_clockout:["MANAGER_OVERRIDE","STRICT_BLOCK"].includes(rule.clockout_policy),
+        p_title:template.title,
+        p_payload:{
+          scheduler:true,
+          assignmentStrategy:rule.assignment_strategy,
+          triggerType:rule.trigger_type,
+          selection:rule.assignment_config?.selection||null
+        }
+      });
+
+      if(error){
+        errors.push(error.message);
+        continue;
+      }
+
+      if(data?.created){
+        generated++;
+        notifications+=Number(data.notificationCount||0);
+        if(employeeId===null){
+          const potential=await employeesAt(
+            rule.organization_id,
+            rule.location_id,
+            candidate.scheduledFor,
+            shifts,
+            "all_on_shift",
+            {},
+            String(location.timezone||"Europe/Berlin")
+          );
+          for(const candidateEmployee of potential){
+            try{
+              await notifyOpenTask(
+                rule.organization_id,
+                String(candidateEmployee),
+                rule.location_id,
+                String(data.taskId),
+                `${template.title} – offen`,
+                dueAt.toISOString()
+              );
+              notifications++;
+            }catch(error){
+              errors.push(error instanceof Error?error.message:String(error));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  await db.from("task_rules")
+    .update({last_run_at:runAt.toISOString(),updated_at:nowIso()})
+    .eq("organization_id",rule.organization_id)
+    .eq("id",rule.id);
+
+  return{generated,notifications,errors};
+}
+
+Deno.serve(async request=>{
+  if(request.method!=="POST")return json({error:"method_not_allowed"},405);
+  try{
+    const expected=await secret("aora_scheduler_token");
+    if(!expected||request.headers.get("x-aora-job-token")!==expected){
+      return json({error:"forbidden"},403);
+    }
+
+    const body=await request.json().catch(()=>({}));
+    const runAt=body.scheduled_for?new Date(body.scheduled_for):new Date();
+    if(Number.isNaN(runAt.getTime()))return json({error:"invalid_scheduled_for"},400);
+
+    const{data:rules,error:rulesError}=await db.from("task_rules")
+      .select("*")
+      .eq("active",true)
+      .is("deleted_at",null)
+      .limit(MAX_RULES);
+    if(rulesError)throw new Error(rulesError.message);
+    if(!rules?.length)return json({ok:true,generated:0,notifications:0,errors:0,server_time:nowIso()});
+
+    const orgs=[...new Set(rules.map((rule:any)=>String(rule.organization_id)))];
+    const locationsNeeded=[...new Set(rules.map((rule:any)=>String(rule.location_id)))];
+    const templatesNeeded=[...new Set(rules.map((rule:any)=>String(rule.template_id)))];
+    const today=runAt.toISOString().slice(0,10);
+
+    const[
+      {data:locations,error:locationError},
+      {data:templates,error:templateError},
+      {data:shiftRows,error:shiftError}
+    ]=await Promise.all([
+      db.from("locations")
+        .select("id,organization_id,name,timezone,payload,active,deleted_at")
+        .in("id",locationsNeeded)
+        .eq("active",true)
+        .is("deleted_at",null),
+      db.from("task_templates")
+        .select("id,organization_id,title,version,source_version,active,deleted_at")
+        .in("id",templatesNeeded)
+        .eq("active",true)
+        .is("deleted_at",null),
+      db.from("shifts")
+        .select("id,organization_id,employee_id,location_id,shift_date,starts_at,ends_at,status,payload,deleted_at")
+        .in("organization_id",orgs)
+        .gte("shift_date",addDays(today,-2))
+        .lte("shift_date",addDays(today,2))
+        .is("deleted_at",null)
+    ]);
+
+    if(locationError||templateError||shiftError){
+      throw new Error(locationError?.message||templateError?.message||shiftError?.message);
+    }
+
+    const locationMap=new Map((locations||[]).map((item:any)=>[`${item.organization_id}:${item.id}`,item]));
+    const templateMap=new Map((templates||[]).map((item:any)=>[`${item.organization_id}:${item.id}`,item]));
+    const shifts=(shiftRows||[]).map(normalizedShift);
+    let generated=0,notifications=0,errorCount=0;
+    const details:any[]=[];
+
+    for(const rule of rules){
+      const location=locationMap.get(`${rule.organization_id}:${rule.location_id}`);
+      const template=templateMap.get(`${rule.organization_id}:${rule.template_id}`);
+      if(!location||!template){
+        errorCount++;
+        details.push({ruleId:rule.id,errors:["missing_location_or_template"]});
+        continue;
+      }
+      const result=await processRule(rule,template,location,shifts,runAt);
+      generated+=result.generated;
+      notifications+=result.notifications;
+      errorCount+=result.errors.length;
+      if(result.errors.length)details.push({ruleId:rule.id,errors:result.errors.slice(0,5)});
+    }
+
+    await db.from("scheduler_runs").insert({
+      job_type:"task_generation",
+      scheduled_for:runAt.toISOString(),
+      started_at:runAt.toISOString(),
+      completed_at:nowIso(),
+      status:errorCount?(generated?"partial":"failed"):"completed",
+      generated_count:generated,
+      notification_count:notifications,
+      error_count:errorCount,
+      details:{rules:rules.length,errors:details}
+    });
+
+    return json({
+      ok:errorCount===0,
+      generated,
+      notifications,
+      errors:errorCount,
+      rules:rules.length,
+      server_time:nowIso()
+    },errorCount&&!generated?500:200);
+  }catch(error){
+    console.error("aora-task-scheduler",error);
+    return json({
+      error:"scheduler_failed",
+      message:error instanceof Error?error.message:String(error)
+    },500);
+  }
+});

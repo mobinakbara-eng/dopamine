@@ -1,0 +1,16 @@
+.aora-automation-backdrop{padding:24px;align-items:center;justify-content:center;background:rgba(12,18,28,.46);backdrop-filter:blur(10px)}
+.aora-automation-dialog{width:min(820px,calc(100vw - 32px));max-width:820px;max-height:92vh;padding:0;overflow:hidden;border-radius:28px;background:#fff;box-shadow:0 28px 90px rgba(15,23,42,.24);display:flex;flex-direction:column}
+.aora-automation-body{padding:24px 30px 8px;overflow:auto}
+.aora-weekday-picker{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.aora-weekday-picker label{cursor:pointer}
+.aora-weekday-picker input{position:absolute;opacity:0;pointer-events:none}
+.aora-weekday-picker span{display:grid;place-items:center;height:40px;border:1px solid #dfe4ea;border-radius:12px;background:#fff;color:#667085;font-size:12px;font-weight:800;transition:.14s ease}
+.aora-weekday-picker input:checked+span{border-color:#111827;background:#111827;color:#fff}
+.aora-inline-input{display:flex;align-items:center;gap:8px}
+.aora-inline-input input{flex:1}
+.aora-inline-input span{color:#667085;font-size:12px;font-weight:700}
+.aora-field-note{display:block;margin-top:7px;color:#7a8491;font-size:11px;line-height:1.45}
+.aora-automation-summary{display:flex;flex-direction:column;gap:4px;margin:0 0 18px;padding:15px 16px;border:1px solid #dfe4ea;border-radius:15px;background:#f8fafc}
+.aora-automation-summary strong{color:#111827;font-size:14px}
+.aora-automation-summary span{color:#667085;font-size:12px;line-height:1.45}
+@media(max-width:700px){.aora-automation-backdrop{padding:0;align-items:flex-end}.aora-automation-dialog{width:100vw;max-width:none;max-height:96vh;border-radius:26px 26px 0 0}.aora-automation-body{padding:22px 20px 8px}.aora-weekday-picker{gap:5px}.aora-weekday-picker span{height:38px;border-radius:10px;font-size:11px}}

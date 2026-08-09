@@ -1,0 +1,53 @@
+.aora-task-create-backdrop{padding:24px;align-items:center;justify-content:center;background:rgba(12,18,28,.46);backdrop-filter:blur(10px)}
+.aora-task-create-dialog{width:min(1120px,calc(100vw - 32px));max-width:1120px;max-height:min(92vh,940px);padding:0;overflow:hidden;border-radius:28px;background:#fff;box-shadow:0 28px 90px rgba(15,23,42,.24);display:flex;flex-direction:column}
+.aora-task-create-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:26px 30px 22px;border-bottom:1px solid rgba(15,23,42,.08)}
+.aora-task-create-head h2{margin:4px 0 6px;font-size:28px;line-height:1.08}
+.aora-task-create-head p{margin:0;color:var(--muted,#667085);font-size:14px}
+.aora-task-close{width:40px;height:40px;border:0;border-radius:50%;background:#f3f5f7;color:#27313f;font-size:25px;line-height:1;cursor:pointer}
+.aora-task-create-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,.8fr);min-height:0;overflow:auto}
+.aora-task-create-main{padding:26px 30px 30px;border-right:1px solid rgba(15,23,42,.08)}
+.aora-task-create-side{padding:26px 26px 30px;background:#fafbfc}
+.aora-task-section{padding:0 0 26px;margin:0 0 26px;border-bottom:1px solid rgba(15,23,42,.08)}
+.aora-task-section:last-child{margin-bottom:0;border-bottom:0;padding-bottom:0}
+.aora-task-section.compact{padding-bottom:22px;margin-bottom:22px}
+.aora-task-section-title{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}
+.aora-task-section-title>span{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:10px;background:#111827;color:#fff;font-weight:800;font-size:13px}
+.aora-task-section-title strong{display:block;font-size:15px;color:#111827}
+.aora-task-section-title small{display:block;margin-top:3px;color:#7a8491;font-size:12px;line-height:1.4}
+.aora-task-create-dialog .u-field label{display:flex;align-items:center;gap:6px}
+.aora-task-create-dialog .u-field label span{font-weight:500;color:#98a2b3;font-size:11px}
+.aora-task-create-dialog input,.aora-task-create-dialog select,.aora-task-create-dialog textarea{border-radius:13px;border:1px solid #dfe4ea;background:#fff;transition:border-color .16s ease,box-shadow .16s ease}
+.aora-task-create-dialog input:focus,.aora-task-create-dialog select:focus,.aora-task-create-dialog textarea:focus{outline:none;border-color:#7b8794;box-shadow:0 0 0 3px rgba(99,115,129,.11)}
+.aora-employee-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.aora-employee-toolbar>input{flex:1;min-width:180px;padding:11px 13px}
+.aora-employee-toolbar>div{display:flex;gap:8px;flex-wrap:wrap}
+.aora-employee-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;max-height:315px;overflow:auto;padding:2px}
+.aora-employee-option{position:relative;display:grid;grid-template-columns:auto 38px minmax(0,1fr) auto;align-items:center;gap:10px;padding:11px 12px;border:1px solid #e4e8ed;border-radius:15px;background:#fff;cursor:pointer;transition:transform .12s ease,border-color .12s ease,background .12s ease}
+.aora-employee-option:hover{transform:translateY(-1px);border-color:#c5ccd5}
+.aora-employee-option:has(input:checked){border-color:#111827;background:#f8fafc;box-shadow:0 0 0 1px #111827 inset}
+.aora-employee-option input{width:17px;height:17px;margin:0}
+.aora-employee-avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:#eef1f4;color:#293241;font-size:12px;font-weight:800;letter-spacing:.02em}
+.aora-employee-option strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;color:#111827}
+.aora-employee-option small{display:block;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#8a94a2;font-size:11px}
+.aora-employee-option em{display:none;padding:4px 7px;border-radius:999px;background:#e9f7ef;color:#18794e;font-size:10px;font-style:normal;font-weight:700}
+.aora-employee-option.is-on-shift em{display:inline-flex}
+.aora-task-help{margin:10px 2px 0;color:#7a8491;font-size:11px;line-height:1.45}
+.aora-task-flow{display:grid;gap:10px}
+.aora-task-flow>div{display:flex;align-items:flex-start;gap:10px;color:#4c5664;font-size:12px;line-height:1.4}
+.aora-task-flow i{display:grid;place-items:center;flex:0 0 22px;width:22px;height:22px;border-radius:50%;background:#edf0f3;color:#111827;font-size:10px;font-style:normal;font-weight:800}
+.aora-template-preview{display:flex;flex-wrap:wrap;gap:7px;padding:14px;border-radius:15px;background:#fff;border:1px solid #e7eaee}
+.aora-template-preview strong{width:100%;font-size:13px;color:#111827;margin-bottom:2px}
+.aora-template-preview span,.aora-task-meta span{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;background:#f1f3f5;color:#667085;font-size:10px;font-weight:700}
+.aora-task-create-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 30px;border-top:1px solid rgba(15,23,42,.08);background:#fff}
+.aora-task-create-footer>div:first-child strong{display:block;color:#111827;font-size:13px}
+.aora-task-create-footer>div:first-child span{display:block;margin-top:3px;color:#8a94a2;font-size:11px}
+.aora-task-create-footer>div:last-child{display:flex;gap:9px}
+.aora-task-detail-v2 .aora-task-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.aora-priority.high{background:#fff3dd;color:#a15c00!important}
+.aora-priority.urgent{background:#fdecec;color:#b42318!important}
+.aora-priority.low{background:#eef5ff;color:#175cd3!important}
+.aora-task-instructions{margin:0 0 18px;padding:14px 16px;border-radius:15px;background:#f7f8fa;border:1px solid #e9ecef}
+.aora-task-instructions strong{display:block;margin-bottom:4px;font-size:12px;color:#344054}
+.aora-task-instructions p{margin:0;color:#667085;font-size:13px;line-height:1.55;white-space:pre-wrap}
+@media(max-width:850px){.aora-task-create-backdrop{padding:0;align-items:flex-end}.aora-task-create-dialog{width:100vw;max-width:none;max-height:94vh;border-radius:26px 26px 0 0}.aora-task-create-grid{grid-template-columns:1fr}.aora-task-create-main{border-right:0;padding:22px 20px}.aora-task-create-side{padding:22px 20px;border-top:1px solid rgba(15,23,42,.08)}.aora-task-create-head{padding:22px 20px 18px}.aora-task-create-head h2{font-size:24px}.aora-task-create-footer{padding:15px 20px;position:sticky;bottom:0}.aora-employee-list{grid-template-columns:1fr}}
+@media(max-width:560px){.aora-task-create-backdrop{padding:0}.aora-task-create-dialog{max-height:96vh}.aora-employee-toolbar{align-items:stretch;flex-direction:column}.aora-employee-toolbar>div{display:grid;grid-template-columns:1fr 1fr}.aora-task-create-footer{align-items:stretch;flex-direction:column}.aora-task-create-footer>div:last-child{display:grid;grid-template-columns:1fr 1fr}.aora-task-create-footer .u-btn{width:100%}.aora-employee-option{grid-template-columns:auto 36px minmax(0,1fr)}.aora-employee-option em{grid-column:3;justify-self:start}}
