@@ -48,7 +48,8 @@ for(const marker of [
   "deadline_in_past",
   "invalid_priority",
   "manual:${idempotencyKey}",
-  "instructions,priority,shiftId,timezone,idempotencyKey"
+  "instructions,priority,required",
+  "shiftId,timezone,idempotencyKey"
 ]){
   if(!featureActions.includes(marker))throw new Error(`Manual task backend hardening marker missing: ${marker}`);
 }
