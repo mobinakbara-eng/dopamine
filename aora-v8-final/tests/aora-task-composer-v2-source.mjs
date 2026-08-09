@@ -3,14 +3,16 @@ import { resolve } from "node:path";
 
 const root=resolve(import.meta.dirname,"..");
 const read=path=>readFile(resolve(root,path),"utf8");
-const [index,composer,styles,featureActions,clockoutMigration,scheduler,sharedMigration]=await Promise.all([
+const [index,composer,styles,featureActions,clockoutMigration,scheduler,sharedMigration,pilotBootstrap,timesheetBootstrap]=await Promise.all([
   read("app/index.html"),
   read("app/modules/manager-task-composer-v2.js"),
   read("app/manager-task-composer-v2.css"),
   read("supabase/functions/aora-v8-feature-actions/index.ts"),
   read("supabase/migrations/202608091255_mandatory_task_clockout_scope.sql"),
   read("supabase/functions/aora-v8-task-scheduler/scheduler.ts"),
-  read("supabase/migrations/202608091130_shared_on_shift_tasks.sql")
+  read("supabase/migrations/202608091130_shared_on_shift_tasks.sql"),
+  read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),
+  read("supabase/functions/aora-v8-timesheet-ci-bootstrap/index.ts")
 ]);
 
 for(const marker of ["manager-task-composer-v2.css?v=848","modules/manager-task-composer-v2.js?v=848"]){
@@ -54,7 +56,9 @@ for(const marker of [
   "body.required==null?templateBlocksClockout",
   "p_blocking_clockout:required",
   "required,clockoutPolicy:required?\"MANAGER_OVERRIDE\":\"WARN_ONLY\"",
-  "shift_date_mismatch"
+  "shift_date_mismatch",
+  "currentDateInZone",
+  "date===currentDateInZone(timezone)?now()"
 ]){
   if(!featureActions.includes(marker))throw new Error(`Manual mandatory backend marker missing: ${marker}`);
 }
@@ -76,4 +80,12 @@ for(const marker of [".aora-composer-dialog",".aora-composer-people",".aora-comp
   if(!styles.includes(marker))throw new Error(`Task composer responsive style marker missing: ${marker}`);
 }
 
-console.log("Aora manager task composer v2 mandatory/shared source gate passed.");
+const branch='"agent/aora-manager-task-redesign"';
+for(const [name,source] of [["pilot",pilotBootstrap],["timesheet",timesheetBootstrap]]){
+  if(!source.includes(branch))throw new Error(`${name} CI bootstrap must authorize the exact task redesign branch.`);
+  for(const securityMarker of ["token.actions.githubusercontent.com","repository_id","runner_environment","ALLOWED_HEADS"]){
+    if(!source.includes(securityMarker))throw new Error(`${name} CI bootstrap security marker missing: ${securityMarker}`);
+  }
+}
+
+console.log("Aora manager task composer v2 mandatory/shared and CI authorization source gate passed.");
