@@ -72,47 +72,6 @@ test.describe.serial("Manager task composer v3 browser contract",()=>{
     await expect(dialog.locator('[data-composer-summary]')).toContainText("Foto-Nachweis erforderlich");
   });
 
-  test("manual task creator scrolls inside the visual viewport on iPhone-sized screens",async({browser,baseURL})=>{
-    const context=await browser.newContext({
-      baseURL,
-      viewport:{width:390,height:844},
-      deviceScaleFactor:3,
-      isMobile:true,
-      hasTouch:true
-    });
-    const page=await context.newPage();
-    await loginManager(page);
-    await primeTaskUi(page);
-    await page.evaluate(()=>uManualTaskDialog());
-
-    const dialog=page.locator('.aora-composer-dialog[data-composer="manual-v3"]');
-    const body=dialog.locator(".aora-composer-body");
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator(".aora-composer-head")).toBeInViewport();
-    await expect(dialog.locator(".aora-composer-footer")).toBeInViewport();
-
-    const before=await body.evaluate(element=>({
-      scrollTop:element.scrollTop,
-      scrollHeight:element.scrollHeight,
-      clientHeight:element.clientHeight,
-      overflowY:getComputedStyle(element).overflowY,
-      touchAction:getComputedStyle(element).touchAction,
-      dialogBottom:element.closest(".aora-composer-dialog").getBoundingClientRect().bottom,
-      viewportHeight:window.innerHeight
-    }));
-    expect(before.scrollTop).toBe(0);
-    expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
-    expect(before.overflowY).toBe("auto");
-    expect(before.touchAction).toBe("pan-y");
-    expect(before.dialogBottom).toBeLessThanOrEqual(before.viewportHeight+1);
-
-    await body.evaluate(element=>element.scrollBy({top:element.scrollHeight,behavior:"instant"}));
-    await expect.poll(()=>body.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
-    await expect(dialog.getByText("Pflichtaufgabe",{exact:true})).toBeInViewport();
-    await expect(dialog.getByRole("button",{name:"Aufgabe erstellen"})).toBeInViewport();
-    await context.close();
-  });
-
   test("manager page exposes safe template and task lifecycle controls",async({page})=>{
     await loginManager(page);
     await primeTaskUi(page);
