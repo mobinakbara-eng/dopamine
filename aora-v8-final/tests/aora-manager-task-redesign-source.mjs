@@ -3,14 +3,15 @@ import { resolve } from "node:path";
 
 const root=resolve(import.meta.dirname,"..");
 const read=path=>readFile(resolve(root,path),"utf8");
-const [index,ui,styles,automationUi,automationStyles,featureActions,scheduler]=await Promise.all([
+const [index,ui,styles,automationUi,automationStyles,featureActions,scheduler,sharedMigration]=await Promise.all([
   read("app/index.html"),
   read("app/modules/manager-task-redesign.js"),
   read("app/manager-task-redesign.css"),
   read("app/modules/manager-task-automation.js"),
   read("app/manager-task-automation.css"),
   read("supabase/functions/aora-v8-feature-actions/index.ts"),
-  read("supabase/functions/aora-v8-task-scheduler/scheduler.ts")
+  read("supabase/functions/aora-v8-task-scheduler/scheduler.ts"),
+  read("supabase/migrations/202608091130_shared_on_shift_tasks.sql")
 ]);
 
 for(const marker of ["manager-task-redesign.css?v=846","modules/manager-task-redesign.js?v=846","manager-task-automation.css?v=847","modules/manager-task-automation.js?v=847"]){
@@ -59,6 +60,9 @@ for(const marker of [
   "Feste Uhrzeit",
   "Genau 1 Person aus der laufenden Schicht",
   "Faire Rotation",
+  "Gemeinsam – alle im Dienst sehen dieselbe Aufgabe, 1 Person erledigt für alle",
+  "shared_on_shift",
+  "ANY_ASSIGNEE",
   'name="weekdays"',
   'assignmentConfig',
   'selection:String(form.get("selection")||"least_recent")'
@@ -75,8 +79,23 @@ for(const marker of [
   'ruleId:rule.id',
   'scheduledFor>=bounds.start&&scheduledFor<=bounds.end',
   '.eq("rule_id",ruleId)',
-  'return aStamp-bStamp'
+  'return aStamp-bStamp',
+  'rule.assignment_strategy==="shared_on_shift"',
+  'aora_create_shared_scheduled_task_atomic',
+  'completionMode:"ANY_ASSIGNEE"'
 ]){
-  if(!scheduler.includes(marker))throw new Error(`Fair on-shift scheduler marker missing: ${marker}`);
+  if(!scheduler.includes(marker))throw new Error(`On-shift scheduler marker missing: ${marker}`);
 }
-console.log("Aora manager task redesign and recurring on-shift automation source gate passed.");
+for(const marker of [
+  "task_rules_assignment_strategy_check",
+  "shared_on_shift",
+  "aora_create_shared_scheduled_task_atomic",
+  "ANY_ASSIGNEE",
+  "sharedAssigneeCount",
+  "assignment.employee_id<>p_employee_id",
+  "status='cancelled'",
+  "completedBy"
+]){
+  if(!sharedMigration.includes(marker))throw new Error(`Shared shift completion migration marker missing: ${marker}`);
+}
+console.log("Aora manager task redesign, recurring on-shift automation and shared team completion source gate passed.");
