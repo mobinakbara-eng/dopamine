@@ -53,13 +53,25 @@ const AORA_REALTIME_KEYS={
   KIOSK_TRANSITION:["clockRequests","notifications","audit"],CORRECTION_REQUESTED:["correctionRequests","compliance"],CORRECTION_DECIDED:["timeEntries","correctionRequests","audit","compliance"],
   EMPLOYEE_ANONYMIZED:["employees","timeEntries","audit","compliance"],INVITATION_ACTIVATED:["admins","invitations","audit"]
 };
+const AORA_CRITICAL_REALTIME_EVENTS=new Set(["KIOSK_TRANSITION","APPROVE_CLOCK_REQUEST","DENY_CLOCK_REQUEST"]);
 function notifyWorkspaceRealtime(eventType="WORKSPACE_CHANGED",keys=[],revision=S.revision){
   if(!S.session?.token||!navigator.onLine)return Promise.resolve({skipped:true});
   return request(CFG.realtimeBroadcastFunction,{token:S.session.token,eventType,keys,revision});
 }
-function scheduleWorkspaceBroadcast(eventType,keys,revision){
-  queueMicrotask(()=>notifyWorkspaceRealtime(eventType,keys,revision).catch(error=>reportClientDiagnostic?.("Realtime broadcast failed",error?.stack||String(error),"warning",{kind:"realtime-broadcast",eventType})));
+function reportRealtimeFailure(error,eventType){
+  try{
+    if(typeof reportClientDiagnostic==="function")reportClientDiagnostic("Realtime broadcast failed",error?.stack||String(error),"warning",{kind:"realtime-broadcast",eventType});
+    else console.warn("Realtime broadcast failed",eventType,error);
+  }catch{}
 }
+function scheduleWorkspaceBroadcast(eventType,keys,revision){
+  queueMicrotask(()=>notifyWorkspaceRealtime(eventType,keys,revision).catch(error=>reportRealtimeFailure(error,eventType)));
+}
+async function deliverWorkspaceBroadcast(eventType,keys,revision){
+  try{return await notifyWorkspaceRealtime(eventType,keys,revision)}
+  catch(error){reportRealtimeFailure(error,eventType);return{failed:true}}
+}
+globalThis.aoraBroadcastWorkspaceChange=deliverWorkspaceBroadcast;
 
 async function compliance(body){
   const result=await request(AORA_COMPLIANCE_FUNCTION,{...body,token:S.session?.token});
@@ -101,10 +113,19 @@ apply=async function(event){
   const result=await aoraBaseApply(event);
   if(!result?.pending){
     const eventType=String(event?.type||"WORKSPACE_CHANGED");
-    scheduleWorkspaceBroadcast(eventType,AORA_REALTIME_KEYS[eventType]||[],result?.revision??S.revision);
+    const keys=AORA_REALTIME_KEYS[eventType]||[];
+    if(AORA_CRITICAL_REALTIME_EVENTS.has(eventType)){
+      // Clock changes are user-visible immediately and often happen across kiosk/employee tabs.
+      // Do not fire-and-forget these broadcasts: iOS can suspend/close the originating tab before the request leaves.
+      await Promise.all([
+        deliverWorkspaceBroadcast(eventType,keys,result?.revision??S.revision),
+        typeof loadState==="function"?loadState(true).catch(()=>{}):Promise.resolve()
+      ]);
+    }else scheduleWorkspaceBroadcast(eventType,keys,result?.revision??S.revision);
   }
   return result;
 };
+window.apply=apply;
 const aoraBaseAcceptInvitation=acceptInvitation;
 acceptInvitation=async function(...args){
   const result=await aoraBaseAcceptInvitation(...args);
@@ -117,6 +138,7 @@ loadState=async function(quiet=false){
   if(S.session)connectWorkspaceRealtime().catch(()=>{});
   return result;
 };
+window.loadState=loadState;
 const aoraBaseLogout=logout;
 logout=async function(){
   await disconnectWorkspaceRealtime().catch(()=>{});
