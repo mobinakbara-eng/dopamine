@@ -3,6 +3,12 @@ import fs from "node:fs";
 
 const backend=fs.readFileSync(new URL("../supabase/functions/aora-v8-pilot-workspace/index.ts",import.meta.url),"utf8");
 const modal=fs.readFileSync(new URL("../app/modules/modals.js",import.meta.url),"utf8");
+const structuralTypes=backend.match(/const STRUCTURAL_TYPES = new Set\(\[([\s\S]*?)\]\);/)?.[1]||"";
+
+assert.ok(
+  structuralTypes.includes('"ADD_ANNOUNCEMENT"'),
+  "Manager Team News must route to the secured structural handler instead of the employee-only legacy workspace",
+);
 
 for(const fragment of [
   'announcements: source.announcements.filter((item: any) => item.audience === "all" || locations.has(String(item.audience)))',
