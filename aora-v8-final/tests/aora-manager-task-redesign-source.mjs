@@ -73,7 +73,9 @@ for(const marker of [
   'strategy==="one_on_shift"',
   'config.selection||"least_recent"',
   'ruleId:rule.id',
-  'scheduledFor>=bounds.start&&scheduledFor<=bounds.end'
+  'scheduledFor>=bounds.start&&scheduledFor<=bounds.end',
+  '.eq("rule_id",ruleId)',
+  'return aStamp-bStamp'
 ]){
   if(!scheduler.includes(marker))throw new Error(`Fair on-shift scheduler marker missing: ${marker}`);
 }
