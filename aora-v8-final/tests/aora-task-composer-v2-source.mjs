@@ -15,7 +15,7 @@ const [index,composer,styles,featureActions,clockoutMigration,scheduler,sharedMi
   read("supabase/functions/aora-v8-timesheet-ci-bootstrap/index.ts")
 ]);
 
-for(const marker of ["manager-task-composer-v2.css?v=848","modules/manager-task-composer-v2.js?v=848"]){
+for(const marker of ["manager-task-composer-v2.css?v=851","modules/manager-task-composer-v2.js?v=848"]){
   if(!index.includes(marker))throw new Error(`Task composer asset missing: ${marker}`);
 }
 if(index.indexOf("modules/manager-task-composer-v2.js?v=848")<index.indexOf("modules/manager-task-automation.js?v=847")){
@@ -76,7 +76,17 @@ for(const marker of [
 for(const marker of ["shared_on_shift","aora_create_shared_scheduled_task_atomic","p_blocking_clockout"]){
   if(!scheduler.includes(marker)&&!sharedMigration.includes(marker))throw new Error(`Shared task contract missing: ${marker}`);
 }
-for(const marker of [".aora-composer-dialog",".aora-composer-people",".aora-composer-required","@media(max-width:680px)"]){
+for(const marker of [
+  ".aora-composer-dialog",
+  ".aora-composer-people",
+  ".aora-composer-required",
+  "max-height:100dvh",
+  "overflow-y:auto",
+  "-webkit-overflow-scrolling:touch",
+  "touch-action:pan-y",
+  "env(safe-area-inset-bottom)",
+  "@media(max-width:680px)"
+]){
   if(!styles.includes(marker))throw new Error(`Task composer responsive style marker missing: ${marker}`);
 }
 
