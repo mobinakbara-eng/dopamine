@@ -7,6 +7,23 @@
     ["mon","Mo"],["tue","Di"],["wed","Mi"],["thu","Do"],["fri","Fr"],["sat","Sa"],["sun","So"]
   ];
 
+  const previousTaskDetail=globalThis.uTaskDetail;
+  if(typeof previousTaskDetail==="function"){
+    globalThis.uTaskDetail=function(task){
+      const html=previousTaskDetail(task);
+      if(!task||String(task.payload?.completionMode||"")!=="ANY_ASSIGNEE")return html;
+      const finished=["completed","submitted","waived"].includes(String(task.status));
+      const completedBy=String(task.payload?.completedBy||"");
+      const teamText=finished
+        ?completedBy
+          ?`Diese gemeinsame Aufgabe wurde bereits von ${uHtml(uEmployeeName(completedBy))} für die Schicht erledigt.`
+          :"Diese gemeinsame Aufgabe ist für die Schicht bereits erledigt."
+        :"Alle Mitarbeiter, die bei der Auslösung im Dienst waren, sehen dieselbe Aufgabe. Sobald eine Person sie vollständig abschließt, gilt sie für die gesamte Schicht als erledigt.";
+      const banner=`<div class="aora-task-instructions"><strong>Gemeinsame Schichtaufgabe</strong><p>${teamText}</p></div>`;
+      return html.replace('<section class="aora-task-detail-v2">',`<section class="aora-task-detail-v2">${banner}`);
+    };
+  }
+
   function toggleAutomationFields(dialog){
     const trigger=String(dialog.querySelector('[name="triggerType"]')?.value||"fixed_time");
     const assignment=String(dialog.querySelector('[name="strategy"]')?.value||"all_on_shift");
