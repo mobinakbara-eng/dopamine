@@ -93,9 +93,15 @@ for(const marker of [
   'case"prepareUpload"',
   'case"confirmUpload"',
   'case"listMedia"',
-  'case"viewMedia"'
+  'case"viewMedia"',
+  'case"deleteMedia"',
+  "media_delete_failed"
 ]){
   if(!media.includes(marker))throw new Error(`Task media backend marker missing: ${marker}`);
+}
+const compat=await read("supabase/functions/aora-v8-domain-api-compat/index.ts");
+for(const marker of ["photo_evidence_required","__aora_employee_photo__","aora-domain-compat-failed","action:action||\"unknown\""]){
+  if(!compat.includes(marker))throw new Error(`Direct task completion/observability marker missing: ${marker}`);
 }
 for(const marker of [".aora-composer-media",".aora-task-photo-proof",".aora-photo-upload","@media(max-width:680px)"]){
   if(!styles.includes(marker))throw new Error(`Task photo style marker missing: ${marker}`);

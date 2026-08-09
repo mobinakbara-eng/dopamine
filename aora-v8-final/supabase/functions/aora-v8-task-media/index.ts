@@ -185,6 +185,17 @@ async function viewMedia(ctx:any,body:any){
   if(signed.error)throw new ApiError(500,"signed_view_failed",signed.error.message);
   return{url:signed.data.signedUrl,mimeType:evidence.mime_type,expiresIn:600}
 }
+async function deleteMedia(ctx:any,body:any){
+  const task=await taskAccess(ctx,String(body.taskId||""));
+  const evidence=await one(service.from("task_evidence").select("id,template_item_id,uploaded_by,storage_path").eq("organization_id",ctx.organizationId).eq("task_instance_id",task.id).eq("id",String(body.evidenceId||"")).is("deleted_at",null).maybeSingle(),"Foto wurde nicht gefunden.");
+  if(![MANAGER_ITEM,EMPLOYEE_ITEM].includes(String(evidence.template_item_id)))throw new ApiError(403,"media_forbidden","Dieses Dokument ist kein Aufgabenfoto.");
+  if(ctx.accessRole==="employee"&&(String(evidence.template_item_id)!==EMPLOYEE_ITEM||String(evidence.uploaded_by)!==String(ctx.session.subject_id)))throw new ApiError(403,"media_forbidden","Dieses Foto darf nicht gelöscht werden.");
+  const deleted=await service.from("task_evidence").update({deleted_at:now(),deleted_by:ctx.session.subject_id,delete_reason:String(body.reason||"Vom Benutzer entfernt").slice(0,500)}).eq("organization_id",ctx.organizationId).eq("task_instance_id",task.id).eq("id",evidence.id).is("deleted_at",null).select("id").maybeSingle();
+  if(deleted.error||!deleted.data)throw new ApiError(409,"media_delete_conflict",deleted.error?.message||"Foto wurde bereits entfernt.");
+  const removed=await service.storage.from(BUCKET).remove([String(evidence.storage_path)]);
+  if(removed.error)throw new ApiError(500,"media_delete_failed",removed.error.message);
+  return{evidenceId:evidence.id,deleted:true}
+}
 async function submitTask(ctx:any,body:any){
   requireRole(ctx,["employee"]);
   const task=await taskAccess(ctx,String(body.taskId||""));
@@ -219,6 +230,7 @@ Deno.serve(async(request:Request)=>{
       case"confirmUpload":data=await confirmUpload(ctx,body);break;
       case"listMedia":data=await listMedia(ctx,body);break;
       case"viewMedia":data=await viewMedia(ctx,body);break;
+      case"deleteMedia":data=await deleteMedia(ctx,body);break;
       case"submitTask":data=await submitTask(ctx,body);break;
       default:throw new ApiError(400,"unknown_action","Unbekannte Medienaktion.");
     }
