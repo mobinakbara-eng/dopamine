@@ -21,7 +21,8 @@ const ALLOWED_HEADS=new Set([
   "agent/aora-access-hardening",
   "agent/aora-workforce-features",
   "agent/aora-zero-cost-release-hardening",
-  "agent/aora-manager-task-redesign"
+  "agent/aora-manager-task-redesign",
+  "agent/aora-team-news-manager-fix"
 ]);
 const ALLOWED_BASES=new Set([
   "agent/aora-v8-final",
