@@ -1,0 +1,40 @@
+name: Aora Task Media Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-task-media-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "aora-v8-final/**"
+      - ".github/workflows/aora-task-media-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  task-media:
+    name: Task loading, photo media and production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check task media edge function
+        run: deno check --node-modules-dir=auto supabase/functions/aora-v8-task-media/index.ts
+      - name: Validate task experience contracts
+        run: node tests/aora-task-experience-v3-source.mjs
+      - name: Build production artifact
+        env:
+          AORA_DEPLOY_ENV: production
+        run: npm run build
