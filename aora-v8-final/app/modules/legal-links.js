@@ -5,10 +5,8 @@
   let scheduled=false;
 
   function legalHref(path){
-    const url=new URL(path,document.baseURI);
-    const workspace=typeof CFG!=="undefined"?String(CFG.slug||""):String(new URLSearchParams(location.search).get("workspace")||"");
-    if(workspace)url.searchParams.set("workspace",workspace);
-    return url.pathname+url.search;
+    const origin=typeof CFG!=="undefined"&&CFG.canonicalOrigin?String(CFG.canonicalOrigin):location.origin;
+    return new URL(path,origin).href;
   }
   function inlineLinks(){
     return `<div class="aora-legal-links" data-aora-legal-links>
