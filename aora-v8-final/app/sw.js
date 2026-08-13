@@ -120,14 +120,15 @@ async function showPush(event){
   const title=String(payload.title||"Aora");
   const url=new URL(String(payload.url||"/arbeitnehmer/"),self.location.origin);
   if(url.origin!==self.location.origin)url.href=new URL("/arbeitnehmer/",self.location.origin).href;
-  await self.registration.showNotification(title,{
+  const options={
     body:String(payload.body||"Neue Mitteilung"),
-    icon:String(payload.icon||"/favicon.ico"),
-    badge:String(payload.badge||"/favicon.ico"),
     tag:String(payload.tag||`aora-${payload.notificationId||Date.now()}`),
     renotify:false,
     data:{url:`${url.pathname}${url.search}`,notificationId:payload.notificationId||null}
-  });
+  };
+  if(payload.icon)options.icon=String(payload.icon);
+  if(payload.badge)options.badge=String(payload.badge);
+  await self.registration.showNotification(title,options);
 }
 async function openNotification(event){
   event.notification.close();
