@@ -56,7 +56,7 @@ async function enableAoraPush(button){
 async function reconcileAoraPush(){
   if(!aoraPushSupported()||S.accessRole!=="employee"||!S.session?.token||Notification.permission!=="granted")return;
   const subscription=await aoraCurrentPushSubscription();
-  if(!subscription){aoraPushNeedsSubscription=true;renderEmployee();return}
+  if(!subscription){if(!aoraPushNeedsSubscription){aoraPushNeedsSubscription=true;renderEmployee()}return}
   if(aoraPushBoundToken===S.session.token)return;
   await aoraPushApi("pushSubscribe",{subscription:subscription.toJSON(),userAgent:navigator.userAgent});
   aoraPushBoundToken=S.session.token;aoraPushNeedsSubscription=false;
@@ -74,6 +74,10 @@ async function aoraPushDropLocal(){
 }
 window.aoraPushBeforeLogout=aoraPushBeforeLogout;
 window.aoraPushDropLocal=aoraPushDropLocal;
+app.addEventListener("click",event=>{
+  const button=event.target.closest('[data-a="enable-push"]');
+  if(button)enableAoraPush(button);
+});
 window.addEventListener("load",()=>reconcileAoraPush().catch(error=>console.warn("Aora push reconciliation failed",error)));
 window.addEventListener("pageshow",()=>reconcileAoraPush().catch(()=>{}));
 if(aoraPushSupported())navigator.serviceWorker.addEventListener("message",event=>{
