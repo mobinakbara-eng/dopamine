@@ -24,6 +24,7 @@ function renderEmployee(){
       ${[["home","Start",I.home],["calendar","Kalender",I.cal],["time","Zeiten",I.clock],["leave","Urlaub",I.umbrella],["more","Mehr",I.menu]].map(([id,label,icon])=>`<button class="${view===id?"active":""}" data-a="employee-view" data-view="${id}">${icon}<span>${label}</span>${id==="more"?'<b class="badge-count" style="right:16px;top:8px">3</b>':""}</button>`).join("")}
     </nav>
   </div>`;
+  if(typeof reconcileAoraPush==="function")queueMicrotask(()=>reconcileAoraPush().catch(()=>{}));
 }
 
 function employeeView(employee,view){
