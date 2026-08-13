@@ -19,7 +19,7 @@ function renderEmployee(){
         <button class="circle-btn" data-a="logout" aria-label="Abmelden">${I.logout}</button>
       </div>
     </header>
-    <main class="employee-main">${employeeView(employee,view)}</main>
+    <main class="employee-main">${typeof aoraPushCard==="function"?aoraPushCard():""}${employeeView(employee,view)}</main>
     <nav class="employee-bottom" aria-label="Mitarbeiter Navigation">
       ${[["home","Start",I.home],["calendar","Kalender",I.cal],["time","Zeiten",I.clock],["leave","Urlaub",I.umbrella],["more","Mehr",I.menu]].map(([id,label,icon])=>`<button class="${view===id?"active":""}" data-a="employee-view" data-view="${id}">${icon}<span>${label}</span>${id==="more"?'<b class="badge-count" style="right:16px;top:8px">3</b>':""}</button>`).join("")}
     </nav>
