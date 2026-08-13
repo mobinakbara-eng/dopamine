@@ -23,7 +23,7 @@ a:focus-visible,button:focus-visible{outline:3px solid rgba(31,91,72,.32);outlin
 .skip-link:focus{top:16px}
 .privacy-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px clamp(20px,5vw,72px);background:rgba(245,244,239,.91);border-bottom:1px solid rgba(217,216,209,.78);backdrop-filter:blur(16px)}
 .privacy-brand{display:inline-flex;align-items:center;gap:11px}
-.privacy-brand-mark{display:grid;place-items:center;width:40px;height:40px;border-radius:14px;background:var(--ink);color:white;font-weight:800;font-size:19px;box-shadow:0 8px 20px rgba(23,24,23,.16)}
+.privacy-brand-mark{display:grid;place-items:center;width:40px;height:40px;border-radius:14px;background:#fff url('/aora-app-icon-180.png?v=4') center/cover no-repeat;color:transparent;font-size:0;box-shadow:0 8px 20px rgba(23,24,23,.12);overflow:hidden}
 .privacy-brand span:last-child{display:flex;flex-direction:column;line-height:1.05}.privacy-brand strong{font-size:16px;letter-spacing:-.02em}.privacy-brand small{margin-top:4px;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
 .privacy-header nav,.privacy-footer nav{display:flex;align-items:center;gap:22px;font-size:14px;font-weight:650}
 .privacy-header nav>a:not(.privacy-login-link):hover,.privacy-footer a:hover{text-decoration:underline;text-underline-offset:4px}
