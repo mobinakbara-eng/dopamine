@@ -98,6 +98,7 @@ function renderEmployee(){
   try{
     const view=S.employeeView;
     const unread=(S.state.notifications||[]).filter(note=>note.employeeId===employee.id&&note.read!==true).length;
+    const pushCard=typeof aoraPushCard==="function"?aoraPushCard():"";
     app.innerHTML=`<div class="employee-app">
       <header class="employee-header">
         <div class="logo-wrap">${logo}</div>
@@ -107,11 +108,12 @@ function renderEmployee(){
           <button class="circle-btn" data-a="logout" aria-label="Abmelden">${I.logout}</button>
         </div>
       </header>
-      <main class="employee-main">${clockApprovalPanel(employee)}${employeeView(employee,view)}</main>
+      <main class="employee-main">${pushCard}${clockApprovalPanel(employee)}${employeeView(employee,view)}</main>
       <nav class="employee-bottom" aria-label="Mitarbeiter Navigation">
         ${[["home","Start",I.home],["calendar","Kalender",I.cal],["time","Zeiten",I.clock],["leave","Urlaub",I.umbrella],["more","Mehr",I.menu]].map(([id,label,icon])=>`<button class="${view===id?"active":""}" data-a="employee-view" data-view="${id}">${icon}<span>${label}</span>${id==="more"&&unread?`<b class="badge-count" style="right:16px;top:8px">${unread}</b>`:""}</button>`).join("")}
       </nav>
     </div>`;
+    if(typeof reconcileAoraPush==="function")queueMicrotask(()=>reconcileAoraPush().catch(()=>{}));
   }finally{
     S.state=originalState;
   }
