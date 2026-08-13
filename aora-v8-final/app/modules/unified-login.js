@@ -68,6 +68,9 @@ renderLogin=function(message=""){
     return;
   }
 
+  const privacyOrigin=typeof CFG!=="undefined"&&CFG.canonicalOrigin?String(CFG.canonicalOrigin):location.origin;
+  const privacyUrl=new URL("/datenschutz/",privacyOrigin).href;
+
   app.innerHTML=accessShell(`
     <div class="access-intro"><h1>Willkommen</h1><p>Melden Sie sich bei Ihrem AoraAI Workforce Konto an.</p></div>
     ${message?`<div class="login-success">${esc(message)}</div>`:""}
@@ -79,7 +82,7 @@ renderLogin=function(message=""){
       <button class="btn access-submit" type="submit">Anmelden ${I.arrow}</button>
     </form>
     <div class="access-trust"><span class="material-symbols-rounded" aria-hidden="true">verified_user</span><p>Automatische Rollenweiterleitung nach erfolgreicher Anmeldung. Ihre Sitzung wird sicher und nur in diesem Browser-Tab gespeichert.</p></div>
-    <div class="access-secondary"><nav class="access-links" aria-label="Hilfe"><a href="mailto:mobinakbara@gmail.com?subject=AoraAI%20Support">Support</a><span aria-hidden="true">|</span><a href="mailto:mobinakbara@gmail.com?subject=AoraAI%20Datenschutz">Datenschutz</a></nav><a class="btn outline" href="${esc(accessPath("kiosk"))}">Kiosk aktivieren <span class="material-symbols-rounded" aria-hidden="true">desktop_windows</span></a></div>`);
+    <div class="access-secondary"><nav class="access-links" aria-label="Hilfe"><a href="mailto:mobinakbara@gmail.com?subject=AoraAI%20Support">Support</a><span aria-hidden="true">|</span><a href="${esc(privacyUrl)}">Datenschutz</a></nav></div>`);
 
   document.querySelector(".access-password-toggle")?.addEventListener("click",event=>{
     const button=event.currentTarget;
@@ -103,4 +106,3 @@ renderLogin=function(message=""){
     catch(error){if(feedback)feedback.textContent=error.message;toast(error.message,"error");if(button){button.disabled=false;button.innerHTML=`Anmelden ${I.arrow}`}}
   });
 };
-
