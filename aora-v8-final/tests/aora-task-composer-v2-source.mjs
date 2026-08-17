@@ -11,8 +11,8 @@ const [index,composer,styles,featureActions,clockoutMigration,scheduler,sharedMi
   read("supabase/migrations/202608091255_mandatory_task_clockout_scope.sql"),
   read("supabase/functions/aora-v8-task-scheduler/scheduler.ts"),
   read("supabase/migrations/202608091130_shared_on_shift_tasks.sql"),
-  read("supabase/functions/aora-v8-pilot-ci-bootstrap/index.ts"),
-  read("supabase/functions/aora-v8-timesheet-ci-bootstrap/index.ts")
+  read("supabase/functions/aora-v8-pilot-ci-bootstrap/bootstrap-v2.ts"),
+  read("supabase/functions/aora-v8-timesheet-ci-bootstrap/bootstrap-v2.ts")
 ]);
 
 for(const marker of ["manager-task-composer-v2.css?v=851","modules/manager-task-composer-v2.js?v=848"]){
