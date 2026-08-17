@@ -52,6 +52,9 @@ const CFG={
   version:"8.1.0-production",
   isolated:true
 };
+if(RUNTIME.environment==="preview"&&location.hostname.endsWith("-mobins-projects-4f428afa.vercel.app")){
+  CFG.accessFunction="aora-v8-pilot-access-preview";
+}
 const app=document.getElementById("app"),toasts=document.getElementById("toast-root");
 const S={
   role:sessionRole(initialAccessRole),
