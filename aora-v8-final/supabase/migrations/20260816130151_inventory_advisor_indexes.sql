@@ -1,0 +1,14 @@
+drop index if exists public.app_sessions_organization_idx;
+drop index if exists public.work_rules_organization_idx;
+create index if not exists inventory_receipt_lines_item_fk_idx on public.inventory_goods_receipt_lines(organization_id,item_id);
+create index if not exists inventory_receipt_lines_pack_fk_idx on public.inventory_goods_receipt_lines(organization_id,pack_unit_id);
+create index if not exists inventory_receipts_location_fk_idx on public.inventory_goods_receipts(organization_id,location_id);
+create index if not exists inventory_receipts_order_fk_idx on public.inventory_goods_receipts(organization_id,purchase_order_id);
+create index if not exists inventory_item_locations_supplier_fk_idx on public.inventory_item_locations(organization_id,preferred_supplier_id);
+create index if not exists inventory_movements_location_item_fk_idx on public.inventory_movements(organization_id,location_id,item_id);
+create index if not exists inventory_permission_events_location_fk_idx on public.inventory_permission_events(organization_id,location_id);
+create index if not exists inventory_permission_grants_location_fk_idx on public.inventory_permission_grants(organization_id,location_id);
+create index if not exists inventory_po_lines_item_fk_idx on public.inventory_purchase_order_lines(organization_id,item_id);
+create index if not exists inventory_stock_units_pack_fk_idx on public.inventory_stock_units(organization_id,pack_unit_id);
+create index if not exists inventory_stock_units_receipt_fk_idx on public.inventory_stock_units(organization_id,receipt_id);
+create index if not exists inventory_transfer_lines_item_fk_idx on public.inventory_transfer_lines(organization_id,item_id);
