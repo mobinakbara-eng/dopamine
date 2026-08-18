@@ -30,7 +30,7 @@ assert(css.includes('.inventory-action-card'), 'autopilot action UI must be styl
 // purchase, without pushing the donor location below its own safety floor.
 assert(inventoryReadOrders.includes('export async function listTransferSuggestions'), 'backend must expose transfer-before-buy suggestions');
 assert(inventoryReadOrders.includes('await requirePermission(ctx,destinationLocationId,"transfer_receive"'), 'destination must be authorized to receive transfers');
-assert(inventoryReadOrders.includes('await hasPermission(ctx,locationId,"transfer_dispatch")'), 'only source locations authorized for dispatch may be suggested');
+assert(inventoryReadOrders.includes('await hasPermission(ctx,locationId,"transfer_dispatch",requestId)'), 'only source locations authorized for dispatch may be suggested and the permission check must carry request context');
 assert(inventoryReadOrders.includes('Number(balance.on_hand||0)-Number(balance.reserved||0)'), 'transferable stock must exclude reserved stock');
 assert(inventoryReadOrders.includes('Math.max(Number(policy.reorder_point||0),Number(policy.par_level??0))'), 'source safety floor must protect both PAR and reorder point');
 assert(inventoryReadOrders.includes('draftIncoming'), 'existing draft transfers must reduce the remaining suggestion');
