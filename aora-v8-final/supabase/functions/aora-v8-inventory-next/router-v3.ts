@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {ApiError,MAX_BODY_BYTES,allowedOrigin,cors,json,fail,sessionContext,requireFeature} from "./lib.ts";
 import {availability,overview,listStock,listMovements} from "./inventory-read-core.ts";
 import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess,listReplenishment} from "./inventory-read-orders.ts";
-import {createItem,recordMovement,createTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
+import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
 import {receiveQrUnits,preparePrintJob,confirmPrintJob,issueQrUnit,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
 import {listManagerAccess,setManagerAccess,listSuppliers,upsertSupplier,listSupplierItems,upsertSupplierItem,getOrderingProfile,saveOrderingProfile} from "./procurement-admin.ts";
 import {createPurchaseOrder,sendPurchaseOrder,confirmManualPurchaseOrderSent,listPurchaseOrderDeliveries} from "./procurement-order.ts";
@@ -44,6 +44,12 @@ Deno.serve(async request=>{
     else if(action==="listTransfers")data=await listTransfers(ctx,body,requestId);
     else if(action==="listTransferSuggestions"){if(locationId)await requireFeature(ctx,"replenishment_suggestions",locationId,requestId);data=await listTransferSuggestions(ctx,body,requestId)}
     else if(action==="createTransfer")data=await createTransfer(ctx,body,requestId);
+    else if(action==="createAutopilotTransfer"){
+      const destinationLocationId=String(body.destinationLocationId||"");
+      await requireFeature(ctx,"inventory_v1",destinationLocationId,requestId);
+      await requireFeature(ctx,"replenishment_suggestions",destinationLocationId,requestId);
+      data=await createAutopilotTransfer(ctx,body,requestId);
+    }
     else if(action==="dispatchTransfer")data=await changeTransfer(ctx,body,"dispatch",requestId);
     else if(action==="receiveTransfer")data=await changeTransfer(ctx,body,"receive",requestId);
     else if(action==="cancelTransfer")data=await changeTransfer(ctx,body,"cancel",requestId);
