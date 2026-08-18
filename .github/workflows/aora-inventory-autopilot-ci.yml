@@ -1,0 +1,50 @@
+name: Aora Inventory Autopilot Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "aora-v8-final/app/inventory.css"
+      - "aora-v8-final/app/modules/inventory-*.js"
+      - "aora-v8-final/supabase/functions/aora-v8-inventory-next/**"
+      - "aora-v8-final/supabase/migrations/*inventory*"
+      - "aora-v8-final/tests/inventory-*.mjs"
+      - ".github/workflows/aora-inventory-autopilot-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aora-inventory-autopilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-and-type-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: JavaScript syntax
+        run: |
+          node --check app/modules/inventory-core.js
+          node --check app/modules/inventory-access-count.js
+          node --check app/modules/inventory-orders-v2.js
+      - name: Inventory source contracts
+        run: |
+          node tests/inventory-release-source.mjs
+          node tests/inventory-autopilot-source.mjs
+      - name: Inventory Edge Function type check
+        run: deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
+      - name: Reproducible app build
+        env:
+          AORA_DEPLOY_ENV: staging
+        run: npm run build
