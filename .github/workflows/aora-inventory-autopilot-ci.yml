@@ -2,7 +2,9 @@ name: Aora Inventory Autopilot Gate
 
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - agent/aora-inventory-production-ready
     paths:
       - "aora-v8-final/app/inventory.css"
       - "aora-v8-final/app/modules/inventory-*.js"
