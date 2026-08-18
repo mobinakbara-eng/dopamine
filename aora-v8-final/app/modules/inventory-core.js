@@ -187,7 +187,7 @@ async function openAutopilotTransferModal(itemId,sourceLocationId){
     <div class="field full inventory-transfer-route"><div><small>Von</small><strong>${esc(source)}</strong></div><span>→</span><div><small>Nach</small><strong>${esc(target)}</strong></div></div>
     <div class="field"><label>Menge</label><div class="inventory-quantity-with-unit"><input class="input" name="quantity" type="number" min="0.001" max="${max}" step="0.001" value="${max}" required><span>${esc(uom||"Einheit")}</span></div></div>
     <div class="field"><label>Sicherer Überschuss Quelle</label><div class="inventory-readonly-value">${invNumber(suggestion.candidates?.find(x=>String(x.sourceLocationId)===String(sourceLocationId))?.transferableQuantity||max)}${uom?` ${esc(uom)}`:""}</div></div>
-    <div class="field full inventory-smart-note"><strong>Kein Bestandsabzug jetzt</strong><span>Aora legt zuerst einen Transfer-Entwurf an. Der Bestand der Quelle wird erst beim tatsächlichen Versand reduziert.</span></div>
+    <div class="field full inventory-smart-note"><strong>Kein Bestandsabzug jetzt</strong><span>Aora legt zuerst einen Transfer-Entwurf an. Der Bestand der Quelle wird erst beim tatsächlichen Versand reduziert und der Sicherheitsbestand dann erneut geprüft.</span></div>
     <div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">Transfer vorbereiten</button></div>
   </form>`);
   d.querySelector("form").addEventListener("submit",async e=>{
@@ -196,7 +196,7 @@ async function openAutopilotTransferModal(itemId,sourceLocationId){
     if(!Number.isFinite(qty)||qty<=0||qty>max)return toast(`Menge muss zwischen 0 und ${invNumber(max)} liegen.`,"error");
     submit.disabled=true;
     try{
-      const r=await invRequest("createTransfer",{sourceLocationId,destinationLocationId:S.locationId,lines:[{itemId,quantity:qty}],note:"Aora Autopilot: Transfer vor Einkauf",idempotencyKey:operation.key});
+      const r=await invRequest("createAutopilotTransfer",{sourceLocationId,destinationLocationId:S.locationId,replenishmentEpisodeId:suggestion.episodeId||null,lines:[{itemId,quantity:qty}],note:"Aora Autopilot: Transfer vor Einkauf",idempotencyKey:operation.key});
       operation.clear();
       d.remove();
       S.inventoryPageCache={};
