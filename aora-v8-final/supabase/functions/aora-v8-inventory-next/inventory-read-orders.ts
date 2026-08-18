@@ -22,7 +22,7 @@ export async function listTransferSuggestions(ctx:InventoryContext,body:any,requ
 
   const sourceLocationIds:string[]=[];
   for(const locationId of possibleSources){
-    if(await hasPermission(ctx,locationId,"transfer_dispatch"))sourceLocationIds.push(locationId);
+    if(await hasPermission(ctx,locationId,"transfer_dispatch",requestId))sourceLocationIds.push(locationId);
   }
   if(!sourceLocationIds.length)return{locationId:destinationLocationId,suggestions:[]};
 
