@@ -11,11 +11,13 @@ const ordersUi=read('app/modules/inventory-orders-v2.js');
 const css=read('app/inventory.css');
 const countApi=read('supabase/functions/aora-v8-inventory-next/inventory-count-receive.ts');
 const inventoryReadOrders=read('supabase/functions/aora-v8-inventory-next/inventory-read-orders.ts');
+const inventoryWriteCore=read('supabase/functions/aora-v8-inventory-next/inventory-write-core.ts');
 const router=read('supabase/functions/aora-v8-inventory-next/router-v3.ts');
 const procurementAdmin=read('supabase/functions/aora-v8-inventory-next/procurement-admin.ts');
 const procurementOrder=read('supabase/functions/aora-v8-inventory-next/procurement-order.ts');
 const baselineMigration=read('supabase/migrations/20260818194000_inventory_autopilot_count_baseline.sql');
 const resumeMigration=read('supabase/migrations/20260818194100_inventory_count_resume_active_only.sql');
+const transferFloorMigration=read('supabase/migrations/20260818201000_inventory_autopilot_transfer_floor.sql');
 
 // Action-first UX: the first tab is not a passive stock table.
 assert(core.includes('["overview","Heute"]'), 'inventory overview tab must be action-first Heute');
@@ -29,7 +31,7 @@ assert(css.includes('.inventory-action-card'), 'autopilot action UI must be styl
 // Transfer Before Buy: Aora should prefer safe internal surplus over a supplier
 // purchase, without pushing the donor location below its own safety floor.
 assert(inventoryReadOrders.includes('export async function listTransferSuggestions'), 'backend must expose transfer-before-buy suggestions');
-assert(inventoryReadOrders.includes('await requirePermission(ctx,destinationLocationId,"transfer_receive"'), 'destination must be authorized to receive transfers');
+assert(inventoryReadOrders.includes('await requirePermission(ctx,destinationLocationId,"transfer_receive"'), 'destination must be authorized to receive transfer suggestions');
 assert(inventoryReadOrders.includes('await hasPermission(ctx,locationId,"transfer_dispatch",requestId)'), 'only source locations authorized for dispatch may be suggested and the permission check must carry request context');
 assert(inventoryReadOrders.includes('Number(balance.on_hand||0)-Number(balance.reserved||0)'), 'transferable stock must exclude reserved stock');
 assert(inventoryReadOrders.includes('Math.max(Number(policy.reorder_point||0),Number(policy.par_level??0))'), 'source safety floor must protect both PAR and reorder point');
@@ -42,9 +44,41 @@ assert(core.includes('Besser als kaufen'), 'transfer recommendation must clearly
 assert(core.includes('Trotzdem bestellen'), 'manager must retain an explicit supplier-order override');
 assert(core.includes('invStableOperationKey("transfer-before-buy"'), 'transfer creation must keep a stable retry identity');
 assert(core.includes('sessionStorage.getItem(storageKey)'), 'stable transfer identity must survive same-session retries');
-assert(core.includes('invRequest("createTransfer"'), 'transfer suggestion must use the existing transfer ledger workflow');
+assert(core.includes('invRequest("createAutopilotTransfer"'), 'transfer-before-buy must use the protected Autopilot transfer path');
+assert(core.includes('replenishmentEpisodeId:suggestion.episodeId||null'), 'transfer draft must preserve the replenishment episode identity');
+assert(core.includes('Sicherheitsbestand dann erneut geprüft'), 'UI must explain that source safety is rechecked at dispatch');
 assert(core.includes('Quelle bleibt bis zum Versand unverändert'), 'UI must make draft semantics explicit');
 assert(css.includes('.inventory-action-card.transfer'), 'transfer recommendation must have a distinct but consistent treatment');
+
+// Permissions must be symmetric: creating either a manual or Autopilot transfer
+// requires dispatch rights at source and receive rights at destination.
+assert(inventoryWriteCore.includes('export async function createAutopilotTransfer'), 'Edge API must expose protected Autopilot transfer creation');
+assert(inventoryWriteCore.includes('aora_inventory_create_autopilot_transfer'), 'Autopilot transfer creation must call the floor-protected RPC');
+const manualTransferStart=inventoryWriteCore.indexOf('export async function createTransfer');
+const autopilotTransferStart=inventoryWriteCore.indexOf('export async function createAutopilotTransfer');
+const changeTransferStart=inventoryWriteCore.indexOf('export async function changeTransfer');
+assert(manualTransferStart>=0&&autopilotTransferStart>manualTransferStart, 'manual transfer source must be discoverable');
+const manualTransferSource=inventoryWriteCore.slice(manualTransferStart,autopilotTransferStart);
+const autopilotTransferSource=inventoryWriteCore.slice(autopilotTransferStart,changeTransferStart);
+assert(manualTransferSource.includes('requirePermission(ctx,source,"transfer_dispatch",requestId)'), 'manual transfer must require source dispatch permission');
+assert(manualTransferSource.includes('requirePermission(ctx,dest,"transfer_receive",requestId)'), 'manual transfer must require destination receive permission');
+assert(autopilotTransferSource.includes('requirePermission(ctx,source,"transfer_dispatch",requestId)'), 'Autopilot transfer must require source dispatch permission');
+assert(autopilotTransferSource.includes('requirePermission(ctx,dest,"transfer_receive",requestId)'), 'Autopilot transfer must require destination receive permission');
+assert(autopilotTransferSource.includes('transfer_source_floor_changed'), 'stale source-floor conflicts must map to a user-safe 409');
+assert(router.includes('action==="createAutopilotTransfer"'), 'router must expose protected Autopilot transfer creation');
+assert(router.includes('requireFeature(ctx,"replenishment_suggestions",destinationLocationId,requestId)'), 'Autopilot transfer creation must remain behind replenishment feature flag');
+
+// Postgres is the final authority. The source-floor rule is checked at draft
+// creation and again immediately before dispatch while inventory rows are locked.
+assert(transferFloorMigration.includes('enforce_source_floor boolean not null default false'), 'migration must mark only protected transfers for source-floor enforcement');
+assert(transferFloorMigration.includes('replenishment_episode_id uuid'), 'migration must preserve replenishment episode audit identity');
+assert(transferFloorMigration.includes('aora_inventory_create_autopilot_transfer'), 'migration must define protected Autopilot transfer creation');
+assert(transferFloorMigration.includes('if v_transfer.enforce_source_floor then'), 'dispatch must re-check the source floor only for protected transfers');
+assert(transferFloorMigration.includes('v_balance.on_hand-v_balance.reserved-v_line.requested_quantity < v_floor'), 'source floor must use live on-hand minus reserved minus requested quantity');
+assert(transferFloorMigration.includes("message='inventory_transfer_source_floor_changed'"), 'stale safe-surplus recommendations must fail closed');
+assert(transferFloorMigration.includes('for update;'), 'transfer floor checks must lock live balance rows');
+assert(transferFloorMigration.includes('revoke all on function public.aora_inventory_create_autopilot_transfer'), 'protected RPC must not be client executable');
+assert(transferFloorMigration.includes('grant execute on function public.aora_inventory_create_autopilot_transfer')&&transferFloorMigration.includes('to service_role'), 'protected RPC must only be executable by service role');
 
 // Blind counting: never leak the system quantity into the physical-count UI.
 assert(!countUi.includes('systemQuantity'), 'blind count UI must not read/render system quantity');
