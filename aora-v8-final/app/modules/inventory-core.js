@@ -1,5 +1,5 @@
 "use strict";
-const INVENTORY_FUNCTION="aora-v8-inventory-next";
+const INVENTORY_FUNCTION=(typeof CFG!=="undefined"&&CFG.environment==="preview"&&location.hostname.endsWith("-mobins-projects-4f428afa.vercel.app"))?"aora-v8-inventory-preview":"aora-v8-inventory-next";
 S.inventoryTab=S.inventoryTab||"overview";S.inventoryAvailabilityCache=S.inventoryAvailabilityCache||{};S.inventoryPageCache=S.inventoryPageCache||{};
 async function invRequest(action,body={}){return request(INVENTORY_FUNCTION,{action,...body,token:S.session?.token})}
 function invKey(){return`${S.session?.token||"none"}:${S.locationId||"none"}`}
