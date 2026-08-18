@@ -10,6 +10,8 @@ const countUi=read('app/modules/inventory-access-count.js');
 const ordersUi=read('app/modules/inventory-orders-v2.js');
 const css=read('app/inventory.css');
 const countApi=read('supabase/functions/aora-v8-inventory-next/inventory-count-receive.ts');
+const inventoryReadOrders=read('supabase/functions/aora-v8-inventory-next/inventory-read-orders.ts');
+const router=read('supabase/functions/aora-v8-inventory-next/router-v3.ts');
 const procurementAdmin=read('supabase/functions/aora-v8-inventory-next/procurement-admin.ts');
 const procurementOrder=read('supabase/functions/aora-v8-inventory-next/procurement-order.ts');
 const baselineMigration=read('supabase/migrations/20260818194000_inventory_autopilot_count_baseline.sql');
@@ -23,6 +25,26 @@ assert(core.includes('Bestellung vorbereiten'), 'low-stock action must lead dire
 assert(core.includes('inventoryMovements(d)'), 'stock view must render the ledger it fetches');
 assert(core.includes('data-inv-stock-search'), 'stock view must have fast search');
 assert(css.includes('.inventory-action-card'), 'autopilot action UI must be styled');
+
+// Transfer Before Buy: Aora should prefer safe internal surplus over a supplier
+// purchase, without pushing the donor location below its own safety floor.
+assert(inventoryReadOrders.includes('export async function listTransferSuggestions'), 'backend must expose transfer-before-buy suggestions');
+assert(inventoryReadOrders.includes('await requirePermission(ctx,destinationLocationId,"transfer_receive"'), 'destination must be authorized to receive transfers');
+assert(inventoryReadOrders.includes('await hasPermission(ctx,locationId,"transfer_dispatch")'), 'only source locations authorized for dispatch may be suggested');
+assert(inventoryReadOrders.includes('Number(balance.on_hand||0)-Number(balance.reserved||0)'), 'transferable stock must exclude reserved stock');
+assert(inventoryReadOrders.includes('Math.max(Number(policy.reorder_point||0),Number(policy.par_level??0))'), 'source safety floor must protect both PAR and reorder point');
+assert(inventoryReadOrders.includes('draftIncoming'), 'existing draft transfers must reduce the remaining suggestion');
+assert(inventoryReadOrders.includes('need=Math.max(0,rawNeed-alreadyRequested)'), 'draft incoming must prevent duplicate transfer recommendations');
+assert(router.includes('action==="listTransferSuggestions"'), 'router must expose transfer suggestions');
+assert(router.includes('requireFeature(ctx,"replenishment_suggestions",locationId,requestId);data=await listTransferSuggestions'), 'transfer suggestions must be feature-gated');
+assert(core.includes('invRequest("listTransferSuggestions"'), 'Heute overview must load transfer suggestions');
+assert(core.includes('Besser als kaufen'), 'transfer recommendation must clearly explain why it is preferred');
+assert(core.includes('Trotzdem bestellen'), 'manager must retain an explicit supplier-order override');
+assert(core.includes('invStableOperationKey("transfer-before-buy"'), 'transfer creation must keep a stable retry identity');
+assert(core.includes('sessionStorage.getItem(storageKey)'), 'stable transfer identity must survive same-session retries');
+assert(core.includes('invRequest("createTransfer"'), 'transfer suggestion must use the existing transfer ledger workflow');
+assert(core.includes('Quelle bleibt bis zum Versand unverändert'), 'UI must make draft semantics explicit');
+assert(css.includes('.inventory-action-card.transfer'), 'transfer recommendation must have a distinct but consistent treatment');
 
 // Blind counting: never leak the system quantity into the physical-count UI.
 assert(!countUi.includes('systemQuantity'), 'blind count UI must not read/render system quantity');
