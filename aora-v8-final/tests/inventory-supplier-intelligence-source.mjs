@@ -22,7 +22,8 @@ assert(api.includes('priceWeight:50,reliabilityWeight:35,leadTimeWeight:15'), 'd
 assert(api.includes('reasons:string[]=[]'), 'every supplier decision must expose human-readable reasons');
 assert(api.includes('learningReliabilityNeutralScore:70'), 'insufficient reliability history must use an explicit neutral prior rather than fabricated precision');
 assert(router.includes('action==="listSupplierIntelligence"'), 'router must expose supplier intelligence');
-assert(router.includes('version:5'), 'inventory health version must advance with supplier decision API');
+const healthVersion=Number(router.match(/service:"aora-v8-inventory-next",version:(\d+)/)?.[1]||0);
+assert(healthVersion>=5, 'inventory health version must not regress below supplier decision API version');
 assert(ui.includes('invRequest("listSupplierIntelligence"'), 'order and supplier UX must use the decision API');
 assert(ui.includes('Aora Supplier Decision'), 'focused reorder must explain that Aora is ranking suppliers');
 assert(ui.includes('Preis 50 %, Lieferzuverlässigkeit 35 %, Lieferzeit 15 %'), 'manager must see the ranking weights in plain language');
