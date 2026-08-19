@@ -7,6 +7,9 @@ on:
     paths:
       - "plugin.json"
       - "mcp.json"
+      - ".codex-plugin/**"
+      - ".mcp.json"
+      - ".agents/plugins/**"
       - "AGENTS.md"
       - "skills/**"
       - "agent-plugin/**"
@@ -18,7 +21,7 @@ permissions:
 
 jobs:
   plugin-validation:
-    name: Validate portable plugin and skills
+    name: Validate portable + OpenAI plugin package
     runs-on: ubuntu-latest
     defaults:
       run:
