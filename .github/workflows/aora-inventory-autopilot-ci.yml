@@ -45,6 +45,7 @@ jobs:
         run: |
           node tests/inventory-release-source.mjs
           node tests/inventory-autopilot-source.mjs
+          node tests/inventory-supplier-intelligence-source.mjs
       - name: Inventory Edge Function type check
         run: deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
       - name: Reproducible app build
