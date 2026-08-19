@@ -25,6 +25,8 @@ const offlineCountMigration=read('supabase/migrations/20260819114500_inventory_o
 const partialQrMigration=read('supabase/migrations/20260819114600_inventory_partial_qr.sql');
 const receiptMigration=read('supabase/migrations/20260819114700_inventory_exception_receiving.sql');
 const qrInspectionMigration=read('supabase/migrations/20260819114800_inventory_qr_inspection.sql');
+const partialQrMultiMovementMigration=read('supabase/migrations/20260819114900_inventory_partial_qr_multi_movement.sql');
+const movementWallClockMigration=read('supabase/migrations/20260819115000_inventory_movement_wall_clock.sql');
 
 // Action-first UX: the first tab is not a passive stock table.
 assert(core.includes('["overview","Heute"]'), 'inventory overview tab must be action-first Heute');
@@ -93,7 +95,9 @@ assert(countUi.includes('setTimeout(()=>saveInput(input)'), 'count lines must au
 assert(countUi.includes('Später fortsetzen'), 'count sessions must be resumable');
 assert(countUi.includes('inventoryCountQueueKey'), 'count UI must keep a durable offline queue');
 assert(countUi.includes('countedAt:st.countedAt'), 'offline count replay must preserve original physical count timestamp');
-assert(countUi.includes('window.addEventListener("online"'), 'count queue must flush when connectivity returns');
+assert(countUi.includes('window.addEventListener("online",syncActiveOfflineCount)'), 'count queue must flush through guarded reconnect handler');
+assert(countUi.includes('active.modal&&!active.modal.isConnected'), 'closed count modal must never receive background writes');
+assert(countUi.includes('e.target.closest(\'[data-a="close"]\')'), 'closing count modal must clear active synchronizer before removal');
 assert(countUi.includes('Inventur ist offline gespeichert'), 'offline completion must fail safe instead of posting incomplete data');
 assert(countApi.includes('aora_inventory_set_count_line_at'), 'count API must use timestamp-aware atomic RPC');
 assert(countApi.includes('p_counted_at:countedAt'), 'count API must send original physical count time to Postgres');
@@ -109,6 +113,7 @@ assert(offlineCountMigration.includes('occurred_at>v_at'), 'historical baseline 
 assert(offlineCountMigration.includes('v_baseline:=v_balance.on_hand-v_after'), 'offline baseline must reconstruct historical on-hand');
 assert(offlineCountMigration.includes("message='inventory_count_timestamp_invalid'"), 'stale or impossible device timestamps must fail closed');
 assert(offlineCountMigration.includes('for update;'), 'offline reconstruction must lock the live balance');
+assert(movementWallClockMigration.includes('occurred_at set default clock_timestamp()'), 'ledger timestamps must use actual insert time rather than transaction-start now()');
 
 // Smart ordering: supplier reality drives suggested quantities.
 assert(procurementAdmin.includes('suggestedBaseQuantity'), 'supplier items must expose replenishment need');
@@ -148,16 +153,21 @@ assert(ordersUi.includes('invStableOperationKey("receive-delivery"'), 'receiving
 assert(ordersUi.includes('invRequest("receivePurchaseOrderDelivery"'), 'receiving UI must use atomic batch RPC');
 assert(css.includes('.inventory-delivery-exceptions'), 'exception receiving must be styled');
 
-// Partial QR consumption: one label can safely represent a partially consumed pack.
+// Partial QR consumption: one label can safely represent multiple idempotent withdrawals.
 assert(partialQrMigration.includes("consumption_mode text not null default 'whole_pack'"), 'items must opt into partial consumption explicitly');
 assert(partialQrMigration.includes('remaining_quantity numeric(20,6)'), 'stock units must persist remaining quantity');
 assert(partialQrMigration.includes('aora_inventory_consume_stock_unit'), 'partial consumption must be atomic in Postgres');
 assert(partialQrMigration.includes('p_idempotency_key'), 'partial consumption must be idempotent');
 assert(partialQrMigration.includes("status=case when v_remaining=0 then 'issued' else 'available' end"), 'partial QR must remain active until empty');
 assert(partialQrMigration.includes('perform public.aora_inventory_evaluate_replenishment'), 'partial consumption must update replenishment state');
+assert(partialQrMultiMovementMigration.includes('drop index if exists public.inventory_movements_stock_unit_issue_uidx'), 'old one-use QR unique index must be removed for valid partial withdrawals');
+assert(partialQrMultiMovementMigration.includes('inventory_movements_stock_unit_history_idx'), 'partial QR must keep an indexed stock-unit movement history');
 assert(qrInspectionMigration.includes('aora_inventory_inspect_qr_unit'), 'QR must be inspectable before partial confirmation');
 assert(qrApi.includes('export async function inspectQrUnit'), 'Edge API must expose QR inspection');
 assert(qrApi.includes('export async function setItemConsumptionPolicy'), 'manager must be able to configure per-item consumption policy');
+assert(qrApi.includes('movementOnHand'), 'idempotent QR retry must distinguish movement snapshot from live stock');
+assert(qrApi.includes('db.from("inventory_balances").select("on_hand")'), 'QR response must refresh the current balance after retry reconciliation');
+assert(countApi.includes('movementOnHand'), 'short-code retry must also return a live balance');
 assert(router.includes('"inspectQrUnit","inspectQrShortCode","issueQrUnit","issueQrShortCode"'), 'employee allowlist must permit safe inspection and consumption only');
 assert(router.includes('action==="setItemConsumptionPolicy"'), 'router must expose consumption policy configuration');
 assert(employeeUi.includes('inspectQrUnit'), 'employee scanner must inspect QR policy before online consumption');
@@ -171,12 +181,15 @@ assert(core.includes('setItemConsumptionPolicy'), 'manager UI must persist QR po
 assert(css.includes('.inventory-partial-card'), 'partial consumption UI must be styled');
 
 // Operational intelligence: forecasts are evidence-gated and loss signals never accuse.
-assert(insightsApi.includes('depletions.length>=3'), 'days-to-empty must require a minimum real depletion sample');
+assert(insightsApi.includes('m.movement_type==="consumption"'), 'days-to-empty demand forecast must use real consumption only');
+assert(!insightsApi.includes('["consumption","waste"].includes'), 'waste must not inflate demand forecast');
+assert(insightsApi.includes('depletions.length>=3'), 'days-to-empty must require a minimum real consumption sample');
 assert(insightsApi.includes('forecastConfidence'), 'forecast must expose confidence level');
 assert(insightsApi.includes('unexplainedVariance30d'), 'loss detective must separate unexplained count variance');
 assert(insightsApi.includes('waste30d'), 'loss detective must separate waste');
 assert(insightsApi.includes('receiptException30d'), 'loss detective must separate supplier exceptions');
-assert(insightsApi.includes('confidenceScore'), 'stock confidence must be explicit and bounded');
+assert(insightsApi.includes('100-recencyPenalty-adjustmentPenalty'), 'stock confidence must use broadly applicable evidence only');
+assert(!insightsApi.includes('qrPenalty'), 'partial QR coverage must never reduce stock-confidence score');
 assert(insightsApi.includes('lastCountAt'), 'confidence must include physical count recency');
 assert(router.includes('action==="listInventoryInsights"'), 'router must expose inventory insights');
 assert(core.includes('invRequest("listInventoryInsights"'), 'Heute and stock views must load insights');
