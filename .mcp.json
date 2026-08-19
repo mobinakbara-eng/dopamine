@@ -1,0 +1,8 @@
+{
+  "mcp_servers": {
+    "vercel": {
+      "url": "https://mcp.vercel.com",
+      "default_tools_approval_mode": "prompt"
+    }
+  }
+}
