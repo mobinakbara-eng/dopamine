@@ -9,6 +9,7 @@ import {listSupplierIntelligence} from "./supplier-intelligence.ts";
 import {createPurchaseOrder,sendPurchaseOrder,confirmManualPurchaseOrderSent,listPurchaseOrderDeliveries} from "./procurement-order.ts";
 import {startInventoryCount,getInventoryCount,setInventoryCountLine,postInventoryCount,receivePurchaseOrderDelivery,receivePurchaseOrderLine,issueQrShortCode} from "./inventory-count-receive.ts";
 import {listInventoryInsights} from "./inventory-insights.ts";
+import {listExpiredStockUnits,wasteExpiredStockUnit} from "./inventory-expiry-actions.ts";
 
 Deno.serve(async request=>{
   const origin=request.headers.get("origin"),requestId=request.headers.get("x-request-id")||crypto.randomUUID();
@@ -20,7 +21,7 @@ Deno.serve(async request=>{
     if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)fail(413,"request_too_large","Die Anfrage ist zu groß.");
     let body:any;try{body=JSON.parse(raw)}catch{fail(400,"invalid_json","Ungültige Anfrage.")}
     const action=String(body.action||"");
-    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:6,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
+    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:7,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
 
     const sessionToken=String(body.sessionToken||body.token||"");
     const ctx=await sessionContext(sessionToken,requestId);
@@ -40,6 +41,8 @@ Deno.serve(async request=>{
     else if(action==="listStock")data=await listStock(ctx,body,requestId);
     else if(action==="listMovements")data=await listMovements(ctx,body,requestId);
     else if(action==="listInventoryInsights")data=await listInventoryInsights(ctx,body,requestId);
+    else if(action==="listExpiredStockUnits")data=await listExpiredStockUnits(ctx,body,requestId);
+    else if(action==="wasteExpiredStockUnit")data=await wasteExpiredStockUnit(ctx,body,requestId);
     else if(action==="createItem")data=await createItem(ctx,body,requestId);
     else if(action==="recordReceipt")data=await recordMovement(ctx,body,"receipt",requestId);
     else if(action==="recordConsumption")data=await recordMovement(ctx,body,"consumption",requestId);
