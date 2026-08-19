@@ -9,12 +9,33 @@ function suggestedPackCount(x,focusedBaseQuantity=0){
   return Math.round(rounded*1e6)/1e6;
 }
 function orderMoney(value,currency="EUR"){const n=Number(value);return Number.isFinite(n)?new Intl.NumberFormat("de-DE",{style:"currency",currency:String(currency||"EUR").toUpperCase()}).format(n):"–"}
+function supplierReliabilityLabel(s){return s?.reliabilityScore==null?`Aora lernt · ${Number(s?.evidenceCount||0)} Lieferungen`:`Zuverlässigkeit ${Math.round(Number(s.reliabilityScore))}/100`}
+function supplierDecisionMeta(candidate){
+  if(!candidate)return"";
+  const parts=[];
+  if(candidate.suggestedPackCount>0)parts.push(`${invNumber(candidate.suggestedPackCount)} ${candidate.pack?.label||"Packungen"}`);
+  if(candidate.estimatedValue!=null)parts.push(orderMoney(candidate.estimatedValue,candidate.currency));
+  if(candidate.pricePremiumPct!=null&&candidate.pricePremiumPct>0)parts.push(`+${invNumber(candidate.pricePremiumPct,1)}% Preis`);
+  return parts.join(" · ");
+}
 
 async function newOrderModal(){
   const focus=S.inventoryOrderFocus||null,d=modal(`${modalHeader("Bestand",focus?"Aora Bestellung vorbereiten":"Neue Bestellung")}<div id="inv-order-body"><div class="inventory-empty">Lieferanten werden geladen …</div></div>`);
   try{
-    const r=await invRequest("listSuppliers",{locationId:S.locationId}),b=d.querySelector("#inv-order-body");
-    b.innerHTML=`${focus?'<div class="inventory-smart-note"><strong>Aora Vorschlag</strong><span>Wähle den Lieferanten. Die benötigte Menge wird passend zu Verpackung, Mindestmenge und Bestellschritt gerundet.</span></div>':""}<div class="inventory-supplier-grid">${(r.suppliers||[]).map(s=>`<button class="inventory-supplier" type="button" data-supplier-pick="${s.id}"><strong>${esc(s.name)}</strong><small>${s.contact?.email?"E-Mail":""}${s.contact?.email&&s.contact?.whatsapp?" + ":""}${s.contact?.whatsapp?"WhatsApp":""}</small></button>`).join("")||'<div class="inventory-empty">Bitte zuerst einen Lieferanten anlegen.</div>'}</div>`;
+    const r=await invRequest("listSupplierIntelligence",{locationId:S.locationId,itemId:focus?.itemId||null,requiredBaseQuantity:Number(focus?.suggestedBaseQuantity||0)}),b=d.querySelector("#inv-order-body"),decision=r.decision||null,candidates=decision?.candidates||[],decisionMap=new Map(candidates.map(x=>[String(x.supplierId),x])),recommended=candidates.find(x=>x.recommended)||null;
+    const suppliers=[...(r.suppliers||[])].sort((a,b)=>Number(String(a.id)!==String(recommended?.supplierId))-Number(String(b.id)!==String(recommended?.supplierId))||Number(b.reliabilityScore??-1)-Number(a.reliabilityScore??-1)||String(a.name).localeCompare(String(b.name),"de"));
+    b.innerHTML=`${focus?`<div class="inventory-smart-note"><strong>Aora Supplier Decision</strong><span>${recommended?`Aora empfiehlt ${esc(recommended.supplierName)}. Bewertung: Preis 50 %, Lieferzuverlässigkeit 35 %, Lieferzeit 15 %. Jede Komponente bleibt sichtbar und kann vom Manager überstimmt werden.`:"Für diesen Artikel gibt es noch keinen vollständig vergleichbaren Lieferanten. Aora zeigt vorhandene Daten, trifft aber keine versteckte Annahme."}</span></div>`:""}
+      ${focus&&recommended?`<div class="inventory-supplier-recommendation"><div><span class="caps muted">Beste Option für diesen Bedarf</span><strong>${esc(recommended.supplierName)}</strong><small>${esc((recommended.reasons||[]).slice(0,3).join(" · "))}</small></div><div><b>${recommended.decisionScore}/100</b><span>${esc(supplierDecisionMeta(recommended))}</span></div></div>`:""}
+      <div class="inventory-supplier-grid">${suppliers.map(s=>{
+        const c=decisionMap.get(String(s.id)),isRecommended=Boolean(c?.recommended);
+        return`<button class="inventory-supplier ${isRecommended?"recommended":""}" type="button" data-supplier-pick="${s.id}">
+          <div class="inventory-supplier-top"><strong>${esc(s.name)}</strong>${isRecommended?'<span class="inventory-supplier-badge">Aora empfiehlt</span>':""}</div>
+          <small>${s.contact?.email?"E-Mail":""}${s.contact?.email&&s.contact?.whatsapp?" + ":""}${s.contact?.whatsapp?"WhatsApp":""}</small>
+          <div class="inventory-supplier-signals"><span>${esc(supplierReliabilityLabel(s))}</span>${s.avgLeadDays!=null?`<span>Ø ${invNumber(s.avgLeadDays,1)} Tage</span>`:""}${c?`<span>Score ${c.decisionScore}/100</span>`:""}</div>
+          ${c?`<small class="inventory-supplier-decision-meta">${esc(supplierDecisionMeta(c)||"Bestellregeln verfügbar")}</small>`:""}
+        </button>`;
+      }).join("")||'<div class="inventory-empty">Bitte zuerst einen Lieferanten anlegen.</div>'}</div>
+      ${focus&&decision&&!decision.priceComparable?'<div class="inventory-warning"><strong>Preisvergleich eingeschränkt.</strong><small>Lieferanten verwenden unterschiedliche Währungen. Aora vergleicht diese Preise ohne Wechselkurs nicht direkt miteinander.</small></div>':""}`;
     b.addEventListener("click",e=>{const x=e.target.closest("[data-supplier-pick]");if(x)renderSupplierOrderForm(d,x.dataset.supplierPick)});
   }catch(e){d.querySelector("#inv-order-body").innerHTML=`<div class="inventory-empty">${esc(e.message)}</div>`}
 }
@@ -89,8 +110,8 @@ async function supplierManagerModal(){
   const d=modal(`${modalHeader("Bestellen","Lieferanten")}<div id="supplier-body"><div class="inventory-empty">Wird geladen …</div></div>`);
   async function load(){
     try{
-      const r=await invRequest("listSuppliers",{locationId:S.locationId});
-      d.querySelector("#supplier-body").innerHTML=`<div class="inventory-list">${(r.suppliers||[]).map(s=>`<div class="inventory-row"><div><strong>${esc(s.name)}</strong><small>${esc(s.contact?.email||"")} ${esc(s.contact?.whatsapp||"")}</small></div><span></span><span></span><span></span><button class="btn outline" data-map-supplier="${s.id}">Artikel</button></div>`).join("")}</div><form id="new-supplier" class="form-grid" style="padding:16px"><div class="field full"><label>Lieferant</label><input class="input" name="name" required></div><div class="field"><label>E-Mail</label><input class="input" name="email" type="email"></div><div class="field"><label>WhatsApp</label><input class="input" name="whatsapp" placeholder="+49 …"></div><div class="field full actions"><button class="btn" type="submit">Lieferant speichern</button></div></form>`;
+      const r=await invRequest("listSupplierIntelligence",{locationId:S.locationId});
+      d.querySelector("#supplier-body").innerHTML=`<div class="inventory-list">${(r.suppliers||[]).map(s=>`<div class="inventory-row inventory-supplier-manager-row"><div><strong>${esc(s.name)}</strong><small>${esc(s.contact?.email||"")} ${esc(s.contact?.whatsapp||"")}</small></div><div><small>Historie</small><b>${s.reliabilityScore==null?"Lernt":`${s.reliabilityScore}/100`}</b></div><div><small>Lieferzeit</small><b>${s.avgLeadDays==null?"–":`${invNumber(s.avgLeadDays,1)} T.`}</b></div><div><small>Genauigkeit</small><b>${s.deliveryAccuracy==null?"–":`${invNumber(s.deliveryAccuracy,0)} %`}</b></div><button class="btn outline" data-map-supplier="${s.id}">Artikel</button></div>`).join("")}</div><form id="new-supplier" class="form-grid" style="padding:16px"><div class="field full"><label>Lieferant</label><input class="input" name="name" required></div><div class="field"><label>E-Mail</label><input class="input" name="email" type="email"></div><div class="field"><label>WhatsApp</label><input class="input" name="whatsapp" placeholder="+49 …"></div><div class="field full inventory-smart-note"><strong>Lieferanten-Score</strong><span>Aora bewertet erst ab drei echten Lieferungen. Davor steht „Lernt“ statt einer erfundenen Genauigkeit.</span></div><div class="field full actions"><button class="btn" type="submit">Lieferant speichern</button></div></form>`;
       d.querySelector("#new-supplier").addEventListener("submit",async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await invRequest("upsertSupplier",{locationId:S.locationId,name:f.get("name"),email:f.get("email"),whatsapp:f.get("whatsapp"),orderingMethod:"BOTH"});toast("Lieferant gespeichert.");load()}catch(err){toast(err.message,"error")}});
     }catch(e){d.querySelector("#supplier-body").innerHTML=`<div class="inventory-empty">${esc(e.message)}</div>`}
   }
