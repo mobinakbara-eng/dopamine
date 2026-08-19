@@ -10,17 +10,52 @@ const PRINT_PROFILES:any={
 async function enrichQrResult(ctx:InventoryContext,data:any,locationId:string,requestId:string){
   const itemId=String(data?.itemId||data?.item_id||""),packUnitId=String(data?.packUnitId||data?.pack_unit_id||"");
   const[{data:item,error:ie},{data:pack,error:pe},{data:balance,error:be}]=await Promise.all([
-    itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
+    itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity,expiry_tracking,default_shelf_life_days,expiry_alert_days").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
     packUnitId?db.from("inventory_pack_units").select("id,label,code,base_quantity").eq("organization_id",ctx.organizationId).eq("id",packUnitId).maybeSingle():Promise.resolve({data:null,error:null}),
     itemId&&locationId?db.from("inventory_balances").select("on_hand").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("item_id",itemId).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
   if(ie||pe||be)dbFail(ie||pe||be,"qr_context",requestId);
+
+  let fefo:any=null;
+  if(itemId&&locationId){
+    const{data:earliest,error:fe}=await db.from("inventory_stock_units")
+      .select("id,short_code,expires_on,remaining_quantity")
+      .eq("organization_id",ctx.organizationId)
+      .eq("location_id",locationId)
+      .eq("item_id",itemId)
+      .eq("status","available")
+      .gt("remaining_quantity",0)
+      .not("expires_on","is",null)
+      .order("expires_on",{ascending:true})
+      .order("created_at",{ascending:true})
+      .limit(1)
+      .maybeSingle();
+    if(fe)dbFail(fe,"qr_fefo",requestId);
+    if(earliest){
+      const currentId=String(data?.stockUnitId||data?.stock_unit_id||"");
+      fefo={
+        recommendedStockUnitId:String(earliest.id),
+        recommendedShortCode:String(earliest.short_code||""),
+        recommendedExpiresOn:earliest.expires_on||null,
+        recommendedRemainingQuantity:Number(earliest.remaining_quantity||0),
+        scannedIsRecommended:String(earliest.id)===currentId
+      };
+    }
+  }
+
   return{
     ...data,
     movementOnHand:data?.onHand==null?null:Number(data.onHand),
     onHand:balance?.on_hand==null?(data?.onHand==null?null:Number(data.onHand)):Number(balance.on_hand),
-    item:item?{...item,defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity)}:null,
-    pack:pack?{...pack,baseQuantity:Number(pack.base_quantity)}:null
+    item:item?{
+      ...item,
+      defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity),
+      expiryTracking:Boolean(item.expiry_tracking),
+      defaultShelfLifeDays:item.default_shelf_life_days==null?null:Number(item.default_shelf_life_days),
+      expiryAlertDays:Number(item.expiry_alert_days||0)
+    }:null,
+    pack:pack?{...pack,baseQuantity:Number(pack.base_quantity)}:null,
+    fefo
   };
 }
 
@@ -113,19 +148,42 @@ export async function setItemConsumptionPolicy(ctx:InventoryContext,body:any,req
   return{...data,defaultConsumeQuantity:data.default_consume_quantity==null?null:Number(data.default_consume_quantity)};
 }
 
+export async function setItemExpiryPolicy(ctx:InventoryContext,body:any,requestId:string){
+  const locationId=String(body.locationId||""),itemId=asUuid(body.itemId,"item"),enabled=Boolean(body.expiryTracking);
+  await requirePermission(ctx,locationId,"adjust",requestId);
+  const rawShelf=body.defaultShelfLifeDays==null||body.defaultShelfLifeDays===""?null:Number(body.defaultShelfLifeDays);
+  const rawAlert=body.expiryAlertDays==null||body.expiryAlertDays===""?3:Number(body.expiryAlertDays);
+  if(rawShelf!=null&&(!Number.isSafeInteger(rawShelf)||rawShelf<1||rawShelf>3650))fail(400,"shelf_life_invalid","Standard-Haltbarkeit muss zwischen 1 und 3650 Tagen liegen.");
+  if(!Number.isSafeInteger(rawAlert)||rawAlert<0||rawAlert>3650)fail(400,"expiry_alert_invalid","MHD-Warnfrist muss zwischen 0 und 3650 Tagen liegen.");
+  const{data:linked,error:le}=await db.from("inventory_item_locations").select("item_id").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("item_id",itemId).eq("active",true).maybeSingle();
+  if(le)dbFail(le,"expiry_policy_location",requestId);
+  if(!linked)fail(404,"item_not_found","Artikel wurde an diesem Standort nicht gefunden.");
+  const{data:stockPacks,error:spe}=await db.from("inventory_pack_units").select("id").eq("organization_id",ctx.organizationId).eq("item_id",itemId).eq("active",true).eq("is_stock_unit",true).limit(1);
+  if(spe)dbFail(spe,"expiry_policy_stock_pack",requestId);
+  const{data,error}=await db.from("inventory_items").update({expiry_tracking:enabled,default_shelf_life_days:enabled?rawShelf:null,expiry_alert_days:rawAlert,updated_by:ctx.subjectId,updated_at:now()}).eq("organization_id",ctx.organizationId).eq("id",itemId).select("id,name,sku,base_uom,expiry_tracking,default_shelf_life_days,expiry_alert_days").single();
+  if(error)dbFail(error,"save_expiry_policy",requestId);
+  return{
+    ...data,
+    expiryTracking:Boolean(data.expiry_tracking),
+    defaultShelfLifeDays:data.default_shelf_life_days==null?null:Number(data.default_shelf_life_days),
+    expiryAlertDays:Number(data.expiry_alert_days||0),
+    qrCapable:Boolean(stockPacks?.length)
+  };
+}
+
 export async function preparePrintJob(ctx:InventoryContext,body:any,requestId:string){
   const locationId=String(body.locationId||"");
   await requirePermission(ctx,locationId,"receipt",requestId);
   await Promise.all([requireFeature(ctx,"inventory_qr",locationId,requestId),requireFeature(ctx,"inventory_printing",locationId,requestId)]);
   const printJobId=asUuid(body.printJobId,"print_job");
-  const{data:job,error:je}=await db.from("inventory_label_print_jobs").select("label_count,item_id,status").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("id",printJobId).maybeSingle();
+  const{data:job,error:je}=await db.from("inventory_label_print_jobs").select("label_count,item_id,status,lot_code,expires_on").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("id",printJobId).maybeSingle();
   if(je)dbFail(je,"load_print_job",requestId);
   if(!job)fail(404,"print_job_not_found","Der Druckauftrag wurde nicht gefunden.");
   if(job.status==="printed")fail(409,"print_job_already_printed","Dieser Druckauftrag wurde bereits bestätigt.");
   const count=Number(job.label_count),labels:any[]=[],units:any[]=[];
   for(let i=0;i<count;i++){
     const token=qrToken(),code=shortCode();
-    labels.push({token,shortCode:code,sequence:i+1,total:count});
+    labels.push({token,shortCode:code,sequence:i+1,total:count,lotCode:job.lot_code||null,expiresOn:job.expires_on||null});
     units.push({token_hash:await sha256Hex(token),short_code:code});
   }
   const{data,error}=await db.rpc("aora_inventory_prepare_print_job",{p_organization_id:ctx.organizationId,p_location_id:locationId,p_print_job_id:printJobId,p_units:units,p_actor_id:ctx.subjectId});
