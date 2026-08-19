@@ -36,7 +36,11 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
 
   const result=(balances||[]).map((balance:any)=>{
     const itemId=String(balance.item_id),item:any=itemMap.get(itemId)||{},moves=movementMap.get(itemId)||[],countRows=countMap.get(itemId)||[],units=unitMap.get(itemId)||[],exceptionRows=exceptionMap.get(itemId)||[];
-    const depletions=moves.filter((m:any)=>["consumption","waste"].includes(String(m.movement_type))&&num(m.quantity_delta)<0);
+
+    // Demand forecast intentionally uses only real consumption. Waste is kept as
+    // a separate operational-loss signal so a bad waste day cannot make Aora
+    // pretend customer demand is higher than it really was.
+    const depletions=moves.filter((m:any)=>m.movement_type==="consumption"&&num(m.quantity_delta)<0);
     const depletion30d=depletions.reduce((sum:number,m:any)=>sum+Math.abs(num(m.quantity_delta)),0);
     const waste30d=moves.filter((m:any)=>m.movement_type==="waste"&&num(m.quantity_delta)<0).reduce((sum:number,m:any)=>sum+Math.abs(num(m.quantity_delta)),0);
     const unexplainedVariance30d=moves.filter((m:any)=>m.movement_type==="adjustment_out"&&(m.reason_code==="inventory_count"||m.reference_type==="inventory_count")).reduce((sum:number,m:any)=>sum+Math.abs(num(m.quantity_delta)),0);
@@ -53,12 +57,16 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
     const daysSinceCount=latestCountAt==null?null:Math.max(0,(nowMs-latestCountAt)/DAY);
     const recencyPenalty=daysSinceCount==null?35:Math.min(35,daysSinceCount*1.2);
     const adjustmentPenalty=Math.min(25,manualAdjustments*5);
+
+    // Confidence is deliberately based only on evidence that applies to every
+    // item: physical-count recency and manual corrections. QR coverage can be
+    // partial by configuration, so it is exposed as an informational signal but
+    // never used to punish the stock-confidence score.
+    const confidenceScore=Math.round(clamp(100-recencyPenalty-adjustmentPenalty,0,100));
+    const confidenceLabel=confidenceScore>=80?"high":confidenceScore>=60?"medium":"low";
     const qrRemaining=units.filter((u:any)=>u.status==="available").reduce((sum:number,u:any)=>sum+num(u.remaining_quantity),0);
     const hasQrHistory=units.length>0;
-    const qrMismatchRatio=hasQrHistory?(available>0?Math.abs(qrRemaining-available)/available:(qrRemaining>0?1:0)):0;
-    const qrPenalty=hasQrHistory?Math.min(20,qrMismatchRatio*20):0;
-    const confidenceScore=Math.round(clamp(100-recencyPenalty-adjustmentPenalty-qrPenalty,0,100));
-    const confidenceLabel=confidenceScore>=80?"high":confidenceScore>=60?"medium":"low";
+    const qrCoverageSignal=hasQrHistory?(available>0?Math.round(clamp((qrRemaining/available)*100,0,100)):qrRemaining>0?100:0):null;
 
     const receiptException30d=exceptionRows.reduce((sum:number,row:any)=>sum+num(row.base_quantity),0);
     const damaged30d=exceptionRows.filter((row:any)=>row.exception_type==="damaged").reduce((sum:number,row:any)=>sum+num(row.base_quantity),0);
@@ -69,7 +77,7 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
       item:{id:itemId,name:item.name||"Artikel",sku:item.sku||"",base_uom:item.base_uom||"",category:item.category||"",consumptionMode:item.consumption_mode||"whole_pack"},
       onHand:num(balance.on_hand),reserved:num(balance.reserved),inTransit:num(balance.in_transit_in),
       avgDailyDepletion:Math.round(avgDailyDepletion*1000)/1000,daysToEmpty,forecastSample,forecastConfidence,
-      confidenceScore,confidenceLabel,lastCountAt:latestCountAt?new Date(latestCountAt).toISOString():null,manualAdjustmentCount30d:manualAdjustments,qrTrackedQuantity:qrRemaining,qrCoverageSignal:hasQrHistory?Math.round((1-qrMismatchRatio)*100):null,
+      confidenceScore,confidenceLabel,lastCountAt:latestCountAt?new Date(latestCountAt).toISOString():null,manualAdjustmentCount30d:manualAdjustments,qrTrackedQuantity:qrRemaining,qrCoverageSignal,
       unexplainedVariance30d,waste30d,receiptException30d,damaged30d,missing30d,
       runoutRisk:daysToEmpty==null?"unknown":daysToEmpty<=2?"critical":daysToEmpty<=5?"warning":"normal"
     };
