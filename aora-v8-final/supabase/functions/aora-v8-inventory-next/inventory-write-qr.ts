@@ -7,13 +7,13 @@ const PRINT_PROFILES:any={
   generic_pdf_50x30:{profileKey:"generic_pdf_50x30",labelWidthMm:50,labelHeightMm:30,qrSizeMm:22,dpi:300,mediaType:"direct_thermal_gap",connectionMode:"system_dialog",printerModel:"PDF / Systemdrucker"}
 };
 
-async function enrichQrResult(ctx:InventoryContext,data:any){
+async function enrichQrResult(ctx:InventoryContext,data:any,requestId:string){
   const itemId=String(data?.itemId||data?.item_id||""),packUnitId=String(data?.packUnitId||data?.pack_unit_id||"");
   const[{data:item,error:ie},{data:pack,error:pe}]=await Promise.all([
     itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
     packUnitId?db.from("inventory_pack_units").select("id,label,code,base_quantity").eq("organization_id",ctx.organizationId).eq("id",packUnitId).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
-  if(ie||pe)dbFail(ie||pe,"qr_context","qr-context");
+  if(ie||pe)dbFail(ie||pe,"qr_context",requestId);
   return{
     ...data,
     item:item?{...item,defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity)}:null,
@@ -67,7 +67,7 @@ export async function inspectQrUnit(ctx:InventoryContext,body:any,requestId:stri
     p_organization_id:ctx.organizationId,p_location_id:locationId,p_token_hash_hex:await sha256Hex(token)
   });
   if(error)qrFailure(error,requestId,"inspect_qr");
-  return enrichQrResult(ctx,data);
+  return enrichQrResult(ctx,data,requestId);
 }
 
 export async function inspectQrShortCode(ctx:InventoryContext,body:any,requestId:string){
@@ -79,7 +79,7 @@ export async function inspectQrShortCode(ctx:InventoryContext,body:any,requestId
     p_organization_id:ctx.organizationId,p_location_id:locationId,p_short_code:code
   });
   if(error)qrFailure(error,requestId,"inspect_qr_short_code");
-  return enrichQrResult(ctx,data);
+  return enrichQrResult(ctx,data,requestId);
 }
 
 export async function issueQrUnit(ctx:InventoryContext,body:any,requestId:string){
@@ -93,15 +93,15 @@ export async function issueQrUnit(ctx:InventoryContext,body:any,requestId:string
     p_organization_id:ctx.organizationId,p_location_id:locationId,p_token_hash_hex:await sha256Hex(token),p_requested_quantity:requested,p_actor_id:ctx.subjectId,p_actor_role:ctx.accessRole,p_idempotency_key:idem(body.idempotencyKey)
   });
   if(error)qrFailure(error,requestId,"issue_qr");
-  return enrichQrResult(ctx,data);
+  return enrichQrResult(ctx,data,requestId);
 }
 
 export async function setItemConsumptionPolicy(ctx:InventoryContext,body:any,requestId:string){
   const locationId=String(body.locationId||""),itemId=asUuid(body.itemId,"item"),mode=String(body.consumptionMode||"");
   await requirePermission(ctx,locationId,"adjust",requestId);
   if(!["whole_pack","partial_pack"].includes(mode))fail(400,"consumption_mode_invalid","Verbrauchsart ist ungültig.");
-  const defaultQuantity=mode==="partial_pack"?Number(body.defaultConsumeQuantity):null;
-  if(mode==="partial_pack"&&(!Number.isFinite(defaultQuantity)||defaultQuantity<=0||defaultQuantity>1_000_000_000))fail(400,"default_consume_quantity_invalid","Bitte eine gültige Standardmenge angeben.");
+  const rawDefault=Number(body.defaultConsumeQuantity),defaultQuantity:number|null=mode==="partial_pack"?rawDefault:null;
+  if(mode==="partial_pack"&&(!Number.isFinite(rawDefault)||rawDefault<=0||rawDefault>1_000_000_000))fail(400,"default_consume_quantity_invalid","Bitte eine gültige Standardmenge angeben.");
   const{data:linked,error:le}=await db.from("inventory_item_locations").select("item_id").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("item_id",itemId).eq("active",true).maybeSingle();
   if(le)dbFail(le,"consumption_policy_location",requestId);
   if(!linked)fail(404,"item_not_found","Artikel wurde an diesem Standort nicht gefunden.");
