@@ -1,5 +1,30 @@
 import {db,dbFail,fail,asUuid,idem,requirePermission,requireFeature,type InventoryContext} from "./lib.ts";
 
+async function enrichConsumption(ctx:InventoryContext,data:any,requestId:string){
+  const itemId=String(data?.itemId||data?.item_id||""),packUnitId=String(data?.packUnitId||data?.pack_unit_id||"");
+  const[{data:item,error:ie},{data:pack,error:pe}]=await Promise.all([
+    itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
+    packUnitId?db.from("inventory_pack_units").select("id,label,code,base_quantity").eq("organization_id",ctx.organizationId).eq("id",packUnitId).maybeSingle():Promise.resolve({data:null,error:null})
+  ]);
+  if(ie||pe)dbFail(ie||pe,"consumption_context",requestId);
+  return{
+    ...data,
+    item:item?{...item,defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity)}:null,
+    pack:pack?{...pack,baseQuantity:Number(pack.base_quantity)}:null
+  };
+}
+
+function consumeFailure(error:any,requestId:string,scope:string){
+  const m=String(error?.message||"");
+  if(m.includes("already_used"))fail(409,"qr_already_used","Diese Einheit wurde bereits verwendet oder gehört zu einem anderen Standort.");
+  if(m.includes("not_found"))fail(404,"qr_not_found","Kurzcode wurde nicht gefunden.");
+  if(m.includes("partial_quantity_required"))fail(409,"qr_partial_quantity_required","Für diese Verpackung muss eine Verbrauchsmenge angegeben werden.");
+  if(m.includes("partial_quantity_invalid"))fail(409,"qr_partial_quantity_invalid","Die Menge ist größer als der Rest in dieser Verpackung oder ungültig.");
+  if(m.includes("partial_not_allowed"))fail(409,"qr_partial_not_allowed","Dieser Artikel wird immer als ganze Verpackung gebucht.");
+  if(m.includes("balance_invariant"))fail(409,"qr_balance_conflict","Bestand und QR-Einheit passen nicht mehr zusammen. Bitte Inventur prüfen.");
+  dbFail(error,scope,requestId);
+}
+
 export async function startInventoryCount(ctx:InventoryContext,body:any,requestId:string){
   const locationId=String(body.locationId||"");
   await requirePermission(ctx,locationId,"adjust",requestId);
@@ -11,7 +36,7 @@ export async function startInventoryCount(ctx:InventoryContext,body:any,requestI
     p_actor_id:ctx.subjectId
   });
   if(error)dbFail(error,"start_count",requestId);
-  return data;
+  return{...data,serverTime:new Date().toISOString()};
 }
 
 export async function getInventoryCount(ctx:InventoryContext,body:any,requestId:string){
@@ -25,7 +50,7 @@ export async function getInventoryCount(ctx:InventoryContext,body:any,requestId:
   await requirePermission(ctx,String(count.location_id),"adjust",requestId);
 
   const{data:lines,error:le}=await db.from("inventory_count_lines")
-    .select("item_id,system_quantity,counted_quantity,variance,baseline_version,baseline_captured_at,updated_at")
+    .select("item_id,system_quantity,counted_quantity,variance,baseline_version,baseline_captured_at,client_counted_at,baseline_reconstructed,updated_at")
     .eq("organization_id",ctx.organizationId)
     .eq("count_id",countId)
     .order("item_id");
@@ -40,6 +65,7 @@ export async function getInventoryCount(ctx:InventoryContext,body:any,requestId:
 
   return{
     count,
+    serverTime:new Date().toISOString(),
     lines:(lines||[]).map((l:any)=>({
       ...l,
       systemQuantity:Number(l.system_quantity),
@@ -47,6 +73,8 @@ export async function getInventoryCount(ctx:InventoryContext,body:any,requestId:
       variance:l.variance==null?null:Number(l.variance),
       baselineVersion:l.baseline_version==null?null:Number(l.baseline_version),
       baselineCapturedAt:l.baseline_captured_at||null,
+      clientCountedAt:l.client_counted_at||null,
+      baselineReconstructed:Boolean(l.baseline_reconstructed),
       item:im.get(String(l.item_id))
     }))
   };
@@ -55,6 +83,12 @@ export async function getInventoryCount(ctx:InventoryContext,body:any,requestId:
 export async function setInventoryCountLine(ctx:InventoryContext,body:any,requestId:string){
   const countId=asUuid(body.countId,"count"),itemId=asUuid(body.itemId,"item"),qty=Number(body.countedQuantity);
   if(!Number.isFinite(qty)||qty<0||qty>1_000_000_000)fail(400,"count_quantity_invalid","Gezählte Menge ist ungültig.");
+  let countedAt:null|string=null;
+  if(body.countedAt!=null&&body.countedAt!==""){
+    const d=new Date(String(body.countedAt));
+    if(Number.isNaN(d.getTime()))fail(400,"count_timestamp_invalid","Zeitpunkt der Offline-Zählung ist ungültig.");
+    countedAt=d.toISOString();
+  }
 
   const{data:count,error}=await db.from("inventory_counts")
     .select("location_id,status")
@@ -65,18 +99,21 @@ export async function setInventoryCountLine(ctx:InventoryContext,body:any,reques
   await requirePermission(ctx,String(count.location_id),"adjust",requestId);
   if(count.status!=="counting")fail(409,"count_state_invalid","Zählung kann nicht mehr bearbeitet werden.");
 
-  const{data,error:ue}=await db.rpc("aora_inventory_set_count_line",{
+  const{data,error:ue}=await db.rpc("aora_inventory_set_count_line_at",{
     p_organization_id:ctx.organizationId,
     p_count_id:countId,
     p_item_id:itemId,
     p_counted_quantity:qty,
-    p_actor_id:ctx.subjectId
+    p_actor_id:ctx.subjectId,
+    p_counted_at:countedAt
   });
   if(ue){
     const m=String(ue.message||"");
     if(m.includes("count_state_invalid"))fail(409,"count_state_invalid","Zählung kann nicht mehr bearbeitet werden.");
     if(m.includes("count_line_not_found"))fail(404,"count_line_not_found","Dieser Artikel gehört nicht zu dieser Zählung.");
     if(m.includes("balance_not_found"))fail(409,"count_balance_missing","Für diesen Artikel fehlt ein aktueller Bestand. Bitte Bestand aktualisieren.");
+    if(m.includes("timestamp_invalid"))fail(409,"count_timestamp_invalid","Die Offline-Zählung ist zu alt oder die Gerätezeit stimmt nicht. Bitte diese Position erneut zählen.");
+    if(m.includes("history_invariant"))fail(409,"count_history_conflict","Die Offline-Zählung konnte nicht sicher rekonstruiert werden. Bitte diese Position erneut zählen.");
     dbFail(ue,"set_count_line",requestId);
   }
   return data;
@@ -109,6 +146,38 @@ export async function postInventoryCount(ctx:InventoryContext,body:any,requestId
   return data;
 }
 
+export async function receivePurchaseOrderDelivery(ctx:InventoryContext,body:any,requestId:string){
+  const locationId=String(body.locationId||"");
+  await requirePermission(ctx,locationId,"receipt",requestId);
+  const lines=Array.isArray(body.lines)?body.lines.map((line:any)=>({
+    item_id:asUuid(line.itemId,"item"),
+    pack_unit_id:asUuid(line.packUnitId,"pack_unit"),
+    good_pack_count:Math.trunc(Number(line.goodPackCount||0)),
+    damaged_pack_count:Math.trunc(Number(line.damagedPackCount||0)),
+    missing_pack_count:Math.trunc(Number(line.missingPackCount||0)),
+    note:String(line.note||"").slice(0,500)
+  })):[];
+  if(!lines.length)fail(400,"receipt_lines_invalid","Bitte mindestens eine Position angeben.");
+  if(lines.some((line:any)=>[line.good_pack_count,line.damaged_pack_count,line.missing_pack_count].some((n:number)=>!Number.isSafeInteger(n)||n<0)))fail(400,"receipt_quantity_invalid","Liefermengen sind ungültig.");
+  const{data,error}=await db.rpc("aora_inventory_receive_purchase_order_delivery",{
+    p_organization_id:ctx.organizationId,
+    p_location_id:locationId,
+    p_purchase_order_id:asUuid(body.purchaseOrderId,"purchase_order"),
+    p_lines:lines,
+    p_actor_id:ctx.subjectId,
+    p_actor_role:ctx.accessRole,
+    p_idempotency_key:idem(body.idempotencyKey)
+  });
+  if(error){
+    const m=String(error.message||"");
+    if(m.includes("quantity_exceeded"))fail(409,"purchase_order_quantity_exceeded","Die erfassten Mengen überschreiten die noch offene Bestellmenge.");
+    if(m.includes("not_receivable"))fail(409,"purchase_order_not_receivable","Diese Bestellung kann nicht mehr angenommen werden.");
+    if(m.includes("pack_unit_not_found"))fail(404,"pack_unit_not_found","Die Bestellverpackung wurde nicht gefunden.");
+    dbFail(error,"receive_purchase_order_delivery",requestId);
+  }
+  return data;
+}
+
 export async function receivePurchaseOrderLine(ctx:InventoryContext,body:any,requestId:string){
   const locationId=String(body.locationId||"");
   await requirePermission(ctx,locationId,"receipt",requestId);
@@ -134,22 +203,23 @@ export async function receivePurchaseOrderLine(ctx:InventoryContext,body:any,req
 export async function issueQrShortCode(ctx:InventoryContext,body:any,requestId:string){
   const locationId=String(body.locationId||"");
   await requirePermission(ctx,locationId,"consume",requestId);
-  if(ctx.accessRole==="employee")await requireFeature(ctx,"inventory_employee_scan",locationId,requestId);
+  if(ctx.accessRole==="employee"){
+    await requireFeature(ctx,"inventory_qr",locationId,requestId);
+    await requireFeature(ctx,"inventory_employee_scan",locationId,requestId);
+  }
   const code=String(body.shortCode||"").trim();
   if(code.length<6||code.length>24)fail(400,"short_code_invalid","Kurzcode ist ungültig.");
-  const{data,error}=await db.rpc("aora_inventory_issue_qr_short_code",{
+  const requested=body.quantity==null||body.quantity===""?null:Number(body.quantity);
+  if(requested!=null&&(!Number.isFinite(requested)||requested<=0||requested>1_000_000_000))fail(400,"qr_partial_quantity_invalid","Verbrauchsmenge ist ungültig.");
+  const{data,error}=await db.rpc("aora_inventory_consume_qr_short_code",{
     p_organization_id:ctx.organizationId,
     p_location_id:locationId,
     p_short_code:code,
+    p_requested_quantity:requested,
     p_actor_id:ctx.subjectId,
     p_actor_role:ctx.accessRole,
     p_idempotency_key:idem(body.idempotencyKey)
   });
-  if(error){
-    const m=String(error.message||"");
-    if(m.includes("already_used"))fail(409,"qr_already_used","Diese Einheit wurde bereits verwendet oder gehört zu einem anderen Standort.");
-    if(m.includes("not_found"))fail(404,"qr_not_found","Kurzcode wurde nicht gefunden.");
-    dbFail(error,"short_code",requestId);
-  }
-  return data;
+  if(error)consumeFailure(error,requestId,"short_code");
+  return enrichConsumption(ctx,data,requestId);
 }
