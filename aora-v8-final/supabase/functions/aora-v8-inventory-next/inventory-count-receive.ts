@@ -1,14 +1,17 @@
 import {db,dbFail,fail,asUuid,idem,requirePermission,requireFeature,type InventoryContext} from "./lib.ts";
 
-async function enrichConsumption(ctx:InventoryContext,data:any,requestId:string){
+async function enrichConsumption(ctx:InventoryContext,data:any,locationId:string,requestId:string){
   const itemId=String(data?.itemId||data?.item_id||""),packUnitId=String(data?.packUnitId||data?.pack_unit_id||"");
-  const[{data:item,error:ie},{data:pack,error:pe}]=await Promise.all([
+  const[{data:item,error:ie},{data:pack,error:pe},{data:balance,error:be}]=await Promise.all([
     itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
-    packUnitId?db.from("inventory_pack_units").select("id,label,code,base_quantity").eq("organization_id",ctx.organizationId).eq("id",packUnitId).maybeSingle():Promise.resolve({data:null,error:null})
+    packUnitId?db.from("inventory_pack_units").select("id,label,code,base_quantity").eq("organization_id",ctx.organizationId).eq("id",packUnitId).maybeSingle():Promise.resolve({data:null,error:null}),
+    itemId&&locationId?db.from("inventory_balances").select("on_hand").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("item_id",itemId).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
-  if(ie||pe)dbFail(ie||pe,"consumption_context",requestId);
+  if(ie||pe||be)dbFail(ie||pe||be,"consumption_context",requestId);
   return{
     ...data,
+    movementOnHand:data?.onHand==null?null:Number(data.onHand),
+    onHand:balance?.on_hand==null?(data?.onHand==null?null:Number(data.onHand)):Number(balance.on_hand),
     item:item?{...item,defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity)}:null,
     pack:pack?{...pack,baseQuantity:Number(pack.base_quantity)}:null
   };
@@ -221,5 +224,5 @@ export async function issueQrShortCode(ctx:InventoryContext,body:any,requestId:s
     p_idempotency_key:idem(body.idempotencyKey)
   });
   if(error)consumeFailure(error,requestId,"short_code");
-  return enrichConsumption(ctx,data,requestId);
+  return enrichConsumption(ctx,data,locationId,requestId);
 }
