@@ -55,23 +55,13 @@ async function renderSupplierOrderForm(d,supplierId){
         const packCount=Number(input.value);
         if(!(packCount>0))continue;
         const minimum=Number(input.dataset.minimum||1),multiple=Number(input.dataset.multiple||1);
-        if(packCount<minimum||Math.abs(packCount/multiple-Math.round(packCount/multiple))>1e-8){
-          input.focus();
-          return toast(`Menge muss mindestens ${invNumber(minimum)} und ein Vielfaches von ${invNumber(multiple)} sein.`,"error");
-        }
+        if(packCount<minimum||Math.abs(packCount/multiple-Math.round(packCount/multiple))>1e-8){input.focus();return toast(`Menge muss mindestens ${invNumber(minimum)} und ein Vielfaches von ${invNumber(multiple)} sein.`,"error")}
         lines.push({supplierItemId:input.dataset.supplierItem,packCount});
       }
       if(!lines.length)return toast("Bitte mindestens einen Artikel auswählen.","error");
-      const f=new FormData(e.currentTarget),submit=e.currentTarget.querySelector('button[type="submit"]');
-      submit.disabled=true;
-      try{
-        await invRequest("createPurchaseOrder",{locationId:S.locationId,supplierId,lines,expectedOn:f.get("expectedOn")||null,note:f.get("note")||"",idempotencyKey:crypto.randomUUID()});
-        S.inventoryOrderFocus=null;
-        d.remove();
-        S.inventoryPageCache={};
-        toast("Bestellung als Entwurf angelegt.");
-        renderAdmin();
-      }catch(err){toast(err.message,"error");submit.disabled=false}
+      const f=new FormData(e.currentTarget),submit=e.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;
+      try{await invRequest("createPurchaseOrder",{locationId:S.locationId,supplierId,lines,expectedOn:f.get("expectedOn")||null,note:f.get("note")||"",idempotencyKey:crypto.randomUUID()});S.inventoryOrderFocus=null;d.remove();S.inventoryPageCache={};toast("Bestellung als Entwurf angelegt.");renderAdmin()}
+      catch(err){toast(err.message,"error");submit.disabled=false}
     });
   }catch(e){b.innerHTML=`<div class="inventory-empty">${esc(e.message)}</div>`}
 }
@@ -81,24 +71,15 @@ async function sendOrderModal(orderId){
   if(!order)return toast("Bestellung bitte aktualisieren.","error");
   const c=order.supplier?.contact||{},d=modal(`${modalHeader("Bestellung","Versand auswählen")}<div class="form-grid"><div class="field full"><strong>${esc(order.supplier?.name||"Lieferant")}</strong><p>Bestellung mit den hinterlegten Daten des aktuellen Ladens senden. Wiederholtes Tippen sendet nicht doppelt.</p></div><div class="field full actions">${c.email?'<button class="btn" type="button" data-send-channel="email">Per E-Mail senden</button>':""}${c.whatsapp?'<button class="btn outline" type="button" data-send-channel="whatsapp">Per WhatsApp senden</button>':""}</div><div class="field full" id="send-result"></div></div>`);
   d.addEventListener("click",async e=>{
-    const b=e.target.closest("[data-send-channel]");
-    if(!b)return;
-    b.disabled=true;
+    const b=e.target.closest("[data-send-channel]");if(!b)return;b.disabled=true;
     try{
       const r=await invRequest("sendPurchaseOrder",{purchaseOrderId:orderId,channel:b.dataset.sendChannel});
-      if(r.manualLink){
-        window.open(r.manualLink,"_blank","noopener");
-        const ds=await invRequest("listPurchaseOrderDeliveries",{purchaseOrderId:orderId}),delivery=(ds.deliveries||[]).find(x=>x.status==="manual_required");
-        d.querySelector("#send-result").innerHTML=`<div class="inventory-scan-status"><strong>Nachricht vorbereitet.</strong><p>Nach dem Senden zurück zu Aora wechseln und bestätigen.</p>${delivery?`<button class="btn" data-confirm-manual="${delivery.id}" type="button">Als gesendet markieren</button>`:""}</div>`;
-      }else{
-        d.remove();S.inventoryPageCache={};toast(r.idempotent?"Bestellung war bereits gesendet.":"Bestellung wurde gesendet.");renderAdmin();
-      }
+      if(r.manualLink){window.open(r.manualLink,"_blank","noopener");const ds=await invRequest("listPurchaseOrderDeliveries",{purchaseOrderId:orderId}),delivery=(ds.deliveries||[]).find(x=>x.status==="manual_required");d.querySelector("#send-result").innerHTML=`<div class="inventory-scan-status"><strong>Nachricht vorbereitet.</strong><p>Nach dem Senden zurück zu Aora wechseln und bestätigen.</p>${delivery?`<button class="btn" data-confirm-manual="${delivery.id}" type="button">Als gesendet markieren</button>`:""}</div>`}
+      else{d.remove();S.inventoryPageCache={};toast(r.idempotent?"Bestellung war bereits gesendet.":"Bestellung wurde gesendet.");renderAdmin()}
     }catch(err){toast(err.message,"error");b.disabled=false}
   });
   d.addEventListener("click",async e=>{
-    const b=e.target.closest("[data-confirm-manual]");
-    if(!b)return;
-    b.disabled=true;
+    const b=e.target.closest("[data-confirm-manual]");if(!b)return;b.disabled=true;
     try{await invRequest("confirmManualPurchaseOrderSent",{purchaseOrderId:orderId,deliveryId:b.dataset.confirmManual});d.remove();S.inventoryPageCache={};toast("Bestellung als gesendet markiert.");renderAdmin()}
     catch(err){toast(err.message,"error");b.disabled=false}
   });
@@ -110,15 +91,10 @@ async function supplierManagerModal(){
     try{
       const r=await invRequest("listSuppliers",{locationId:S.locationId});
       d.querySelector("#supplier-body").innerHTML=`<div class="inventory-list">${(r.suppliers||[]).map(s=>`<div class="inventory-row"><div><strong>${esc(s.name)}</strong><small>${esc(s.contact?.email||"")} ${esc(s.contact?.whatsapp||"")}</small></div><span></span><span></span><span></span><button class="btn outline" data-map-supplier="${s.id}">Artikel</button></div>`).join("")}</div><form id="new-supplier" class="form-grid" style="padding:16px"><div class="field full"><label>Lieferant</label><input class="input" name="name" required></div><div class="field"><label>E-Mail</label><input class="input" name="email" type="email"></div><div class="field"><label>WhatsApp</label><input class="input" name="whatsapp" placeholder="+49 …"></div><div class="field full actions"><button class="btn" type="submit">Lieferant speichern</button></div></form>`;
-      d.querySelector("#new-supplier").addEventListener("submit",async e=>{
-        e.preventDefault();const f=new FormData(e.currentTarget);
-        try{await invRequest("upsertSupplier",{locationId:S.locationId,name:f.get("name"),email:f.get("email"),whatsapp:f.get("whatsapp"),orderingMethod:"BOTH"});toast("Lieferant gespeichert.");load()}
-        catch(err){toast(err.message,"error")}
-      });
+      d.querySelector("#new-supplier").addEventListener("submit",async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await invRequest("upsertSupplier",{locationId:S.locationId,name:f.get("name"),email:f.get("email"),whatsapp:f.get("whatsapp"),orderingMethod:"BOTH"});toast("Lieferant gespeichert.");load()}catch(err){toast(err.message,"error")}});
     }catch(e){d.querySelector("#supplier-body").innerHTML=`<div class="inventory-empty">${esc(e.message)}</div>`}
   }
-  d.addEventListener("click",e=>{const b=e.target.closest("[data-map-supplier]");if(b)mapSupplierItemModal(b.dataset.mapSupplier)});
-  load();
+  d.addEventListener("click",e=>{const b=e.target.closest("[data-map-supplier]");if(b)mapSupplierItemModal(b.dataset.mapSupplier)});load();
 }
 
 async function mapSupplierItemModal(supplierId){
@@ -140,46 +116,78 @@ async function mapSupplierItemModal(supplierId){
     const form=body.querySelector("form"),packField=form.querySelector("[data-pack-field]");
     async function loadPacks(){
       packField.innerHTML='<label>Bestelleinheit</label><div class="inventory-empty">Verpackungen werden geladen …</div>';
-      try{
-        const packs=await invRequest("listPackUnits",{locationId:S.locationId,itemId:form.itemId.value}),all=packs.packUnits||[];
-        if(!all.length){packField.innerHTML='<label>Bestelleinheit</label><div class="inventory-warning"><strong>Keine Verpackung angelegt.</strong><small>Lege zuerst eine Verpackung für diesen Artikel an.</small></div>';return}
-        packField.innerHTML=`<label>Bestelleinheit</label><select class="select" name="packUnitId" required>${all.map(p=>`<option value="${p.id}" ${p.is_order_unit?"selected":""}>${esc(p.label)} · ${invNumber(p.baseQuantity)} Basiseinheiten${p.is_order_unit?" · Standard":""}</option>`).join("")}</select>`;
-      }catch(err){packField.innerHTML=`<label>Bestelleinheit</label><div class="inventory-warning"><strong>Verpackungen konnten nicht geladen werden.</strong><small>${esc(err.message)}</small></div>`}
+      try{const packs=await invRequest("listPackUnits",{locationId:S.locationId,itemId:form.itemId.value}),all=packs.packUnits||[];if(!all.length){packField.innerHTML='<label>Bestelleinheit</label><div class="inventory-warning"><strong>Keine Verpackung angelegt.</strong><small>Lege zuerst eine Verpackung für diesen Artikel an.</small></div>';return}packField.innerHTML=`<label>Bestelleinheit</label><select class="select" name="packUnitId" required>${all.map(p=>`<option value="${p.id}" ${p.is_order_unit?"selected":""}>${esc(p.label)} · ${invNumber(p.baseQuantity)} Basiseinheiten${p.is_order_unit?" · Standard":""}</option>`).join("")}</select>`}
+      catch(err){packField.innerHTML=`<label>Bestelleinheit</label><div class="inventory-warning"><strong>Verpackungen konnten nicht geladen werden.</strong><small>${esc(err.message)}</small></div>`}
     }
     form.itemId.addEventListener("change",loadPacks);await loadPacks();
-    form.addEventListener("submit",async e=>{
-      e.preventDefault();const f=new FormData(e.currentTarget),packUnitId=f.get("packUnitId");
-      if(!packUnitId)return toast("Bitte zuerst eine Bestelleinheit anlegen oder auswählen.","error");
-      try{
-        await invRequest("upsertSupplierItem",{locationId:S.locationId,supplierId,itemId:f.get("itemId"),packUnitId,supplierSku:f.get("supplierSku"),supplierItemName:f.get("supplierItemName"),unitPrice:f.get("unitPrice")||null,currency:f.get("currency")||"EUR",minimumOrderQuantity:Number(f.get("minimumOrderQuantity")),orderMultiple:Number(f.get("orderMultiple"))});
-        d.remove();toast("Artikel wurde mit Bestellregeln zugeordnet.");
-      }catch(err){toast(err.message,"error")}
-    });
+    form.addEventListener("submit",async e=>{e.preventDefault();const f=new FormData(e.currentTarget),packUnitId=f.get("packUnitId");if(!packUnitId)return toast("Bitte zuerst eine Bestelleinheit anlegen oder auswählen.","error");try{await invRequest("upsertSupplierItem",{locationId:S.locationId,supplierId,itemId:f.get("itemId"),packUnitId,supplierSku:f.get("supplierSku"),supplierItemName:f.get("supplierItemName"),unitPrice:f.get("unitPrice")||null,currency:f.get("currency")||"EUR",minimumOrderQuantity:Number(f.get("minimumOrderQuantity")),orderMultiple:Number(f.get("orderMultiple"))});d.remove();toast("Artikel wurde mit Bestellregeln zugeordnet.")}catch(err){toast(err.message,"error")}});
   }catch(e){d.querySelector("#map-body").innerHTML=`<div class="inventory-empty">${esc(e.message)}</div>`}
+}
+
+function deliveryPackMeta(line){
+  const packBase=Number(line.pack?.base_quantity||line.pack?.baseQuantity||1),openBase=Math.max(0,Number(line.orderedQuantity)-Number(line.receivedQuantity)),raw=openBase/packBase,whole=Math.max(0,Math.floor(raw+1e-9)),exact=Math.abs(raw-Math.round(raw))<1e-8;
+  return{packBase,openBase,expectedPacks:exact?Math.round(raw):whole,exact,packLabel:line.pack?.label||line.item?.base_uom||"Packung"};
+}
+function updateDeliveryExceptionRow(row){
+  const expected=Number(row.dataset.expected||0),damaged=Math.max(0,Math.trunc(Number(row.querySelector('[name="damaged"]')?.value||0))),missing=Math.max(0,Math.trunc(Number(row.querySelector('[name="missing"]')?.value||0))),good=Math.max(0,expected-damaged-missing),goodEl=row.querySelector("[data-good-count]");
+  if(goodEl)goodEl.textContent=invNumber(good);
+  row.dataset.good=String(good);
+  const invalid=damaged+missing>expected;row.dataset.invalid=invalid?"1":"0";
+  row.classList.toggle("has-exception",damaged>0||missing>0);
+  return{expected,good,damaged,missing,invalid};
 }
 
 async function receiveOrderModal(orderId){
   const order=(S.inventoryPageCache[`${invKey()}:receiving`]?.orders?.orders||[]).find(o=>o.id===orderId);
   if(!order)return toast("Bestellung bitte aktualisieren.","error");
-  const open=(order.lines||[]).filter(l=>Number(l.receivedQuantity)<Number(l.orderedQuantity)),d=modal(`${modalHeader("Wareneingang",esc(order.supplier?.name||"Lieferung"))}<form class="form-grid" id="receive-form"><div class="field full"><label>Artikel</label><select class="select" name="itemId">${open.map(l=>`<option value="${l.item_id}">${esc(l.item?.name||"Artikel")} · offen ${Number(l.orderedQuantity)-Number(l.receivedQuantity)}</option>`).join("")}</select></div><div class="field full" id="pack-field"><div class="inventory-empty">Verpackung wird geladen …</div></div><div class="field"><label>Anzahl</label><input class="input" name="packCount" type="number" min="1" value="1"></div><div class="field full actions"><button class="btn" type="submit">Wareneingang buchen</button></div></form>`),form=d.querySelector("form"),pf=d.querySelector("#pack-field");
-  async function packs(){
-    try{const r=await invRequest("listPackUnits",{locationId:S.locationId,itemId:form.itemId.value});pf.innerHTML=`<label>Verpackung</label><select class="select" name="packUnitId">${(r.packUnits||[]).map(p=>`<option value="${p.id}" data-stock-unit="${p.is_stock_unit?1:0}">${esc(p.label)} · ${p.baseQuantity}</option>`).join("")}</select>`}
-    catch(e){pf.innerHTML=`<div class="inventory-empty">${esc(e.message)}</div>`}
-  }
-  form.itemId.addEventListener("change",packs);await packs();
+  const open=(order.lines||[]).filter(l=>Number(l.receivedQuantity)<Number(l.orderedQuantity));
+  if(!open.length)return toast("Diese Bestellung ist bereits vollständig angenommen.","error");
+  const operation=invStableOperationKey("receive-delivery",`${orderId}:${order.version}`),rows=open.map(line=>({line,...deliveryPackMeta(line)}));
+  const invalidPackRows=rows.filter(x=>!x.line.pack_unit_id||!(x.packBase>0)||x.expectedPacks<1);
+  const d=modal(`${modalHeader("Wareneingang",esc(order.supplier?.name||"Lieferung"))}<form class="inventory-delivery-form" id="receive-delivery-form">
+    <div class="inventory-delivery-intro"><strong>Nur Abweichungen eintragen</strong><p>Aora geht davon aus, dass alles wie bestellt angekommen ist. Beschädigte oder fehlende Packungen hier markieren; nur einwandfreie Ware erhöht den Bestand.</p></div>
+    ${invalidPackRows.length?'<div class="inventory-warning"><strong>Einige alte Bestellpositionen haben keine eindeutige Bestelleinheit.</strong><small>Diese Positionen zuerst beim Lieferanten korrekt zuordnen; Aora bucht sie nicht automatisch.</small></div>':""}
+    <div class="inventory-delivery-lines">${rows.map(x=>{
+      const disabled=!x.line.pack_unit_id||!(x.packBase>0)||x.expectedPacks<1;
+      return`<article class="inventory-delivery-line ${disabled?"disabled":""}" data-delivery-line data-item="${x.line.item_id}" data-pack="${x.line.pack_unit_id||""}" data-expected="${x.expectedPacks}" data-good="${x.expectedPacks}">
+        <div class="inventory-delivery-main"><div><strong>${esc(x.line.item?.name||x.line.supplier_item_name||"Artikel")}</strong><small>Noch offen: ${invNumber(x.openBase)}${x.line.item?.base_uom?` ${esc(x.line.item.base_uom)}`:""} · ${invNumber(x.expectedPacks)} ${esc(x.packLabel)}</small>${!x.exact?`<small class="inventory-warning-text">Restmenge ${invNumber(x.openBase-x.expectedPacks*x.packBase)} bleibt offen, weil sie keine volle ${esc(x.packLabel)} ergibt.</small>`:""}</div><div class="inventory-delivery-good"><span>Einwandfrei</span><strong data-good-count>${invNumber(x.expectedPacks)}</strong><small>${esc(x.packLabel)}</small></div></div>
+        <button class="btn outline" type="button" data-delivery-exception ${disabled?"disabled":""}>Abweichung</button>
+        <div class="inventory-delivery-exceptions" hidden><label>Beschädigt<input class="input" name="damaged" type="number" min="0" max="${x.expectedPacks}" step="1" value="0"></label><label>Fehlt<input class="input" name="missing" type="number" min="0" max="${x.expectedPacks}" step="1" value="0"></label><label class="wide">Notiz<input class="input" name="note" maxlength="500" placeholder="optional"></label></div>
+      </article>`;
+    }).join("")}</div>
+    <div class="inventory-delivery-summary" data-delivery-summary></div>
+    <div class="actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit" ${invalidPackRows.length===rows.length?"disabled":""}>Alles wie bestellt annehmen</button></div>
+  </form>`),form=d.querySelector("form"),submit=form.querySelector('button[type="submit"]');
+
+  const update=()=>{
+    const lineEls=[...form.querySelectorAll("[data-delivery-line]")],states=lineEls.filter(row=>!row.classList.contains("disabled")).map(updateDeliveryExceptionRow),exceptions=states.reduce((sum,x)=>sum+x.damaged+x.missing,0),invalid=states.some(x=>x.invalid),good=states.reduce((sum,x)=>sum+x.good,0);
+    submit.disabled=invalid||states.length===0;submit.textContent=exceptions?"Wareneingang mit Abweichungen buchen":"Alles wie bestellt annehmen";
+    form.querySelector("[data-delivery-summary]").innerHTML=invalid?'<strong>Abweichungen überschreiten die bestellte Menge.</strong>':`<span>${good} einwandfreie Packung${good===1?"":"en"}${exceptions?` · ${exceptions} Abweichung${exceptions===1?"":"en"}`:" · keine Abweichung"}</span>`;
+  };
+  form.addEventListener("click",e=>{const b=e.target.closest("[data-delivery-exception]");if(!b)return;const box=b.closest("[data-delivery-line]").querySelector(".inventory-delivery-exceptions");box.hidden=!box.hidden;b.textContent=box.hidden?"Abweichung":"Abweichung schließen"});
+  form.addEventListener("input",e=>{if(e.target.matches('[name="damaged"],[name="missing"]'))update()});update();
+
   form.addEventListener("submit",async e=>{
-    e.preventDefault();const p=form.querySelector('[name="packUnitId"]'),option=p?.selectedOptions?.[0],count=Number(form.packCount.value);
+    e.preventDefault();
+    const lines=[...form.querySelectorAll("[data-delivery-line]")].filter(row=>!row.classList.contains("disabled")).map(row=>{
+      const state=updateDeliveryExceptionRow(row);
+      return{itemId:row.dataset.item,packUnitId:row.dataset.pack,goodPackCount:state.good,damagedPackCount:state.damaged,missingPackCount:state.missing,note:row.querySelector('[name="note"]')?.value||""};
+    }).filter(line=>line.goodPackCount+line.damagedPackCount+line.missingPackCount>0);
+    if(!lines.length)return toast("Keine buchbare Lieferposition gefunden.","error");
+    if(lines.some(line=>line.goodPackCount<0))return toast("Abweichungsmengen bitte prüfen.","error");
+    submit.disabled=true;
     try{
-      if(option?.dataset.stockUnit==="1")await invRequest("receiveQrUnits",{locationId:S.locationId,purchaseOrderId:orderId,itemId:form.itemId.value,packUnitId:p.value,count,idempotencyKey:crypto.randomUUID()});
-      else await invRequest("receivePurchaseOrderLine",{locationId:S.locationId,purchaseOrderId:orderId,itemId:form.itemId.value,packUnitId:p.value,packCount:count,idempotencyKey:crypto.randomUUID()});
-      d.remove();S.inventoryPageCache={};toast("Wareneingang gebucht.");renderAdmin();
-    }catch(err){toast(err.message,"error")}
+      const r=await invRequest("receivePurchaseOrderDelivery",{locationId:S.locationId,purchaseOrderId:orderId,lines,idempotencyKey:operation.key});
+      operation.clear();d.remove();S.inventoryPageCache={};
+      const labels=Array.isArray(r.printJobIds)?r.printJobIds.length:0;
+      toast(r.idempotent?"Dieser Wareneingang war bereits gebucht.":r.exceptionCount?`Wareneingang gebucht · ${r.exceptionCount} Abweichung${r.exceptionCount===1?"":"en"} dokumentiert.`:labels?`Wareneingang gebucht · ${labels} Etikettenauftrag${labels===1?"":"e"} vorbereitet.`:"Wareneingang vollständig gebucht.");
+      renderAdmin();
+    }catch(err){toast(err.message,"error");submit.disabled=false}
   });
 }
 
 app.addEventListener("click",e=>{
-  const b=e.target.closest("[data-inv]");
-  if(!b)return;
+  const b=e.target.closest("[data-inv]");if(!b)return;
   if(b.dataset.inv==="new-order")newOrderModal();
   else if(b.dataset.inv==="send-order")sendOrderModal(b.dataset.id);
   else if(b.dataset.inv==="suppliers")supplierManagerModal();
