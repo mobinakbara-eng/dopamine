@@ -3,7 +3,7 @@ import {ApiError,MAX_BODY_BYTES,allowedOrigin,cors,json,fail,sessionContext,requ
 import {availability,overview,listStock,listMovements} from "./inventory-read-core.ts";
 import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess,listReplenishment} from "./inventory-read-orders.ts";
 import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
-import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
+import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setItemExpiryPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
 import {listManagerAccess,setManagerAccess,listSuppliers,upsertSupplier,listSupplierItems,upsertSupplierItem,getOrderingProfile,saveOrderingProfile} from "./procurement-admin.ts";
 import {listSupplierIntelligence} from "./supplier-intelligence.ts";
 import {createPurchaseOrder,sendPurchaseOrder,confirmManualPurchaseOrderSent,listPurchaseOrderDeliveries} from "./procurement-order.ts";
@@ -20,7 +20,7 @@ Deno.serve(async request=>{
     if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)fail(413,"request_too_large","Die Anfrage ist zu groß.");
     let body:any;try{body=JSON.parse(raw)}catch{fail(400,"invalid_json","Ungültige Anfrage.")}
     const action=String(body.action||"");
-    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:5,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
+    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:6,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
 
     const sessionToken=String(body.sessionToken||body.token||"");
     const ctx=await sessionContext(sessionToken,requestId);
@@ -69,6 +69,7 @@ Deno.serve(async request=>{
     else if(action==="issueQrUnit")data=await issueQrUnit(ctx,body,requestId);
     else if(action==="issueQrShortCode")data=await issueQrShortCode(ctx,body,requestId);
     else if(action==="setItemConsumptionPolicy")data=await setItemConsumptionPolicy(ctx,body,requestId);
+    else if(action==="setItemExpiryPolicy")data=await setItemExpiryPolicy(ctx,body,requestId);
     else if(action==="listEmployeeAccess")data=await listEmployeeAccess(ctx,body,requestId);
     else if(action==="setEmployeeAccess")data=await setEmployeeAccess(ctx,body,requestId);
     else if(action==="getPrintProfile")data=await getPrintProfile(ctx,body,requestId);
