@@ -159,7 +159,9 @@ async function openCountModal(countId){
     updateProgress();updateOffline();
     if(navigator.onLine&&Object.keys(queued).length)flushQueue().catch(err=>toast(err.message,"error"));
 
-    d.addEventListener("remove",()=>{if(inventoryActiveCountSync?.countId===countId)inventoryActiveCountSync=null},{once:true});
+    d.addEventListener("click",e=>{
+      if(e.target.closest('[data-a="close"]')&&inventoryActiveCountSync?.countId===countId)inventoryActiveCountSync=null;
+    },{capture:true});
     form.addEventListener("submit",async e=>{
       e.preventDefault();
       const btn=e.currentTarget.querySelector('button[type="submit"]'),missing=inputs.filter(i=>quantity(i)===null);
@@ -190,8 +192,15 @@ managerAccessModal=async function(manager){
   });
 };
 
-window.addEventListener("online",()=>{inventoryActiveCountSync?.flush?.().catch(error=>toast(error.message,"error"));inventoryActiveCountSync?.updateOffline?.()});
-window.addEventListener("offline",()=>inventoryActiveCountSync?.updateOffline?.());
+function syncActiveOfflineCount(){
+  const active=inventoryActiveCountSync;
+  if(!active)return;
+  if(active.modal&&!active.modal.isConnected){inventoryActiveCountSync=null;return}
+  active.updateOffline?.();
+  if(navigator.onLine)active.flush?.().catch(error=>toast(error.message,"error"));
+}
+window.addEventListener("online",syncActiveOfflineCount);
+window.addEventListener("offline",syncActiveOfflineCount);
 
 app.addEventListener("click",e=>{
   const b=e.target.closest("[data-inv]");if(!b)return;
