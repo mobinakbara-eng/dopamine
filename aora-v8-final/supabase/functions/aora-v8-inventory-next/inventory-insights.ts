@@ -3,11 +3,12 @@ import {db,dbFail,requirePermission,type InventoryContext} from "./lib.ts";
 const DAY=86_400_000;
 function num(value:any){const n=Number(value);return Number.isFinite(n)?n:0}
 function clamp(value:number,min:number,max:number){return Math.max(min,Math.min(max,value))}
+function dayStart(value:string|Date){const d=new Date(value);return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())}
 
 export async function listInventoryInsights(ctx:InventoryContext,body:any,requestId:string){
   const locationId=String(body.locationId||"");
   await requirePermission(ctx,locationId,"view",requestId);
-  const nowMs=Date.now(),since30=new Date(nowMs-30*DAY).toISOString(),since90=new Date(nowMs-90*DAY).toISOString();
+  const nowMs=Date.now(),todayMs=dayStart(new Date()),since30=new Date(nowMs-30*DAY).toISOString(),since90=new Date(nowMs-90*DAY).toISOString();
 
   const[{data:balances,error:be},{data:movements,error:me},{data:counts,error:ce},{data:exceptions,error:ee}]=await Promise.all([
     db.from("inventory_balances").select("item_id,on_hand,reserved,in_transit_in,updated_at").eq("organization_id",ctx.organizationId).eq("location_id",locationId).limit(500),
@@ -18,12 +19,12 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
   if(be||me||ce||ee)dbFail(be||me||ce||ee,"inventory_insights",requestId);
 
   const itemIds=[...new Set((balances||[]).map((row:any)=>String(row.item_id)))];
-  if(!itemIds.length)return{locationId,summary:{runoutRiskCount:0,lowConfidenceCount:0,unexplainedVariance30d:0,waste30d:0,receiptException30d:0},items:[]};
+  if(!itemIds.length)return{locationId,summary:{runoutRiskCount:0,lowConfidenceCount:0,unexplainedVariance30d:0,waste30d:0,receiptException30d:0,expiringSoonItemCount:0,expiredItemCount:0,expiringSoonQuantity:0,expiredQuantity:0},items:[]};
   const countIds=(counts||[]).map((row:any)=>row.id);
   const[{data:items,error:ie},{data:countLines,error:cle},{data:stockUnits,error:sue}]=await Promise.all([
-    db.from("inventory_items").select("id,name,sku,base_uom,category,consumption_mode").eq("organization_id",ctx.organizationId).in("id",itemIds),
+    db.from("inventory_items").select("id,name,sku,base_uom,category,consumption_mode,expiry_tracking,expiry_alert_days").eq("organization_id",ctx.organizationId).in("id",itemIds),
     countIds.length?db.from("inventory_count_lines").select("count_id,item_id,variance,baseline_captured_at,updated_at").eq("organization_id",ctx.organizationId).in("count_id",countIds).in("item_id",itemIds).limit(5000):Promise.resolve({data:[],error:null}),
-    db.from("inventory_stock_units").select("item_id,status,remaining_quantity,created_at").eq("organization_id",ctx.organizationId).eq("location_id",locationId).in("item_id",itemIds).gte("created_at",since90).limit(5000)
+    db.from("inventory_stock_units").select("item_id,status,remaining_quantity,expires_on,lot_code,short_code,created_at").eq("organization_id",ctx.organizationId).eq("location_id",locationId).in("item_id",itemIds).limit(5000)
   ]);
   if(ie||cle||sue)dbFail(ie||cle||sue,"inventory_insights_context",requestId);
 
@@ -58,15 +59,21 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
     const recencyPenalty=daysSinceCount==null?35:Math.min(35,daysSinceCount*1.2);
     const adjustmentPenalty=Math.min(25,manualAdjustments*5);
 
-    // Confidence is deliberately based only on evidence that applies to every
-    // item: physical-count recency and manual corrections. QR coverage can be
-    // partial by configuration, so it is exposed as an informational signal but
-    // never used to punish the stock-confidence score.
+    // Confidence is deliberately based only on evidence that applies to every item.
+    // QR coverage is informational because QR tracking can be partial by configuration.
     const confidenceScore=Math.round(clamp(100-recencyPenalty-adjustmentPenalty,0,100));
     const confidenceLabel=confidenceScore>=80?"high":confidenceScore>=60?"medium":"low";
     const qrRemaining=units.filter((u:any)=>u.status==="available").reduce((sum:number,u:any)=>sum+num(u.remaining_quantity),0);
     const hasQrHistory=units.length>0;
     const qrCoverageSignal=hasQrHistory?(available>0?Math.round(clamp((qrRemaining/available)*100,0,100)):qrRemaining>0?100:0):null;
+
+    const alertDays=Number(item.expiry_alert_days??3);
+    const expiryUnits=units.filter((u:any)=>u.status==="available"&&num(u.remaining_quantity)>0&&u.expires_on).map((u:any)=>({...u,expiryMs:dayStart(String(u.expires_on))}));
+    const expiredUnits=expiryUnits.filter((u:any)=>u.expiryMs<todayMs);
+    const expiringSoonUnits=expiryUnits.filter((u:any)=>u.expiryMs>=todayMs&&u.expiryMs<=todayMs+alertDays*DAY);
+    const expiredQuantity=expiredUnits.reduce((sum:number,u:any)=>sum+num(u.remaining_quantity),0);
+    const expiringSoonQuantity=expiringSoonUnits.reduce((sum:number,u:any)=>sum+num(u.remaining_quantity),0);
+    const nearestExpiryUnit=expiryUnits.sort((a:any,b:any)=>a.expiryMs-b.expiryMs||String(a.short_code||"").localeCompare(String(b.short_code||"")))[0]||null;
 
     const receiptException30d=exceptionRows.reduce((sum:number,row:any)=>sum+num(row.base_quantity),0);
     const damaged30d=exceptionRows.filter((row:any)=>row.exception_type==="damaged").reduce((sum:number,row:any)=>sum+num(row.base_quantity),0);
@@ -74,16 +81,18 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
 
     return{
       itemId,
-      item:{id:itemId,name:item.name||"Artikel",sku:item.sku||"",base_uom:item.base_uom||"",category:item.category||"",consumptionMode:item.consumption_mode||"whole_pack"},
+      item:{id:itemId,name:item.name||"Artikel",sku:item.sku||"",base_uom:item.base_uom||"",category:item.category||"",consumptionMode:item.consumption_mode||"whole_pack",expiryTracking:Boolean(item.expiry_tracking),expiryAlertDays:alertDays},
       onHand:num(balance.on_hand),reserved:num(balance.reserved),inTransit:num(balance.in_transit_in),
       avgDailyDepletion:Math.round(avgDailyDepletion*1000)/1000,daysToEmpty,forecastSample,forecastConfidence,
       confidenceScore,confidenceLabel,lastCountAt:latestCountAt?new Date(latestCountAt).toISOString():null,manualAdjustmentCount30d:manualAdjustments,qrTrackedQuantity:qrRemaining,qrCoverageSignal,
+      expirySignalScope:"qr_tracked_units",expiredQuantity,expiringSoonQuantity,nearestExpiryOn:nearestExpiryUnit?.expires_on||null,nearestExpiryShortCode:nearestExpiryUnit?.short_code||null,nearestExpiryLotCode:nearestExpiryUnit?.lot_code||null,
       unexplainedVariance30d,waste30d,receiptException30d,damaged30d,missing30d,
       runoutRisk:daysToEmpty==null?"unknown":daysToEmpty<=2?"critical":daysToEmpty<=5?"warning":"normal"
     };
   });
 
   result.sort((a:any,b:any)=>{
+    const ae=a.expiredQuantity>0?0:a.expiringSoonQuantity>0?1:2,be=b.expiredQuantity>0?0:b.expiringSoonQuantity>0?1:2;if(ae!==be)return ae-be;
     const ar=a.daysToEmpty==null?99999:a.daysToEmpty,br=b.daysToEmpty==null?99999:b.daysToEmpty;
     return ar-br||a.confidenceScore-b.confidenceScore||b.unexplainedVariance30d-a.unexplainedVariance30d;
   });
@@ -94,7 +103,11 @@ export async function listInventoryInsights(ctx:InventoryContext,body:any,reques
       lowConfidenceCount:result.filter((x:any)=>x.confidenceScore<60).length,
       unexplainedVariance30d:result.reduce((sum:number,x:any)=>sum+x.unexplainedVariance30d,0),
       waste30d:result.reduce((sum:number,x:any)=>sum+x.waste30d,0),
-      receiptException30d:result.reduce((sum:number,x:any)=>sum+x.receiptException30d,0)
+      receiptException30d:result.reduce((sum:number,x:any)=>sum+x.receiptException30d,0),
+      expiringSoonItemCount:result.filter((x:any)=>x.expiringSoonQuantity>0).length,
+      expiredItemCount:result.filter((x:any)=>x.expiredQuantity>0).length,
+      expiringSoonQuantity:result.reduce((sum:number,x:any)=>sum+x.expiringSoonQuantity,0),
+      expiredQuantity:result.reduce((sum:number,x:any)=>sum+x.expiredQuantity,0)
     },
     items:result
   };
