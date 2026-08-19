@@ -40,6 +40,7 @@ jobs:
           node --check app/modules/inventory-core.js
           node --check app/modules/inventory-access-count.js
           node --check app/modules/inventory-orders-v2.js
+          node --check app/modules/inventory-employee.js
       - name: Inventory source contracts
         run: |
           node tests/inventory-release-source.mjs
