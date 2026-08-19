@@ -65,7 +65,8 @@ assert(qrApi.includes('defaultShelfLifeDays'), 'manager API must validate shelf-
 assert(qrApi.includes('expiryAlertDays'), 'manager API must validate warning days');
 assert(readCore.includes('expiryTracking:Boolean(i.expiry_tracking)'), 'stock read model must expose expiry policy');
 assert(router.includes('action==="setItemExpiryPolicy"'), 'router must expose expiry policy API');
-assert(router.includes('version:6'), 'inventory health version must advance for MHD/FEFO API');
+const healthVersion=Number(router.match(/service:"aora-v8-inventory-next",version:(\d+)/)?.[1]||0);
+assert(healthVersion>=6, 'inventory health version must not regress below MHD/FEFO API version');
 assert(coreUi.includes('MHD-Regeln'), 'stock manager UI must expose MHD rules');
 assert(coreUi.includes('FEFO-Empfehlungen gelten derzeit nur für QR-erfasste Einheiten'), 'manager UI must state the truthful FEFO scope');
 
