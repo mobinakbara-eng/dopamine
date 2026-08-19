@@ -1,19 +1,29 @@
 import {db,dbFail,fail,asUuid,idem,requirePermission,requireFeature,type InventoryContext} from "./lib.ts";
 
 async function enrichConsumption(ctx:InventoryContext,data:any,locationId:string,requestId:string){
-  const itemId=String(data?.itemId||data?.item_id||""),packUnitId=String(data?.packUnitId||data?.pack_unit_id||"");
-  const[{data:item,error:ie},{data:pack,error:pe},{data:balance,error:be}]=await Promise.all([
-    itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
+  const itemId=String(data?.itemId||data?.item_id||""),packUnitId=String(data?.packUnitId||data?.pack_unit_id||""),stockUnitId=String(data?.stockUnitId||data?.stock_unit_id||"");
+  const[{data:item,error:ie},{data:pack,error:pe},{data:balance,error:be},{data:stockUnit,error:sue}]=await Promise.all([
+    itemId?db.from("inventory_items").select("id,name,sku,base_uom,consumption_mode,default_consume_quantity,expiry_tracking,default_shelf_life_days,expiry_alert_days").eq("organization_id",ctx.organizationId).eq("id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
     packUnitId?db.from("inventory_pack_units").select("id,label,code,base_quantity").eq("organization_id",ctx.organizationId).eq("id",packUnitId).maybeSingle():Promise.resolve({data:null,error:null}),
-    itemId&&locationId?db.from("inventory_balances").select("on_hand").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("item_id",itemId).maybeSingle():Promise.resolve({data:null,error:null})
+    itemId&&locationId?db.from("inventory_balances").select("on_hand").eq("organization_id",ctx.organizationId).eq("location_id",locationId).eq("item_id",itemId).maybeSingle():Promise.resolve({data:null,error:null}),
+    stockUnitId?db.from("inventory_stock_units").select("id,short_code,lot_code,expires_on,remaining_quantity,status").eq("organization_id",ctx.organizationId).eq("id",stockUnitId).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
-  if(ie||pe||be)dbFail(ie||pe||be,"consumption_context",requestId);
+  if(ie||pe||be||sue)dbFail(ie||pe||be||sue,"consumption_context",requestId);
   return{
     ...data,
     movementOnHand:data?.onHand==null?null:Number(data.onHand),
     onHand:balance?.on_hand==null?(data?.onHand==null?null:Number(data.onHand)):Number(balance.on_hand),
-    item:item?{...item,defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity)}:null,
-    pack:pack?{...pack,baseQuantity:Number(pack.base_quantity)}:null
+    item:item?{
+      ...item,
+      defaultConsumeQuantity:item.default_consume_quantity==null?null:Number(item.default_consume_quantity),
+      expiryTracking:Boolean(item.expiry_tracking),
+      defaultShelfLifeDays:item.default_shelf_life_days==null?null:Number(item.default_shelf_life_days),
+      expiryAlertDays:Number(item.expiry_alert_days||0)
+    }:null,
+    pack:pack?{...pack,baseQuantity:Number(pack.base_quantity)}:null,
+    lotCode:stockUnit?.lot_code??data?.lotCode??null,
+    expiresOn:stockUnit?.expires_on??data?.expiresOn??null,
+    shortCode:stockUnit?.short_code??data?.shortCode??null
   };
 }
 
@@ -158,10 +168,13 @@ export async function receivePurchaseOrderDelivery(ctx:InventoryContext,body:any
     good_pack_count:Math.trunc(Number(line.goodPackCount||0)),
     damaged_pack_count:Math.trunc(Number(line.damagedPackCount||0)),
     missing_pack_count:Math.trunc(Number(line.missingPackCount||0)),
-    note:String(line.note||"").slice(0,500)
+    note:String(line.note||"").slice(0,500),
+    lot_code:String(line.lotCode||"").trim().slice(0,80)||null,
+    expires_on:line.expiresOn?String(line.expiresOn):null
   })):[];
   if(!lines.length)fail(400,"receipt_lines_invalid","Bitte mindestens eine Position angeben.");
   if(lines.some((line:any)=>[line.good_pack_count,line.damaged_pack_count,line.missing_pack_count].some((n:number)=>!Number.isSafeInteger(n)||n<0)))fail(400,"receipt_quantity_invalid","Liefermengen sind ungültig.");
+  if(lines.some((line:any)=>line.expires_on&&!/^\d{4}-\d{2}-\d{2}$/.test(line.expires_on)))fail(400,"expiry_invalid","MHD ist ungültig.");
   const{data,error}=await db.rpc("aora_inventory_receive_purchase_order_delivery",{
     p_organization_id:ctx.organizationId,
     p_location_id:locationId,
@@ -176,6 +189,8 @@ export async function receivePurchaseOrderDelivery(ctx:InventoryContext,body:any
     if(m.includes("quantity_exceeded"))fail(409,"purchase_order_quantity_exceeded","Die erfassten Mengen überschreiten die noch offene Bestellmenge.");
     if(m.includes("not_receivable"))fail(409,"purchase_order_not_receivable","Diese Bestellung kann nicht mehr angenommen werden.");
     if(m.includes("pack_unit_not_found"))fail(404,"pack_unit_not_found","Die Bestellverpackung wurde nicht gefunden.");
+    if(m.includes("expiry_required"))fail(409,"expiry_required","Für diesen MHD-Artikel muss beim Wareneingang ein Ablaufdatum erfasst werden.");
+    if(m.includes("expiry_in_past"))fail(409,"expiry_in_past","Das MHD liegt in der Vergangenheit. Lieferung bitte als Abweichung prüfen.");
     dbFail(error,"receive_purchase_order_delivery",requestId);
   }
   return data;
