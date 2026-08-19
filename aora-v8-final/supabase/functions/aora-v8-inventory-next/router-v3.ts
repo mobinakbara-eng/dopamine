@@ -5,6 +5,7 @@ import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,l
 import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
 import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
 import {listManagerAccess,setManagerAccess,listSuppliers,upsertSupplier,listSupplierItems,upsertSupplierItem,getOrderingProfile,saveOrderingProfile} from "./procurement-admin.ts";
+import {listSupplierIntelligence} from "./supplier-intelligence.ts";
 import {createPurchaseOrder,sendPurchaseOrder,confirmManualPurchaseOrderSent,listPurchaseOrderDeliveries} from "./procurement-order.ts";
 import {startInventoryCount,getInventoryCount,setInventoryCountLine,postInventoryCount,receivePurchaseOrderDelivery,receivePurchaseOrderLine,issueQrShortCode} from "./inventory-count-receive.ts";
 import {listInventoryInsights} from "./inventory-insights.ts";
@@ -19,7 +20,7 @@ Deno.serve(async request=>{
     if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)fail(413,"request_too_large","Die Anfrage ist zu groß.");
     let body:any;try{body=JSON.parse(raw)}catch{fail(400,"invalid_json","Ungültige Anfrage.")}
     const action=String(body.action||"");
-    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:4,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
+    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:5,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
 
     const sessionToken=String(body.sessionToken||body.token||"");
     const ctx=await sessionContext(sessionToken,requestId);
@@ -77,6 +78,7 @@ Deno.serve(async request=>{
     else if(action==="listManagerAccess")data=await listManagerAccess(ctx,body,requestId);
     else if(action==="setManagerFullAccess")data=await setManagerAccess(ctx,body,requestId);
     else if(action==="listSuppliers")data=await listSuppliers(ctx,body,requestId);
+    else if(action==="listSupplierIntelligence")data=await listSupplierIntelligence(ctx,body,requestId);
     else if(action==="upsertSupplier")data=await upsertSupplier(ctx,body,requestId);
     else if(action==="listSupplierItems")data=await listSupplierItems(ctx,body,requestId);
     else if(action==="upsertSupplierItem")data=await upsertSupplierItem(ctx,body,requestId);
