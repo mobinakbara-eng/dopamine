@@ -42,13 +42,28 @@ export async function startInventoryCount(ctx:InventoryContext,body:any,requestI
   const locationId=String(body.locationId||"");
   await requirePermission(ctx,locationId,"adjust",requestId);
   await requireFeature(ctx,"inventory_counting",locationId,requestId);
-  const{data,error}=await db.rpc("aora_inventory_start_count",{
+  const itemIds=Array.isArray(body.itemIds)?[...new Set(body.itemIds.map((id:any)=>asUuid(id,"item")))]:[];
+  if(itemIds.length>100)fail(400,"count_item_scope_invalid","Bitte höchstens 100 Artikel für eine Schnellinventur auswählen.");
+  const scope=String(body.scope||(itemIds.length?"targeted":"all")).slice(0,80);
+  const rpc=itemIds.length?"aora_inventory_start_count_items":"aora_inventory_start_count";
+  const args=itemIds.length?{
     p_organization_id:ctx.organizationId,
     p_location_id:locationId,
-    p_scope:String(body.scope||"all"),
+    p_item_ids:itemIds,
+    p_scope:scope,
     p_actor_id:ctx.subjectId
-  });
-  if(error)dbFail(error,"start_count",requestId);
+  }:{
+    p_organization_id:ctx.organizationId,
+    p_location_id:locationId,
+    p_scope:scope,
+    p_actor_id:ctx.subjectId
+  };
+  const{data,error}=await db.rpc(rpc,args);
+  if(error){
+    const m=String(error.message||"");
+    if(m.includes("item_scope_invalid"))fail(400,"count_item_scope_invalid","Die ausgewählten Artikel können an diesem Standort nicht gezählt werden.");
+    dbFail(error,"start_count",requestId);
+  }
   return{...data,serverTime:new Date().toISOString()};
 }
 
