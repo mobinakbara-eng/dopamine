@@ -6,6 +6,7 @@ on:
       - main
       - agent/aora-inventory-production-ready
     paths:
+      - "aora-v8-final/app/index.html"
       - "aora-v8-final/app/inventory.css"
       - "aora-v8-final/app/modules/inventory-*.js"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-next/**"
@@ -39,6 +40,7 @@ jobs:
         run: |
           node --check app/modules/inventory-core.js
           node --check app/modules/inventory-access-count.js
+          node --check app/modules/inventory-cycle-count.js
           node --check app/modules/inventory-orders-v2.js
           node --check app/modules/inventory-employee.js
       - name: Inventory source contracts
@@ -47,6 +49,7 @@ jobs:
           node tests/inventory-autopilot-source.mjs
           node tests/inventory-supplier-intelligence-source.mjs
           node tests/inventory-expiry-fefo-source.mjs
+          node tests/inventory-confidence-cycle-count-source.mjs
       - name: Inventory Edge Function type check
         run: deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
       - name: Reproducible app build
