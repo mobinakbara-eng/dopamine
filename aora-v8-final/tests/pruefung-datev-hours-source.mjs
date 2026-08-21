@@ -9,6 +9,7 @@ const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8')
 
 // Prüfung & Exporte becomes the single manager home for DATEV hours and employee signatures.
 assert.match(ui,/Prüfung & Exporte/);
+assert.match(ui,/if\(legacy&&legacy!==existing\)list\.splice\(list\.indexOf\(legacy\),1\)/);
 assert.match(ui,/legacy\)\{legacy\[0\]=VIEW;legacy\[1\]="Prüfung & Exporte"/);
 assert.match(ui,/Nachweise prüfen und Unterschrift anfordern/);
 assert.match(ui,/const signingMarkup=previousAdminView\(\)/);
@@ -31,10 +32,22 @@ assert.match(edge,/datev_hours_open_entries/);
 assert.match(edge,/datev_personnel_number_missing/);
 assert.match(edge,/duplicate_personnel_number/);
 
+// Manager scope includes cross-location work at accessible locations, with employee-location fallback for old entries.
+assert.match(edge,/const explicitLocationId = entryLocationId\(entry\)/);
+assert.match(edge,/if \(explicitLocationId\) return ctx\.locationIds\.includes\(explicitLocationId\)/);
+assert.match(edge,/employeeLocation\(employeeById\.get\(entryEmployeeId\(entry\)\)\)/);
+assert.match(edge,/relevantIds\.has\(employeeId\)/);
+
 // No DATEV Lohnart is guessed: it must be supplied and validated by the employer/adviser mapping.
 assert.match(edge,/regular_wage_type text not null|regularWageType/);
 assert.doesNotMatch(edge,/regularWageType\s*[:=]\s*["']\d+["']/);
 assert.match(ui,/Vom Steuerberater/);
+
+// Mapping edits can intentionally remove an obsolete Personalnummer; stale values cannot survive silently.
+assert.match(ui,/if\(!employee\.included\)continue/);
+assert.match(ui,/personnelNumber:String\(data\.get\(`/);
+assert.match(edge,/if \(!rawPersonnel\) return \{ employeeId, personnelNumber: null/);
+assert.match(edge,/from\("datev_hours_employee_mappings"\)[\s\S]*\.delete\(\)[\s\S]*\.eq\("employee_id", mapping\.employeeId\)/);
 
 // Mapping and export evidence stay server-owned and inaccessible directly from browser roles.
 assert.match(migration,/datev_hours_export_settings/);
