@@ -1,8 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {ApiError,MAX_BODY_BYTES,allowedOrigin,cors,json,fail,sessionContext,requireFeature} from "./lib.ts";
-import {availability,listMovements} from "./inventory-read-core.ts";
-import {fastOverview,fastStock} from "./inventory-fast-read.ts";
-import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess,listReplenishment} from "./inventory-read-orders.ts";
+import {availability} from "./inventory-read-core.ts";
+import {fastOverview,fastStock,fastMovements,fastReplenishment} from "./inventory-fast-read.ts";
+import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess} from "./inventory-read-orders.ts";
 import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
 import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setItemExpiryPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
 import {listManagerAccess,setManagerAccess,listSuppliers,upsertSupplier,listSupplierItems,upsertSupplierItem,getOrderingProfile,saveOrderingProfile} from "./procurement-admin.ts";
@@ -22,14 +22,17 @@ Deno.serve(async request=>{
     if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)fail(413,"request_too_large","Die Anfrage ist zu groß.");
     let body:any;try{body=JSON.parse(raw)}catch{fail(400,"invalid_json","Ungültige Anfrage.")}
     const action=String(body.action||"");
-    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:8,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
+    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:9,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
 
     const sessionToken=String(body.sessionToken||body.token||"");
-    // Hot dashboard reads validate session, location, feature and permission inside the same
-    // database RPC that returns the data. This preserves authorization while removing the
-    // extra auth round-trip that dominated 100-user bursts.
+    // Hot dashboard reads validate the session, active organization/location,
+    // inventory feature and required permission inside the same database RPC
+    // that returns the requested data. This keeps authorization fail-closed
+    // while avoiding connection-pool amplification during large read bursts.
     if(action==="overview")return json(await fastOverview(sessionToken,body,requestId),200,origin,requestId);
     if(action==="listStock")return json(await fastStock(sessionToken,body,requestId),200,origin,requestId);
+    if(action==="listMovements")return json(await fastMovements(sessionToken,body,requestId),200,origin,requestId);
+    if(action==="listReplenishment")return json(await fastReplenishment(sessionToken,body,requestId),200,origin,requestId);
 
     const ctx=await sessionContext(sessionToken,requestId);
     if(action==="issueQrUnit"){
@@ -44,8 +47,7 @@ Deno.serve(async request=>{
     const locationId=body.locationId==null?"":String(body.locationId);
     if(locationId)await requireFeature(ctx,"inventory_v1",locationId,requestId);
     let data:any;
-    if(action==="listMovements")data=await listMovements(ctx,body,requestId);
-    else if(action==="listInventoryInsights")data=await listInventoryInsights(ctx,body,requestId);
+    if(action==="listInventoryInsights")data=await listInventoryInsights(ctx,body,requestId);
     else if(action==="listExpiredStockUnits")data=await listExpiredStockUnits(ctx,body,requestId);
     else if(action==="wasteExpiredStockUnit")data=await wasteExpiredStockUnit(ctx,body,requestId);
     else if(action==="createItem")data=await createItem(ctx,body,requestId);
@@ -83,7 +85,6 @@ Deno.serve(async request=>{
     else if(action==="getPrintProfile")data=await getPrintProfile(ctx,body,requestId);
     else if(action==="savePrintProfile")data=await savePrintProfile(ctx,body,requestId);
     else if(action==="printTestLabel")data=await printTestLabel(ctx,body,requestId);
-    else if(action==="listReplenishment"){if(locationId)await requireFeature(ctx,"replenishment_suggestions",locationId,requestId);data=await listReplenishment(ctx,body,requestId)}
     else if(action==="listManagerAccess")data=await listManagerAccess(ctx,body,requestId);
     else if(action==="setManagerFullAccess")data=await setManagerAccess(ctx,body,requestId);
     else if(action==="listSuppliers")data=await listSuppliers(ctx,body,requestId);
