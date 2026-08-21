@@ -11,6 +11,7 @@ on:
       - "aora-v8-final/app/inventory-expiry-sweep.css"
       - "aora-v8-final/app/modules/inventory-*.js"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-next/**"
+      - "aora-v8-final/supabase/functions/aora-v8-inventory-load-ci-bootstrap/**"
       - "aora-v8-final/supabase/migrations/*inventory*"
       - "aora-v8-final/tests/inventory-*.mjs"
       - ".github/workflows/aora-inventory-autopilot-ci.yml"
@@ -18,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: aora-inventory-autopilot-${{ github.event.pull_request.number || github.ref }}
@@ -45,6 +47,7 @@ jobs:
           node --check app/modules/inventory-expiry-sweep.js
           node --check app/modules/inventory-orders-v2.js
           node --check app/modules/inventory-employee.js
+          node --check tests/inventory-load-100u.mjs
       - name: Inventory source contracts
         run: |
           node tests/inventory-release-source.mjs
@@ -55,8 +58,80 @@ jobs:
           node tests/inventory-expired-waste-source.mjs
           node tests/inventory-live-tenant-safety-source.mjs
       - name: Inventory Edge Function type check
-        run: deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-load-ci-bootstrap/index.ts
       - name: Reproducible app build
         env:
           AORA_DEPLOY_ENV: staging
         run: npm run build
+
+  load-100-users:
+    name: 100 concurrent inventory sessions
+    needs: source-and-type-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aora-v8-final
+    env:
+      AORA_INVENTORY_ENDPOINT: https://xqgkawskftzurbujrpex.supabase.co/functions/v1/aora-v8-inventory-next
+      AORA_LOAD_BOOTSTRAP_URL: https://xqgkawskftzurbujrpex.supabase.co/functions/v1/aora-v8-inventory-load-ci-bootstrap
+      AORA_LOAD_READ_P95_BUDGET_MS: "8000"
+      AORA_LOAD_WRITE_P95_BUDGET_MS: "12000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Bootstrap isolated 100-session inventory tenant
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$RUNNER_TEMP/inventory-load-bootstrap.json"
+          workspace_slug="aora-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-inventory-load-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -X POST "$AORA_LOAD_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data '{"action":"bootstrap"}')
+          test "$status" = "201"
+          jq -e '.virtualUsers == 100 and (.sessionTokens | length) == 100 and .locationId and .itemId' "$response_file" >/dev/null
+          while IFS= read -r token; do echo "::add-mask::$token"; done < <(jq -r '.sessionTokens[]' "$response_file")
+          {
+            echo "AORA_LOAD_BOOTSTRAP_FILE=$response_file"
+            echo "AORA_LOAD_WORKSPACE_SLUG=$workspace_slug"
+            echo "AORA_LOAD_RESULT_FILE=inventory-load-100u-result.json"
+          } >> "$GITHUB_ENV"
+      - name: Run 100 concurrent authenticated inventory sessions
+        run: node tests/inventory-load-100u.mjs
+      - name: Upload sanitized load metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-load-100u-${{ github.sha }}
+          path: aora-v8-final/inventory-load-100u-result.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Cleanup isolated inventory load tenant
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace_slug="${AORA_LOAD_WORKSPACE_SLUG:-aora-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          oidc_json=$(curl --fail-with-body -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aora-inventory-load-ci")
+          oidc_token=$(jq -er '.value' <<<"$oidc_json")
+          echo "::add-mask::$oidc_token"
+          payload=$(jq -cn --arg workspaceSlug "$workspace_slug" '{action:"cleanup",workspaceSlug:$workspaceSlug}')
+          curl --fail-with-body --retry 4 --retry-all-errors --retry-delay 2 -sS \
+            -X POST "$AORA_LOAD_BOOTSTRAP_URL" \
+            -H "Authorization: Bearer $oidc_token" \
+            -H 'content-type: application/json' \
+            --data "$payload" >/dev/null
+          rm -f "${AORA_LOAD_BOOTSTRAP_FILE:-}" || true
