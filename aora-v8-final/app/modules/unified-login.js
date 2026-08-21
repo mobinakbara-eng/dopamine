@@ -19,7 +19,7 @@ renderError=function(message){
 };
 
 passwordLogin=async function(email,password){
-  const session=await access({action:"passwordLogin",email,password});
+  const session=await access({action:"passwordLogin",workspaceSlug:CFG.slug,email,password});
   if(!["owner","manager","employee"].includes(session.accessRole)){
     throw Object.assign(new Error("Die Kontorolle ist ungültig."),{status:403});
   }
