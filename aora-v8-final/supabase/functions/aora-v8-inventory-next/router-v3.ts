@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {ApiError,MAX_BODY_BYTES,allowedOrigin,cors,json,fail,sessionContext,requireFeature} from "./lib.ts";
-import {availability,overview,listStock,listMovements} from "./inventory-read-core.ts";
+import {availability,listMovements} from "./inventory-read-core.ts";
+import {fastOverview,fastStock} from "./inventory-fast-read.ts";
 import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess,listReplenishment} from "./inventory-read-orders.ts";
 import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
 import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setItemExpiryPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
@@ -21,9 +22,15 @@ Deno.serve(async request=>{
     if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)fail(413,"request_too_large","Die Anfrage ist zu groß.");
     let body:any;try{body=JSON.parse(raw)}catch{fail(400,"invalid_json","Ungültige Anfrage.")}
     const action=String(body.action||"");
-    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:7,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
+    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:8,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
 
     const sessionToken=String(body.sessionToken||body.token||"");
+    // Hot dashboard reads validate session, location, feature and permission inside the same
+    // database RPC that returns the data. This preserves authorization while removing the
+    // extra auth round-trip that dominated 100-user bursts.
+    if(action==="overview")return json(await fastOverview(sessionToken,body,requestId),200,origin,requestId);
+    if(action==="listStock")return json(await fastStock(sessionToken,body,requestId),200,origin,requestId);
+
     const ctx=await sessionContext(sessionToken,requestId);
     if(action==="issueQrUnit"){
       const qrToken=String(body.qrToken||body.token||"");
@@ -37,9 +44,7 @@ Deno.serve(async request=>{
     const locationId=body.locationId==null?"":String(body.locationId);
     if(locationId)await requireFeature(ctx,"inventory_v1",locationId,requestId);
     let data:any;
-    if(action==="overview")data=await overview(ctx,body,requestId);
-    else if(action==="listStock")data=await listStock(ctx,body,requestId);
-    else if(action==="listMovements")data=await listMovements(ctx,body,requestId);
+    if(action==="listMovements")data=await listMovements(ctx,body,requestId);
     else if(action==="listInventoryInsights")data=await listInventoryInsights(ctx,body,requestId);
     else if(action==="listExpiredStockUnits")data=await listExpiredStockUnits(ctx,body,requestId);
     else if(action==="wasteExpiredStockUnit")data=await wasteExpiredStockUnit(ctx,body,requestId);
