@@ -48,6 +48,7 @@ jobs:
           node --check app/modules/inventory-orders-v2.js
           node --check app/modules/inventory-employee.js
           node --check tests/inventory-load-100u.mjs
+          node --check tests/inventory-rollout-hotfix-source.mjs
       - name: Inventory source contracts
         run: |
           node tests/inventory-release-source.mjs
@@ -57,6 +58,7 @@ jobs:
           node tests/inventory-confidence-cycle-count-source.mjs
           node tests/inventory-expired-waste-source.mjs
           node tests/inventory-live-tenant-safety-source.mjs
+          node tests/inventory-rollout-hotfix-source.mjs
       - name: Inventory Edge Function type check
         run: |
           deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
