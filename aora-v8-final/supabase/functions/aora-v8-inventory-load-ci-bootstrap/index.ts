@@ -111,11 +111,11 @@ async function bootstrap(identity:any){
     {organization_id:organizationId,location_id:locationId,flag_key:"inventory_v1",enabled:true,config:{}},
     {organization_id:organizationId,location_id:locationId,flag_key:"replenishment_suggestions",enabled:true,config:{}}
   ]);
-  const sessionTokens=Array.from({length:100},()=>randomHex(32));
-  await insert("app_sessions",await Promise.all(sessionTokens.map(async token=>({
-    organization_id:organizationId,role:"admin",subject_id:ownerId,location_id:locationId,token_hash:"\\x"+await sha256(token),
-    expires_at:new Date(Date.now()+3600000).toISOString()
-  }))));
+  const sessionBundle=await rpc("aora_inventory_ci_create_load_sessions",{
+    p_organization_id:organizationId,p_subject_id:ownerId,p_location_id:locationId,p_count:100,p_run_id:identity.runId,p_run_attempt:identity.runAttempt
+  });
+  const sessionTokens=Array.isArray(sessionBundle?.sessionTokens)?sessionBundle.sessionTokens.map(String):[];
+  if(Number(sessionBundle?.count)!==100||sessionTokens.length!==100||new Set(sessionTokens).size!==100)fail("inventory_ci_session_bundle_invalid",500);
   const item=await rpc("aora_inventory_create_item",{
     p_organization_id:organizationId,p_location_id:locationId,p_sku:"QA-LOAD-100U",p_barcode:"",p_name:"QA Load 100 Users",
     p_base_uom:"piece",p_category:"QA Load",p_reorder_point:0,p_actor_id:ownerId
