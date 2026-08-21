@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const ui=fs.readFileSync(new URL('../app/modules/pruefung-export-center.js',import.meta.url),'utf8');
 const css=fs.readFileSync(new URL('../app/pruefung-export-center.css',import.meta.url),'utf8');
+const productionFixes=fs.readFileSync(new URL('../app/modules/production-experience-fixes.js',import.meta.url),'utf8');
 const edge=fs.readFileSync(new URL('../supabase/functions/aora-v8-datev-hours-export/index.ts',import.meta.url),'utf8');
 const migration=fs.readFileSync(new URL('../supabase/migrations/20260821191000_aora_datev_hours_export_prod.sql',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
@@ -13,7 +14,15 @@ assert.match(ui,/compliance\)\{compliance\[0\]=SIGNING_VIEW;compliance\[1\]="Pr√
 assert.match(ui,/Arbeitszeitnachweise & Unterschriften/);
 assert.match(ui,/previousAdminView\(\)/);
 assert.match(css,/data-tab="documents"/);
+
+// Compact mode hides unsigned export clutter, but confirmed signed downloads must stay visible.
 assert.match(css,/docsign-button-group\{display:none!important\}/);
+assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\)\{display:flex!important\}/);
+assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\) \[data-signed="false"\]\{display:none!important\}/);
+
+// A manager who cannot configure DATEV gets an explicit owner-only explanation instead of an impossible setup instruction.
+assert.match(productionFixes,/DATEV-Zuordnung ist noch nicht eingerichtet\. Die Einrichtung ist nur im Inhaber-Zugang m√∂glich\./);
+assert.match(productionFixes,/Beraternummer, Mandantennummer, Lohnart und DATEV-Personalnummern werden im Inhaber-Zugang hinterlegt/);
 
 // The visible technical export is intentionally only the DATEV hours file.
 assert.match(ui,/DATEV-Datei \(\.txt\)/);
