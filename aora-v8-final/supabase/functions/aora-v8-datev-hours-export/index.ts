@@ -156,20 +156,22 @@ function requireOwner(ctx: any) {
 }
 function scopedEmployees(ctx: any, period: string) {
   const range = monthRange(period);
+  const employeeById = new Map(ctx.state.employees.map((employee: any) => [String(employee.id), employee]));
   const monthEntries = ctx.state.timeEntries.filter((entry: any) => {
     const date = entryDate(entry);
     if (date < range.from || date > range.to) return false;
     if (ctx.accessRole === "owner") return true;
-    return ctx.locationIds.includes(entryLocationId(entry));
+    const explicitLocationId = entryLocationId(entry);
+    if (explicitLocationId) return ctx.locationIds.includes(explicitLocationId);
+    return ctx.locationIds.includes(employeeLocation(employeeById.get(entryEmployeeId(entry))));
   });
   const relevantIds = new Set(monthEntries.map((entry: any) => entryEmployeeId(entry)).filter(Boolean));
   const employees = ctx.state.employees.filter((employee: any) => {
-    const locationId = employeeLocation(employee);
-    const accessible = ctx.accessRole === "owner" || ctx.locationIds.includes(locationId);
-    return accessible && (employee.active !== false || relevantIds.has(String(employee.id)));
+    const employeeId = String(employee.id);
+    const accessible = ctx.accessRole === "owner" || ctx.locationIds.includes(employeeLocation(employee)) || relevantIds.has(employeeId);
+    return accessible && (employee.active !== false || relevantIds.has(employeeId));
   });
-  const byId = new Map(employees.map((employee: any) => [String(employee.id), employee]));
-  return { range, monthEntries, employees, byId };
+  return { range, monthEntries, employees };
 }
 async function mappingRows(ctx: any, employeeIds: string[]) {
   if (!employeeIds.length) return [];
@@ -246,14 +248,21 @@ async function saveConfig(ctx: any, body: any) {
   const beraterNumber = digits(body.beraterNumber, 4, 7, "Beraternummer");
   const mandantNumber = digits(body.mandantNumber, 1, 5, "Mandantennummer");
   const regularWageType = digits(body.regularWageType, 1, 4, "Lohnart Arbeitsstunden");
-  const { scoped } = hoursSummary(ctx, period);
-  const allowedIds = new Set(scoped.employees.map((employee: any) => String(employee.id)));
+  const { scoped, summary } = hoursSummary(ctx, period);
+  const visibleIds = new Set(scoped.employees
+    .filter((employee: any) => {
+      const totals = summary.get(String(employee.id));
+      return totals && (totals.minutes > 0 || totals.openEntries > 0);
+    })
+    .map((employee: any) => String(employee.id)));
   const rawMappings = Array.isArray(body.employeeMappings) ? body.employeeMappings : [];
   const seenPersonnel = new Set<string>();
   const mappings = rawMappings.map((mapping: any) => {
     const employeeId = clean(mapping.employeeId);
-    if (!allowedIds.has(employeeId)) fail("Mitarbeiter-Zuordnung ist nicht zulässig.", 403, "employee_mapping_scope");
-    const personnelNumber = digits(mapping.personnelNumber, 1, 9, "Personalnummer");
+    if (!visibleIds.has(employeeId)) fail("Mitarbeiter-Zuordnung ist nicht zulässig.", 403, "employee_mapping_scope");
+    const rawPersonnel = clean(mapping.personnelNumber);
+    if (!rawPersonnel) return { employeeId, personnelNumber: null as string | null };
+    const personnelNumber = digits(rawPersonnel, 1, 9, "Personalnummer");
     if (seenPersonnel.has(personnelNumber)) fail(`Personalnummer ${personnelNumber} ist doppelt vergeben.`, 409, "duplicate_personnel_number");
     seenPersonnel.add(personnelNumber);
     return { employeeId, personnelNumber };
@@ -270,6 +279,14 @@ async function saveConfig(ctx: any, body: any) {
   }, { onConflict: "organization_id" });
   if (settingError) throw settingError;
   for (const mapping of mappings) {
+    if (!mapping.personnelNumber) {
+      const { error } = await service.from("datev_hours_employee_mappings")
+        .delete()
+        .eq("organization_id", ctx.organization.id)
+        .eq("employee_id", mapping.employeeId);
+      if (error) throw error;
+      continue;
+    }
     const { error } = await service.from("datev_hours_employee_mappings").upsert({
       organization_id: ctx.organization.id,
       employee_id: mapping.employeeId,
