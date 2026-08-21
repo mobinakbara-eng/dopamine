@@ -91,7 +91,7 @@ async function openCountModal(countId){
     const form=body.querySelector("form"),inputs=[...form.querySelectorAll("[data-count-item]")],states=new Map();
     for(const input of inputs){
       const itemId=input.dataset.countItem,line=lines.find(x=>String(x.item_id)===String(itemId)),pending=queued[itemId];
-      states.set(itemId,{timer:null,saving:null,lastSaved:pending?null:(input.dataset.baseline==="1"?input.value:null),countedAt:pending?.countedAt||line?.clientCountedAt||null,dirty:Boolean(pending)});
+      states.set(itemId,{timer:null,saving:null,lastSaved:pending?null:(input.dataset.baseline==="1"?input.value:null),countedAt:pending?.countedAt||line?.clientCountedAt||null,dirty:Boolean(pending),retryBlocked:false});
     }
 
     const quantity=input=>{if(String(input.value).trim()==="")return null;const n=Number(input.value);return Number.isFinite(n)&&n>=0&&n<=1_000_000_000?n:null};
@@ -107,6 +107,7 @@ async function openCountModal(countId){
       const itemId=input.dataset.countItem,st=states.get(itemId);if(!st)return;
       if(st.timer){clearTimeout(st.timer);st.timer=null}
       if(st.saving)await st.saving;
+      if(st.retryBlocked&&!force){status(input,"Erneut zählen","error");return false}
       const qty=quantity(input);
       if(qty===null){status(input,input.value?"Ungültig":"Noch offen",input.value?"error":"");return false}
       const value=String(input.value);
@@ -119,17 +120,17 @@ async function openCountModal(countId){
       status(input,"Speichert …","saving");
       const request=invRequest("setInventoryCountLine",payload);st.saving=request;
       try{
-        await request;st.lastSaved=value;st.dirty=false;input.dataset.baseline="1";clearInventoryCountLine(countId,itemId);
+        await request;st.lastSaved=value;st.dirty=false;st.retryBlocked=false;input.dataset.baseline="1";clearInventoryCountLine(countId,itemId);
         if(String(input.value)===value)status(input,"Gespeichert","saved");else{status(input,"Geändert","");st.dirty=true;st.countedAt=serverNow()}
         updateOffline();return true;
       }catch(error){
         if(retryableInventoryCountError(error)){
           queueInventoryCountLine(countId,itemId,qty,st.countedAt);st.dirty=true;status(input,"Offline gespeichert","offline");updateOffline();return false;
         }
-        clearInventoryCountLine(countId,itemId);st.dirty=true;status(input,"Erneut zählen","error");updateOffline();throw error;
+        clearInventoryCountLine(countId,itemId);st.dirty=true;st.retryBlocked=true;status(input,"Erneut zählen","error");updateOffline();throw error;
       }finally{
         st.saving=null;
-        if(String(input.value)!==st.lastSaved&&quantity(input)!==null&&navigator.onLine){st.timer=setTimeout(()=>saveInput(input).catch(err=>toast(err.message,"error")),500)}
+        if(!st.retryBlocked&&d.isConnected&&String(input.value)!==st.lastSaved&&quantity(input)!==null&&navigator.onLine){st.timer=setTimeout(()=>saveInput(input).catch(err=>toast(err.message,"error")),500)}
       }
     };
 
@@ -145,6 +146,7 @@ async function openCountModal(countId){
     const scheduleSave=input=>{
       const st=states.get(input.dataset.countItem);if(!st)return;
       if(st.timer)clearTimeout(st.timer);
+      st.retryBlocked=false;
       if(quantity(input)===null){status(input,input.value?"Ungültig":"Noch offen",input.value?"error":"");return}
       if(!st.dirty){st.countedAt=serverNow();st.dirty=true}
       status(input,navigator.onLine?"Geändert":"Offline gespeichert",navigator.onLine?"":"offline");
@@ -160,7 +162,10 @@ async function openCountModal(countId){
     if(navigator.onLine&&Object.keys(queued).length)flushQueue().catch(err=>toast(err.message,"error"));
 
     d.addEventListener("click",e=>{
-      if(e.target.closest('[data-a="close"]')&&inventoryActiveCountSync?.countId===countId)inventoryActiveCountSync=null;
+      if(e.target.closest('[data-a="close"]')){
+        for(const st of states.values()){if(st.timer){clearTimeout(st.timer);st.timer=null}}
+        if(inventoryActiveCountSync?.countId===countId)inventoryActiveCountSync=null;
+      }
     },{capture:true});
     form.addEventListener("submit",async e=>{
       e.preventDefault();

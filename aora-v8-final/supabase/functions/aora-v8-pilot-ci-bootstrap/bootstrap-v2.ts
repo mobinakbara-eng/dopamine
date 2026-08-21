@@ -24,7 +24,8 @@ const ALLOWED_HEADS=new Set([
   "agent/aora-manager-task-redesign",
   "agent/aora-team-news-manager-fix",
   "agent/aora-task-root-cause",
-  "agent/aora-inventory-production-ready"
+  "agent/aora-inventory-production-ready",
+  "agent/aora-inventory-rollout-hotfix"
 ]);
 const ALLOWED_BASES=new Set(["agent/aora-v8-final","agent/aora-unified-production","agent/aora-relational-foundation","main"]);
 const ITERATIONS=210000;
