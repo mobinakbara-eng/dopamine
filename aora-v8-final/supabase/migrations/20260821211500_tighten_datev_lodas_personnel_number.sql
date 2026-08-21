@@ -7,9 +7,10 @@ begin
   if exists (
     select 1
     from public.datev_hours_employee_mappings
-    where personnel_number !~ '^\d{1,5}$'
-       or personnel_number::integer < 1
-       or personnel_number::integer > 99999
+    where not case
+      when personnel_number ~ '^\d{1,5}$' then personnel_number::integer between 1 and 99999
+      else false
+    end
   ) then
     raise exception 'Cannot tighten DATEV personnel-number constraint: incompatible mappings exist';
   end if;
@@ -21,8 +22,10 @@ alter table public.datev_hours_employee_mappings
 alter table public.datev_hours_employee_mappings
   add constraint datev_hours_employee_mappings_personnel_number_check
   check (
-    personnel_number ~ '^\d{1,5}$'
-    and personnel_number::integer between 1 and 99999
+    case
+      when personnel_number ~ '^\d{1,5}$' then personnel_number::integer between 1 and 99999
+      else false
+    end
   );
 
 commit;
