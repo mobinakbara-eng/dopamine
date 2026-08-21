@@ -13,7 +13,18 @@ assert.match(ui,/compliance\)\{compliance\[0\]=SIGNING_VIEW;compliance\[1\]="Pr√
 assert.match(ui,/Arbeitszeitnachweise & Unterschriften/);
 assert.match(ui,/previousAdminView\(\)/);
 assert.match(css,/data-tab="documents"/);
+
+// Compact mode hides unsigned export clutter, but confirmed signed downloads must stay visible.
 assert.match(css,/docsign-button-group\{display:none!important\}/);
+assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\)\{display:flex!important\}/);
+assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\) \[data-signed="false"\]\{display:none!important\}/);
+
+// DATEV setup is writable by owner and manager accounts; employee/kiosk access stays excluded in context.
+assert.match(edge,/canConfigure:\["owner","manager"\]\.includes\(ctx\.accessRole\)/);
+assert.match(edge,/function requireManager\(ctx:any\)/);
+assert.match(edge,/async function saveConfig\(ctx:any,body:any\)\{\s*requireManager\(ctx\)/);
+assert.doesNotMatch(edge,/requireOwner\(/);
+assert.match(edge,/if\(!\["owner","manager"\]\.includes\(accessRole\)\)fail\("Export-Berechtigung fehlt\./);
 
 // The visible technical export is intentionally only the DATEV hours file.
 assert.match(ui,/DATEV-Datei \(\.txt\)/);
@@ -36,6 +47,7 @@ assert.match(edge,/const explicitLocationId=entryLocationId\(entry\)/);
 assert.match(edge,/if\(explicitLocationId\)return ctx\.locationIds\.includes\(explicitLocationId\)/);
 assert.match(edge,/employeeLocation\(employeeById\.get\(entryEmployeeId\(entry\)\)\)/);
 assert.match(edge,/relevantIds\.has\(employeeId\)/);
+assert.match(edge,/if\(!visibleIds\.has\(employeeId\)\)fail\("Mitarbeiter-Zuordnung ist nicht zul√§ssig\./);
 
 // Lohnart is never guessed and obsolete personnel mappings can be removed intentionally.
 assert.match(edge,/const regularWageType=digits\(body\.regularWageType/);
