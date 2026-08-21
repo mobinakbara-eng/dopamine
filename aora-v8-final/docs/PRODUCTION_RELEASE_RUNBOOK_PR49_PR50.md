@@ -63,13 +63,30 @@ Note: the PR description names an older test SHA. The release decision uses the 
 
 PR #50 currently targets the PR #49 branch. The general V8, Timesheet and Task Media workflows only trigger for pull requests targeting `main`, so their absence on the PR #50 head is expected but is not acceptable for final production approval. They must run on the final combined head after retargeting or by explicit `workflow_dispatch`.
 
+The current staging OIDC bootstrap code contains an exact `ALLOWED_HEADS` list. Both the Pilot and Timesheet bootstrap lists include `agent/aora-inventory-production-ready` but do **not** include the PR #50 head `agent/aora-inventory-autopilot-v1`. Consequently, simply retargeting PR #50 to `main` will make those two E2E gates fail with `pull_request_not_allowed` before their browser tests start. The CI authorization path must be updated and deployed to staging, or the final combined release must be tested through an already authorized main/merge-group path without weakening repository, actor, workflow and base-branch validation.
+
 ### Explicitly excluded PR #52 - DATEV foundation
 
 - URL: https://github.com/mobinakbara-eng/dopamine/pull/52
 - Recorded head: `9061eed557ab96eb5e142d6c64b2cd0ea33a3428`
-- Aora Timesheet Approval E2E run 308: failed
-- Aora V8 Pilot Gate run 475: failed
+- Aora Timesheet Approval E2E run 308: source/build/artifact jobs passed; OIDC bootstrap rejected the head branch.
+- Aora V8 Pilot Gate run 475: source/build/artifact jobs passed; OIDC bootstrap rejected the head branch with `pull_request_not_allowed`.
 - Decision: remain draft and excluded from this release. Its failures do not block the non-DATEV pilot only if none of its commits are present in the release commit.
+
+These failures are not evidence of a DATEV code regression. They are evidence that the current CI bootstrap authorization is tied to a static branch allowlist.
+
+### Documentation-only control probe - PR #53
+
+- URL: https://github.com/mobinakbara-eng/dopamine/pull/53
+- Head: `09687c834cf9c7af561b159f4c518ea30a384aeb`
+- Product code changes: none; one new Markdown file only
+- Vercel and Netlify: success
+- Task Media Gate run 97: success
+- V8 source/build and immutable artifact jobs: success
+- Timesheet source/build and immutable artifact jobs: success
+- Both isolated-tenant browser jobs: rejected by staging bootstrap with `pull_request_not_allowed`
+
+This control probe confirms that the failing status is caused by the static CI head-branch policy, not by the documentation change or a failed production build.
 
 ## 3. Release architecture and safe default
 
@@ -115,6 +132,8 @@ The release is **NO-GO** while any item below is unchecked.
 - [ ] Protect `main` before merging: require pull requests, block force pushes/deletion and do not allow routine admin bypass.
 - [ ] Require successful latest-SHA checks for Aora V8 Pilot, Timesheet Approval E2E, Task Media and the applicable Inventory/Shared Task gates.
 - [ ] Require one approval from someone other than the latest pusher and dismiss stale approval after code changes.
+- [ ] Repair the staging OIDC test authorization for the final release head. Preserve exact repository, repository ID, owner actor, workflow reference, `main` base, GitHub-hosted runner and PR merge-ref checks; do not solve this by accepting arbitrary repositories or actors.
+- [ ] Deploy the reviewed Pilot and Timesheet CI bootstrap versions to staging and prove the final head receives HTTP 201 for isolated-tenant bootstrap and successful cleanup.
 - [ ] Confirm the exact Vercel project, production branch, domains and team owner.
 - [ ] Confirm whether a merge to `main` automatically promotes Vercel to production.
 - [ ] Confirm whether Supabase GitHub Integration automatically applies migrations/functions from `main`.
@@ -135,6 +154,7 @@ The release is **NO-GO** while any item below is unchecked.
 - [x] PR #49 current-head general gates passed.
 - [x] PR #50 current-head Inventory Autopilot gate passed.
 - [ ] Retarget/rebase PR #50 onto the merged `main` without losing its exact delta.
+- [ ] Confirm `agent/aora-inventory-autopilot-v1` or its immutable replacement release head is authorized by the deployed staging Pilot and Timesheet bootstrap policy.
 - [ ] Aora V8 Pilot Gate passes on the final combined head.
 - [ ] Aora Timesheet Approval E2E passes on the final combined head.
 - [ ] Aora Task Media Gate passes on the final combined head.
