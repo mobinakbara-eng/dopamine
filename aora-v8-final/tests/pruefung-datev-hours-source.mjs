@@ -39,7 +39,8 @@ assert.match(edge,/employeeLocation\(employeeById\.get\(entryEmployeeId\(entry\)
 assert.match(edge,/relevantIds\.has\(employeeId\)/);
 
 // No DATEV Lohnart is guessed: it must be supplied and validated by the employer/adviser mapping.
-assert.match(edge,/regular_wage_type text not null|regularWageType/);
+assert.match(migration,/regular_wage_type text not null/);
+assert.match(edge,/const regularWageType = digits\(body\.regularWageType/);
 assert.doesNotMatch(edge,/regularWageType\s*[:=]\s*["']\d+["']/);
 assert.match(ui,/Vom Steuerberater/);
 
