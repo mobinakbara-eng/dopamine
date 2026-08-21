@@ -44,7 +44,8 @@ export async function sessionContext(token:string,requestId:string):Promise<Inve
   if(status!=="ok")fail(403,"inventory_forbidden","Bestand ist für diesen Zugang nicht freigeschaltet.");
   const accessRole=String(resolved.accessRole||"") as InventoryContext["accessRole"];
   if(!["owner","manager","employee"].includes(accessRole))fail(403,"inventory_forbidden","Bestand ist für diesen Zugang nicht freigeschaltet.");
-  const locationIds=[...new Set((Array.isArray(resolved.locationIds)?resolved.locationIds:[]).filter(Boolean).map(String))];
+  const rawLocationIds:any[]=Array.isArray(resolved.locationIds)?resolved.locationIds:[];
+  const locationIds:string[]=[...new Set<string>(rawLocationIds.filter(Boolean).map((value:any)=>String(value)))];
   const permissions:PermissionRow[]=(Array.isArray(resolved.permissions)?resolved.permissions:[]).map((row:any)=>({locationId:String(row?.locationId||""),permission:String(row?.permission||"")})).filter((row:PermissionRow)=>row.locationId&&row.permission);
   const features:FeatureRow[]=(Array.isArray(resolved.features)?resolved.features:[]).map((row:any)=>({key:String(row?.key||""),locationId:row?.locationId==null?null:String(row.locationId),enabled:Boolean(row?.enabled)})).filter((row:FeatureRow)=>row.key);
   return{organizationId:String(resolved.organizationId),organizationName:String(resolved.organizationName||"Aora"),subjectId:String(resolved.subjectId),accessRole,locationIds,permissions,features,token};
