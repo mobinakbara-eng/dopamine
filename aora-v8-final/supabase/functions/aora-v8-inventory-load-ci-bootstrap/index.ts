@@ -10,8 +10,7 @@ const REPOSITORY_ID="1044549733";
 const REPOSITORY_OWNER="mobinakbara-eng";
 const REPOSITORY_OWNER_ID="228580584";
 const WORKFLOW_PREFIX=REPOSITORY+"/.github/workflows/aora-inventory-autopilot-ci.yml@";
-const HEAD_BRANCH="agent/aora-inventory-autopilot-v1";
-const BASE_BRANCH="agent/aora-inventory-production-ready";
+const ALLOWED_PR_BASES=new Set(["main","agent/aora-inventory-production-ready"]);
 const ITERATIONS=210000;
 const encoder=new TextEncoder();
 let jwksCache:any=null;
@@ -58,9 +57,11 @@ async function claims(req:Request){
   if(String(p.runner_environment||"")!=="github-hosted")fail("runner_not_allowed",403);
   const eventName=String(p.event_name||"");
   if(eventName==="pull_request"){
-    if(String(p.head_ref||"")!==HEAD_BRANCH||String(p.base_ref||"")!==BASE_BRANCH)fail("pull_request_not_allowed",403);
+    const headRef=String(p.head_ref||""),baseRef=String(p.base_ref||"");
+    if(!headRef||!ALLOWED_PR_BASES.has(baseRef))fail("pull_request_not_allowed",403);
   }else if(eventName==="workflow_dispatch"){
-    if(String(p.ref||"")!=="refs/heads/"+HEAD_BRANCH)fail("dispatch_ref_not_allowed",403);
+    const ref=String(p.ref||"");
+    if(!ref.startsWith("refs/heads/")||ref.length<12)fail("dispatch_ref_not_allowed",403);
   }else fail("event_not_allowed",403);
   const runId=String(p.run_id||""),runAttempt=String(p.run_attempt||"");
   if(!/^\d+$/.test(runId)||!/^\d+$/.test(runAttempt))fail("invalid_run_claims",403);
