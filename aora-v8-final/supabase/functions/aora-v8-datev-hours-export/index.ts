@@ -124,7 +124,7 @@ async function context(token:string){
   }
   return{session,organization,state,accessRole,locationIds};
 }
-function requireOwner(ctx:any){if(ctx.accessRole!=="owner")fail("Nur der Inhaber darf DATEV-Zuordnungen ändern.",403,"owner_required")}
+function requireManager(ctx:any){if(!["owner","manager"].includes(ctx.accessRole))fail("Manager-Zugang erforderlich.",403,"manager_required")}
 function scopedEmployees(ctx:any,period:string){
   const range=monthRange(period);
   const employeeById=new Map(ctx.state.employees.map((employee:any)=>[String(employee.id),employee]));
@@ -181,10 +181,10 @@ async function status(ctx:any,body:any){
     return{id:String(employee.id),name:clean(employee.name||"Mitarbeiter/in"),locationId:employeeLocation(employee),active:employee.active!==false,personnelNumber:mapping?.personnel_number||null,minutes:totals.minutes,entries:totals.entries,openEntries:totals.openEntries,included:totals.minutes>0||totals.openEntries>0};
   });
   const included=employees.filter((employee:any)=>employee.included);
-  return{period,targetSystem:"datev_lodas",settings,employees,totals:{employees:included.length,minutes:included.reduce((sum:number,employee:any)=>sum+Number(employee.minutes||0),0),openEntries:included.reduce((sum:number,employee:any)=>sum+Number(employee.openEntries||0),0),missingPersonnelNumbers:included.filter((employee:any)=>!employee.personnelNumber).length},canConfigure:ctx.accessRole==="owner"};
+  return{period,targetSystem:"datev_lodas",settings,employees,totals:{employees:included.length,minutes:included.reduce((sum:number,employee:any)=>sum+Number(employee.minutes||0),0),openEntries:included.reduce((sum:number,employee:any)=>sum+Number(employee.openEntries||0),0),missingPersonnelNumbers:included.filter((employee:any)=>!employee.personnelNumber).length},canConfigure:["owner","manager"].includes(ctx.accessRole)};
 }
 async function saveConfig(ctx:any,body:any){
-  requireOwner(ctx);
+  requireManager(ctx);
   const period=monthValue(body.period);
   const beraterNumber=digits(body.beraterNumber,4,7,"Beraternummer");
   const mandantNumber=digits(body.mandantNumber,1,5,"Mandantennummer");
