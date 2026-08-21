@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 const ui=fs.readFileSync(new URL('../app/modules/pruefung-export-center.js',import.meta.url),'utf8');
 const css=fs.readFileSync(new URL('../app/pruefung-export-center.css',import.meta.url),'utf8');
-const productionFixes=fs.readFileSync(new URL('../app/modules/production-experience-fixes.js',import.meta.url),'utf8');
 const edge=fs.readFileSync(new URL('../supabase/functions/aora-v8-datev-hours-export/index.ts',import.meta.url),'utf8');
 const migration=fs.readFileSync(new URL('../supabase/migrations/20260821191000_aora_datev_hours_export_prod.sql',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
@@ -20,9 +19,12 @@ assert.match(css,/docsign-button-group\{display:none!important\}/);
 assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\)\{display:flex!important\}/);
 assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\) \[data-signed="false"\]\{display:none!important\}/);
 
-// A manager who cannot configure DATEV gets an explicit owner-only explanation instead of an impossible setup instruction.
-assert.match(productionFixes,/DATEV-Zuordnung ist noch nicht eingerichtet\. Die Einrichtung ist nur im Inhaber-Zugang möglich\./);
-assert.match(productionFixes,/Beraternummer, Mandantennummer, Lohnart und DATEV-Personalnummern werden im Inhaber-Zugang hinterlegt/);
+// DATEV setup is writable by owner and manager accounts; employee/kiosk access stays excluded in context.
+assert.match(edge,/canConfigure:\["owner","manager"\]\.includes\(ctx\.accessRole\)/);
+assert.match(edge,/function requireManager\(ctx:any\)/);
+assert.match(edge,/async function saveConfig\(ctx:any,body:any\)\{\s*requireManager\(ctx\)/);
+assert.doesNotMatch(edge,/requireOwner\(/);
+assert.match(edge,/if\(!\["owner","manager"\]\.includes\(accessRole\)\)fail\("Export-Berechtigung fehlt\./);
 
 // The visible technical export is intentionally only the DATEV hours file.
 assert.match(ui,/DATEV-Datei \(\.txt\)/);
@@ -45,6 +47,7 @@ assert.match(edge,/const explicitLocationId=entryLocationId\(entry\)/);
 assert.match(edge,/if\(explicitLocationId\)return ctx\.locationIds\.includes\(explicitLocationId\)/);
 assert.match(edge,/employeeLocation\(employeeById\.get\(entryEmployeeId\(entry\)\)\)/);
 assert.match(edge,/relevantIds\.has\(employeeId\)/);
+assert.match(edge,/if\(!visibleIds\.has\(employeeId\)\)fail\("Mitarbeiter-Zuordnung ist nicht zulässig\./);
 
 // Lohnart is never guessed and obsolete personnel mappings can be removed intentionally.
 assert.match(edge,/const regularWageType=digits\(body\.regularWageType/);
