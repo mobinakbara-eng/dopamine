@@ -78,7 +78,7 @@
     if(Number(totals.openEntries)>0)notes.push(`${Number(totals.openEntries)} offene/laufende Buchung${Number(totals.openEntries)===1?"":"en"} zuerst abschließen.`);
     if(Number(totals.missingPersonnelNumbers)>0)notes.push(`${Number(totals.missingPersonnelNumbers)} DATEV-Personalnummer${Number(totals.missingPersonnelNumbers)===1?" fehlt":"n fehlen"}.`);
     if(!Number(totals.minutes)&&!Number(totals.openEntries))notes.push("Im gewählten Monat sind noch keine abgeschlossenen Stunden vorhanden.");
-    if(!notes.length)return'<div class="pruefung-alert ok"><strong>Export bereit.</strong><span>Es werden nur abgeschlossene Arbeitsstunden ausgegeben.</span></div>';
+    if(!notes.length)return'<div class="pruefung-alert ok"><strong>Export bereit.</strong><span>Es werden nur abgeschlossene Arbeitsstunden ausgegeben. Fachliche DATEV-Validierung erfolgt erst nach erfolgreichem Testimport in LODAS.</span></div>';
     return`<div class="pruefung-alert"><strong>Vor dem Export</strong><ul>${notes.map(note=>`<li>${html(note)}</li>`).join("")}</ul></div>`;
   }
 
@@ -87,7 +87,7 @@
     if(!employees.length)return'<div class="empty">Keine Mitarbeiter mit Arbeitszeit im gewählten Monat.</div>';
     return`<div class="datev-hours-mapping-list">${employees.map(employee=>`<label class="datev-hours-mapping-row">
       <span><strong>${html(employee.name)}</strong><small>${html(formatHours(employee.minutes))}${employee.openEntries?` · ${employee.openEntries} offen`:""}</small></span>
-      <input class="input" name="personnel-${html(employee.id)}" inputmode="numeric" pattern="[0-9]{1,9}" maxlength="9" autocomplete="off" placeholder="Personalnr." value="${html(employee.personnelNumber||"")}">
+      <input class="input" name="personnel-${html(employee.id)}" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" autocomplete="off" placeholder="Personalnr." value="${html(employee.personnelNumber||"")}">
     </label>`).join("")}</div>`;
   }
 
@@ -103,7 +103,7 @@
         <label>Mandantennummer<input class="input" name="mandantNumber" inputmode="numeric" pattern="[0-9]{1,5}" minlength="1" maxlength="5" autocomplete="off" value="${html(settings.mandant_number||"")}" required></label>
         <label>Lohnart Arbeitsstunden<input class="input" name="regularWageType" inputmode="numeric" pattern="[0-9]{1,4}" minlength="1" maxlength="4" autocomplete="off" placeholder="Vom Steuerberater" value="${html(settings.regular_wage_type||"")}" required></label>
       </div>
-      <div class="datev-hours-config-head"><strong>Personalnummern</strong><small>Nur für Mitarbeiter mit Stunden in diesem Monat.</small></div>
+      <div class="datev-hours-config-head"><strong>Personalnummern</strong><small>1–99999 · nur für Mitarbeiter mit Stunden in diesem Monat.</small></div>
       ${employeeMappingRows()}
       <div class="datev-hours-config-actions"><button class="btn outline" type="submit">Zuordnung speichern</button></div>
     </form>`;
@@ -121,7 +121,7 @@
       </div>
       ${readinessNotice()}
       <details class="datev-hours-settings" ${data?.settings?"":"open"}><summary>DATEV-Zuordnung</summary>${configForm()}</details>
-      <p class="datev-hours-footnote">LODAS Bewegungsdaten · Stundenbuchung. Lohnart und Personalnummern werden nicht geraten, sondern nach Vorgabe des Steuerberaters hinterlegt.</p>
+      <p class="datev-hours-footnote">LODAS Bewegungsdaten · Stundenbuchung. Lohnart und Personalnummern werden nicht geraten, sondern nach Vorgabe des Steuerberaters hinterlegt. Status: Testimport in DATEV LODAS noch ausstehend.</p>
     </article>`;
   }
 
@@ -167,7 +167,7 @@
       const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`AORA_DATEV_LODAS_STUNDEN_${datevState.period}.txt`;
       const url=URL.createObjectURL(blob),anchor=document.createElement("a");
       anchor.href=url;anchor.download=filename;anchor.hidden=true;document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-      return{filename,checksum:response.headers.get("x-aora-export-checksum")};
+      return{filename,checksum:response.headers.get("x-aora-export-checksum"),validation:response.headers.get("x-aora-datev-validation")};
     }catch(error){
       if(error?.name==="AbortError")throw new Error("DATEV-Stundenexport hat zu lange gedauert.");
       throw error;
@@ -227,7 +227,7 @@
       }
       if(action==="export"){
         const result=await downloadExport();
-        toast(`${result.filename} wurde erstellt.`,"success");
+        toast(`${result.filename} wurde erstellt. DATEV-Testimport steht noch aus.`,"success");
       }
     }catch(error){
       toast(error?.message||"DATEV-Aktion fehlgeschlagen.","error");

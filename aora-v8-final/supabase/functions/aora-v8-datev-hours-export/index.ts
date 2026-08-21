@@ -34,7 +34,7 @@ function cors(origin:string|null){
     "Access-Control-Allow-Origin":origin&&originAllowed(origin)?origin:DEFAULT_ORIGIN,
     "Access-Control-Allow-Headers":"content-type",
     "Access-Control-Allow-Methods":"POST,OPTIONS",
-    "Access-Control-Expose-Headers":"content-disposition,x-aora-export-checksum,x-aora-export-period",
+    "Access-Control-Expose-Headers":"content-disposition,x-aora-export-checksum,x-aora-export-period,x-aora-datev-validation",
     "Access-Control-Max-Age":"600",
     "Cache-Control":"no-store",
     "X-Content-Type-Options":"nosniff",
@@ -52,6 +52,12 @@ const clean=(value:unknown)=>String(value??"").replace(/\s+/g," ").trim();
 function digits(value:unknown,min:number,max:number,label:string){
   const result=clean(value);
   if(!new RegExp(`^\\d{${min},${max}}$`).test(result))fail(`${label} ist ungültig.`,400,"invalid_datev_mapping");
+  return result;
+}
+function datevPersonnelNumber(value:unknown){
+  const result=digits(value,1,5,"Personalnummer");
+  const numeric=Number(result);
+  if(!Number.isInteger(numeric)||numeric<1||numeric>99999)fail("Personalnummer muss zwischen 1 und 99999 liegen.",400,"invalid_datev_personnel_number");
   return result;
 }
 function monthValue(value:unknown){
@@ -181,7 +187,7 @@ async function status(ctx:any,body:any){
     return{id:String(employee.id),name:clean(employee.name||"Mitarbeiter/in"),locationId:employeeLocation(employee),active:employee.active!==false,personnelNumber:mapping?.personnel_number||null,minutes:totals.minutes,entries:totals.entries,openEntries:totals.openEntries,included:totals.minutes>0||totals.openEntries>0};
   });
   const included=employees.filter((employee:any)=>employee.included);
-  return{period,targetSystem:"datev_lodas",settings,employees,totals:{employees:included.length,minutes:included.reduce((sum:number,employee:any)=>sum+Number(employee.minutes||0),0),openEntries:included.reduce((sum:number,employee:any)=>sum+Number(employee.openEntries||0),0),missingPersonnelNumbers:included.filter((employee:any)=>!employee.personnelNumber).length},canConfigure:["owner","manager"].includes(ctx.accessRole)};
+  return{period,targetSystem:"datev_lodas",settings,employees,totals:{employees:included.length,minutes:included.reduce((sum:number,employee:any)=>sum+Number(employee.minutes||0),0),openEntries:included.reduce((sum:number,employee:any)=>sum+Number(employee.openEntries||0),0),missingPersonnelNumbers:included.filter((employee:any)=>!employee.personnelNumber).length},canConfigure:["owner","manager"].includes(ctx.accessRole),validationStatus:"not_test_imported"};
 }
 async function saveConfig(ctx:any,body:any){
   requireManager(ctx);
@@ -198,7 +204,7 @@ async function saveConfig(ctx:any,body:any){
     if(!visibleIds.has(employeeId))fail("Mitarbeiter-Zuordnung ist nicht zulässig.",403,"employee_mapping_scope");
     const rawPersonnel=clean(mapping.personnelNumber);
     if(!rawPersonnel)return{employeeId,personnelNumber:null as string|null};
-    const personnelNumber=digits(rawPersonnel,1,9,"Personalnummer");
+    const personnelNumber=datevPersonnelNumber(rawPersonnel);
     if(seenPersonnel.has(personnelNumber))fail(`Personalnummer ${personnelNumber} ist doppelt vergeben.`,409,"duplicate_personnel_number");
     seenPersonnel.add(personnelNumber);
     return{employeeId,personnelNumber};
@@ -230,7 +236,7 @@ async function createExport(ctx:any,body:any,origin:string|null){
   const open=includedEmployees.filter((employee:any)=>Number(summary.get(String(employee.id))?.openEntries||0)>0);
   if(open.length)fail("Offene oder laufende Arbeitszeitbuchungen müssen vor dem DATEV-Export abgeschlossen werden.",409,"datev_hours_open_entries",open.map((employee:any)=>clean(employee.name)));
   const mappings=await mappingRows(ctx,includedEmployees.map((employee:any)=>String(employee.id)));
-  const mappingMap=new Map(mappings.map((row:any)=>[String(row.employee_id),String(row.personnel_number)]));
+  const mappingMap=new Map(mappings.map((row:any)=>[String(row.employee_id),datevPersonnelNumber(row.personnel_number)]));
   const missing=includedEmployees.filter((employee:any)=>!mappingMap.get(String(employee.id)));
   if(missing.length)fail("Für alle Mitarbeiter mit Stunden wird eine DATEV-Personalnummer benötigt.",409,"datev_personnel_number_missing",missing.map((employee:any)=>({id:String(employee.id),name:clean(employee.name)})));
   const used=new Set<string>();
@@ -260,10 +266,10 @@ async function createExport(ctx:any,body:any,origin:string|null){
   if(bytes.length>MAX_EXPORT_BYTES)fail("DATEV-Stundenexport überschreitet 3 MB.",413,"datev_hours_too_large");
   const checksum=await sha256(bytes);
   const totalMinutes=includedEmployees.reduce((sum:number,employee:any)=>sum+Number(summary.get(String(employee.id))?.minutes||0),0);
-  const{error:logError}=await service.from("datev_hours_export_runs").insert({organization_id:ctx.organization.id,period,target_system:"datev_lodas",row_count:rows.length,total_minutes:totalMinutes,checksum_sha256:checksum,created_by:String(ctx.session.subject_id),metadata:{kind:"regular_hours_only",bookingKey:"01",wageType:settings.regular_wage_type,scope:ctx.accessRole,managerLocationIds:ctx.accessRole==="manager"?ctx.locationIds:[]}});
+  const{error:logError}=await service.from("datev_hours_export_runs").insert({organization_id:ctx.organization.id,period,target_system:"datev_lodas",row_count:rows.length,total_minutes:totalMinutes,checksum_sha256:checksum,created_by:String(ctx.session.subject_id),metadata:{kind:"regular_hours_only",bookingKey:"01",wageType:settings.regular_wage_type,scope:ctx.accessRole,managerLocationIds:ctx.accessRole==="manager"?ctx.locationIds:[],validationStatus:"not_test_imported"}});
   if(logError)throw logError;
   const filename=`AORA_DATEV_LODAS_STUNDEN_${period}.txt`;
-  return new Response(bytes,{status:200,headers:{...cors(origin),"Content-Type":"text/plain; charset=us-ascii","Content-Disposition":`attachment; filename=${filename}`,"X-Aora-Export-Checksum":checksum,"X-Aora-Export-Period":period}});
+  return new Response(bytes,{status:200,headers:{...cors(origin),"Content-Type":"text/plain; charset=us-ascii","Content-Disposition":`attachment; filename=${filename}`,"X-Aora-Export-Checksum":checksum,"X-Aora-Export-Period":period,"X-Aora-Datev-Validation":"not-test-imported"}});
 }
 
 Deno.serve(async(req:Request)=>{
