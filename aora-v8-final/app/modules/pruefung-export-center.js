@@ -2,7 +2,7 @@
 
 (function installPruefungExportCenter(){
   const VIEW="compliance";
-  const LEGACY_SIGNING_VIEW="approvals";
+  const SIGNING_VIEW="approvals";
   const FUNCTION_NAME="aora-v8-datev-hours-export";
   const datevState={loading:false,loadedAt:0,error:"",data:null,period:""};
 
@@ -13,7 +13,7 @@
   datevState.period=currentPeriod();
 
   const html=value=>typeof esc==="function"?esc(value??""):String(value??"");
-  const isTargetView=()=>S.adminView===VIEW||S.adminView===LEGACY_SIGNING_VIEW;
+  const isTargetView=()=>S.adminView===VIEW||S.adminView===SIGNING_VIEW;
   const formatHours=minutes=>{
     const total=Math.max(0,Math.round(Number(minutes)||0));
     return`${Math.floor(total/60)}:${String(total%60).padStart(2,"0")} Std.`;
@@ -21,11 +21,14 @@
 
   function normalizeNavigation(list){
     if(!Array.isArray(list))return;
+    const signing=list.find(item=>item?.[0]===SIGNING_VIEW);
     const compliance=list.find(item=>item?.[0]===VIEW);
-    if(compliance)compliance[1]="Prüfung & Exporte";
-    for(let index=list.length-1;index>=0;index-=1){
-      if(list[index]?.[0]===LEGACY_SIGNING_VIEW)list.splice(index,1);
+    if(signing){
+      signing[1]="Prüfung & Exporte";
+      if(compliance&&compliance!==signing)list.splice(list.indexOf(compliance),1);
+      return;
     }
+    if(compliance){compliance[0]=SIGNING_VIEW;compliance[1]="Prüfung & Exporte"}
   }
   normalizeNavigation(typeof managerNav!=="undefined"?managerNav:null);
   normalizeNavigation(typeof ownerNav!=="undefined"?ownerNav:null);
@@ -122,17 +125,10 @@
     </article>`;
   }
 
-  function signingMarkup(){
-    const current=S.adminView;
-    S.adminView=LEGACY_SIGNING_VIEW;
-    try{return previousAdminView()}
-    finally{S.adminView=current}
-  }
-
   function signingSection(){
     return`<section class="pruefung-signing-section">
       <header><div><div class="caps">Mitarbeiter-Bestätigung</div><h2>Arbeitszeitnachweise & Unterschriften</h2><p>Nachweis auswählen, prüfen und bei Bedarf gezielt zur Unterschrift an den Mitarbeiter senden.</p></div></header>
-      <div class="pruefung-signing-legacy">${signingMarkup()}</div>
+      <div class="pruefung-signing-legacy">${previousAdminView()}</div>
     </section>`;
   }
 
@@ -146,7 +142,8 @@
   }
 
   adminView=function(){
-    if(isTargetView())return page();
+    if(S.adminView===VIEW)S.adminView=SIGNING_VIEW;
+    if(S.adminView===SIGNING_VIEW)return page();
     return previousAdminView();
   };
 
