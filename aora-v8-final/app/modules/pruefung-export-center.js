@@ -122,7 +122,8 @@
   }
 
   adminView=function(){
-    if(isTargetView())return page();
+    if(S.adminView===LEGACY_VIEW)S.adminView=VIEW;
+    if(S.adminView===VIEW)return page();
     return previousAdminView();
   };
 
