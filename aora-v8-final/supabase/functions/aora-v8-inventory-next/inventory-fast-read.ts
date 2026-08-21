@@ -1,4 +1,4 @@
-import {db,dbFail,fail,type InventoryContext} from "./lib.ts";
+import {db,dbFail,fail} from "./lib.ts";
 
 function mapFastReadResult(result:any){
   const status=String(result?.status||"");
@@ -32,5 +32,28 @@ export async function fastStock(sessionToken:string,body:any,requestId:string){
     p_limit:Math.min(500,Math.max(1,Number(body.limit||500)))
   });
   if(error)dbFail(error,"fast_stock",requestId);
+  return mapFastReadResult(data);
+}
+
+export async function fastMovements(sessionToken:string,body:any,requestId:string){
+  const locationId=String(body.locationId||"");
+  if(!locationId)fail(400,"location_invalid","Standort fehlt.");
+  const{data,error}=await db.rpc("aora_inventory_session_movements",{
+    p_token:sessionToken,
+    p_location_id:locationId,
+    p_limit:Math.min(200,Math.max(1,Number(body.limit||100)))
+  });
+  if(error)dbFail(error,"fast_movements",requestId);
+  return mapFastReadResult(data);
+}
+
+export async function fastReplenishment(sessionToken:string,body:any,requestId:string){
+  const locationId=String(body.locationId||"");
+  if(!locationId)fail(400,"location_invalid","Standort fehlt.");
+  const{data,error}=await db.rpc("aora_inventory_session_replenishment",{
+    p_token:sessionToken,
+    p_location_id:locationId
+  });
+  if(error)dbFail(error,"fast_replenishment",requestId);
   return mapFastReadResult(data);
 }
