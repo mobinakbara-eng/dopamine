@@ -8,6 +8,7 @@ on:
     paths:
       - "aora-v8-final/app/index.html"
       - "aora-v8-final/app/inventory.css"
+      - "aora-v8-final/app/inventory-expiry-sweep.css"
       - "aora-v8-final/app/modules/inventory-*.js"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-next/**"
       - "aora-v8-final/supabase/migrations/*inventory*"
@@ -41,6 +42,7 @@ jobs:
           node --check app/modules/inventory-core.js
           node --check app/modules/inventory-access-count.js
           node --check app/modules/inventory-cycle-count.js
+          node --check app/modules/inventory-expiry-sweep.js
           node --check app/modules/inventory-orders-v2.js
           node --check app/modules/inventory-employee.js
       - name: Inventory source contracts
@@ -50,6 +52,8 @@ jobs:
           node tests/inventory-supplier-intelligence-source.mjs
           node tests/inventory-expiry-fefo-source.mjs
           node tests/inventory-confidence-cycle-count-source.mjs
+          node tests/inventory-expired-waste-source.mjs
+          node tests/inventory-live-tenant-safety-source.mjs
       - name: Inventory Edge Function type check
         run: deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
       - name: Reproducible app build
