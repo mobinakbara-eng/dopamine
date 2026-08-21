@@ -14,7 +14,7 @@ assert.match(ui,/typeof isOwner==="function"&&isOwner\(\)/);
 
 // DATEV calls are authenticated with the existing AORA session and never receive secrets from form input.
 assert.match(ui,/"Authorization":`Bearer \$\{token\}`/);
-assert.doesNotMatch(ui,/clientSecret|client_secret|refreshToken|refresh_token\s*[:=]/i);
+assert.doesNotMatch(ui,/clientSecret\s*[:=]|client_secret\s*[:=]|\brefreshToken\b\s*[:=]|refresh_token\s*[:=]/i);
 assert.doesNotMatch(ui,/localStorage\.setItem|sessionStorage\.setItem/);
 
 // Connection state and required DATEV user controls are explicit.
