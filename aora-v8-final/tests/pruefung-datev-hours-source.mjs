@@ -11,6 +11,7 @@ const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8')
 assert.match(ui,/Prüfung & Exporte/);
 assert.match(ui,/if\(legacy&&legacy!==existing\)list\.splice\(list\.indexOf\(legacy\),1\)/);
 assert.match(ui,/legacy\)\{legacy\[0\]=VIEW;legacy\[1\]="Prüfung & Exporte"/);
+assert.match(ui,/if\(S\.adminView===LEGACY_VIEW\)S\.adminView=VIEW/);
 assert.match(ui,/Nachweise prüfen und Unterschrift anfordern/);
 assert.match(ui,/const signingMarkup=previousAdminView\(\)/);
 assert.match(css,/data-tab="documents"/);
