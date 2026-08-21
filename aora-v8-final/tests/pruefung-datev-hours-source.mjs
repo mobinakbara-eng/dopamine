@@ -5,6 +5,7 @@ const ui=fs.readFileSync(new URL('../app/modules/pruefung-export-center.js',impo
 const css=fs.readFileSync(new URL('../app/pruefung-export-center.css',import.meta.url),'utf8');
 const edge=fs.readFileSync(new URL('../supabase/functions/aora-v8-datev-hours-export/index.ts',import.meta.url),'utf8');
 const migration=fs.readFileSync(new URL('../supabase/migrations/20260821191000_aora_datev_hours_export_prod.sql',import.meta.url),'utf8');
+const tightenMigration=fs.readFileSync(new URL('../supabase/migrations/20260821211500_tighten_datev_lodas_personnel_number.sql',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
 
 // Prüfung & Exporte is the single manager entry for DATEV hours and employee signatures.
@@ -41,6 +42,22 @@ assert.match(edge,/MAX_EXPORT_BYTES=3\*1024\*1024/);
 assert.match(edge,/datev_hours_open_entries/);
 assert.match(edge,/datev_personnel_number_missing/);
 assert.match(edge,/duplicate_personnel_number/);
+
+// LODAS personnel numbers are constrained to 1..99999 at UI, API and DB layers.
+assert.match(ui,/pattern="\[0-9\]\{1,5\}" maxlength="5"/);
+assert.match(ui,/1–99999/);
+assert.match(edge,/function datevPersonnelNumber\(value:unknown\)/);
+assert.match(edge,/digits\(value,1,5,"Personalnummer"\)/);
+assert.match(edge,/numeric<1\|\|numeric>99999/);
+assert.match(edge,/datevPersonnelNumber\(row\.personnel_number\)/);
+assert.match(tightenMigration,/personnel_number ~ '\^\\d\{1,5\}\$'/);
+assert.match(tightenMigration,/between 1 and 99999/);
+
+// AORA must never claim actual DATEV validation before a successful real test import.
+assert.match(edge,/validationStatus:"not_test_imported"/);
+assert.match(edge,/X-Aora-Datev-Validation":"not-test-imported"/);
+assert.match(ui,/DATEV-Testimport steht noch aus/);
+assert.match(ui,/Testimport in DATEV LODAS noch ausstehend/);
 
 // Manager scope includes cross-location work at accessible locations, with employee-location fallback for older entries.
 assert.match(edge,/const explicitLocationId=entryLocationId\(entry\)/);
