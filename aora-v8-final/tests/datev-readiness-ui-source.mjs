@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const ui=fs.readFileSync(new URL('../app/modules/datev-integration.js',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
+const envExample=fs.readFileSync(new URL('../.env.example',import.meta.url),'utf8');
 const readiness=fs.readFileSync(new URL('../docs/DATEV_PARTNER_READINESS.md',import.meta.url),'utf8');
 const onboarding=fs.readFileSync(new URL('../docs/DATEV_CUSTOMER_ONBOARDING.md',import.meta.url),'utf8');
 const acceptance=fs.readFileSync(new URL('../docs/DATEV_TECHNICAL_ACCEPTANCE_TEST_PLAN.md',import.meta.url),'utf8');
@@ -38,6 +39,10 @@ assert.match(ui,/OpenAPI-Vertrag/);
 // Defensive redirect handling must only allow HTTPS DATEV hosts.
 assert.match(ui,/target\.protocol!=="https:"/);
 assert.match(ui,/target\.hostname\.endsWith\("\.datev\.de"\)/);
+
+// Preview/staging OAuth returns to a stable non-production host.
+assert.match(envExample,/AORA_DATEV_RETURN_URL=https:\/\/dopamine-mobins-projects-4f428afa\.vercel\.app\/inhaber\//);
+assert.doesNotMatch(envExample,/AORA_DATEV_RETURN_URL=https:\/\/dopamine-blond\.vercel\.app/);
 
 // Assets are included after the base admin module so settingsPage can be extended safely.
 assert.match(index,/datev-integration\.css/);
