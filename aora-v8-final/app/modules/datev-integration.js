@@ -68,8 +68,8 @@
     const preflight=ui.preflight;
     const rows=[
       ["AORA Backend",true,"OAuth, Token-Speicher und Mandantenprüfung vorbereitet"],
-      ["Developer-Portal Zugang",Boolean(preflight?.credentialsReady),preflight?.credentialsReady?"Server-Credentials vorhanden":"Client ID / Secret / Redirect noch extern zu konfigurieren"],
-      ["hr:exchange Datenservice",Boolean(preflight?.credentialsReady),"Sandbox-Verbindung ist das erste Ziel"],
+      ["Developer-Portal Credentials",Boolean(preflight?.credentialsReady),preflight?.credentialsReady?"Server-Credentials vorhanden; API-Subscription separat im DATEV Developer Portal prüfen":"Client ID / Secret / Redirect noch extern zu konfigurieren"],
+      ["hr:exchange Subscription",false,"Wird erst nach bestätigtem DATEV-Onboarding/Subscription als bereit markiert"],
       ["hr:exchange Schreibtransport",Boolean(preflight?.writeTransportReady),preflight?.writeTransportReady?"Freigeschaltet":"Bleibt bis zum abonnierten OpenAPI-Vertrag bewusst gesperrt"],
       ["DATEV Partnerstatus",false,"Noch kein Partnerstatus – diese Ansicht behauptet keine DATEV-Partnerschaft"]
     ];
