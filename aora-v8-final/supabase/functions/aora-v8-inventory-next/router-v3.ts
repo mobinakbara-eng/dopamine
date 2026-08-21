@@ -1,12 +1,16 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {ApiError,MAX_BODY_BYTES,allowedOrigin,cors,json,fail,sessionContext,requireFeature} from "./lib.ts";
-import {availability,overview,listStock,listMovements} from "./inventory-read-core.ts";
-import {listTransfers,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess,listReplenishment} from "./inventory-read-orders.ts";
-import {createItem,recordMovement,createTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
-import {receiveQrUnits,preparePrintJob,confirmPrintJob,issueQrUnit,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
+import {availability} from "./inventory-read-core.ts";
+import {fastOverview,fastStock,fastMovements,fastReplenishment} from "./inventory-fast-read.ts";
+import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess} from "./inventory-read-orders.ts";
+import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
+import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setItemExpiryPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
 import {listManagerAccess,setManagerAccess,listSuppliers,upsertSupplier,listSupplierItems,upsertSupplierItem,getOrderingProfile,saveOrderingProfile} from "./procurement-admin.ts";
+import {listSupplierIntelligence} from "./supplier-intelligence.ts";
 import {createPurchaseOrder,sendPurchaseOrder,confirmManualPurchaseOrderSent,listPurchaseOrderDeliveries} from "./procurement-order.ts";
-import {startInventoryCount,getInventoryCount,setInventoryCountLine,postInventoryCount,receivePurchaseOrderLine,issueQrShortCode} from "./inventory-count-receive.ts";
+import {startInventoryCount,getInventoryCount,setInventoryCountLine,postInventoryCount,receivePurchaseOrderDelivery,receivePurchaseOrderLine,issueQrShortCode} from "./inventory-count-receive.ts";
+import {listInventoryInsights} from "./inventory-insights.ts";
+import {listExpiredStockUnits,wasteExpiredStockUnit} from "./inventory-expiry-actions.ts";
 
 Deno.serve(async request=>{
   const origin=request.headers.get("origin"),requestId=request.headers.get("x-request-id")||crypto.randomUUID();
@@ -18,31 +22,48 @@ Deno.serve(async request=>{
     if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)fail(413,"request_too_large","Die Anfrage ist zu groß.");
     let body:any;try{body=JSON.parse(raw)}catch{fail(400,"invalid_json","Ungültige Anfrage.")}
     const action=String(body.action||"");
-    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:3,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
+    if(action==="health")return json({ok:true,service:"aora-v8-inventory-next",version:9,emailProviderConfigured:Boolean((Deno.env.get("RESEND_API_KEY")||Deno.env.get("AORA_ORDER_EMAIL_API_KEY"))&&Deno.env.get("AORA_ORDER_FROM_EMAIL")),serverTime:new Date().toISOString()},200,origin,requestId);
 
     const sessionToken=String(body.sessionToken||body.token||"");
+    // Hot dashboard reads validate the session, active organization/location,
+    // inventory feature and required permission inside the same database RPC
+    // that returns the requested data. This keeps authorization fail-closed
+    // while avoiding connection-pool amplification during large read bursts.
+    if(action==="overview")return json(await fastOverview(sessionToken,body,requestId),200,origin,requestId);
+    if(action==="listStock")return json(await fastStock(sessionToken,body,requestId),200,origin,requestId);
+    if(action==="listMovements")return json(await fastMovements(sessionToken,body,requestId),200,origin,requestId);
+    if(action==="listReplenishment")return json(await fastReplenishment(sessionToken,body,requestId),200,origin,requestId);
+
     const ctx=await sessionContext(sessionToken,requestId);
     if(action==="issueQrUnit"){
-      const qrToken=String(body.qrToken||"");
+      const qrToken=String(body.qrToken||body.token||"");
       if(!qrToken)fail(400,"qr_invalid","Der QR-Code ist ungültig.");
       body={...body,token:qrToken};
     }
 
     if(action==="availability")return json(await availability(ctx,body,requestId),200,origin,requestId);
-    if(ctx.accessRole==="employee"&&!['issueQrUnit','issueQrShortCode'].includes(action))fail(403,"employee_action_forbidden","Mitarbeiter dürfen ausschließlich freigegebene QR-Einheiten scannen.");
+    const employeeActions=["inspectQrUnit","inspectQrShortCode","issueQrUnit","issueQrShortCode"];
+    if(ctx.accessRole==="employee"&&!employeeActions.includes(action))fail(403,"employee_action_forbidden","Mitarbeiter dürfen ausschließlich freigegebene QR-Einheiten scannen.");
     const locationId=body.locationId==null?"":String(body.locationId);
     if(locationId)await requireFeature(ctx,"inventory_v1",locationId,requestId);
     let data:any;
-    if(action==="overview")data=await overview(ctx,body,requestId);
-    else if(action==="listStock")data=await listStock(ctx,body,requestId);
-    else if(action==="listMovements")data=await listMovements(ctx,body,requestId);
+    if(action==="listInventoryInsights")data=await listInventoryInsights(ctx,body,requestId);
+    else if(action==="listExpiredStockUnits")data=await listExpiredStockUnits(ctx,body,requestId);
+    else if(action==="wasteExpiredStockUnit")data=await wasteExpiredStockUnit(ctx,body,requestId);
     else if(action==="createItem")data=await createItem(ctx,body,requestId);
     else if(action==="recordReceipt")data=await recordMovement(ctx,body,"receipt",requestId);
     else if(action==="recordConsumption")data=await recordMovement(ctx,body,"consumption",requestId);
     else if(action==="recordWaste")data=await recordMovement(ctx,body,"waste",requestId);
     else if(action==="adjustStock")data=await recordMovement(ctx,body,Number(body.quantity)>=0?"adjustment_in":"adjustment_out",requestId);
     else if(action==="listTransfers")data=await listTransfers(ctx,body,requestId);
+    else if(action==="listTransferSuggestions"){if(locationId)await requireFeature(ctx,"replenishment_suggestions",locationId,requestId);data=await listTransferSuggestions(ctx,body,requestId)}
     else if(action==="createTransfer")data=await createTransfer(ctx,body,requestId);
+    else if(action==="createAutopilotTransfer"){
+      const destinationLocationId=String(body.destinationLocationId||"");
+      await requireFeature(ctx,"inventory_v1",destinationLocationId,requestId);
+      await requireFeature(ctx,"replenishment_suggestions",destinationLocationId,requestId);
+      data=await createAutopilotTransfer(ctx,body,requestId);
+    }
     else if(action==="dispatchTransfer")data=await changeTransfer(ctx,body,"dispatch",requestId);
     else if(action==="receiveTransfer")data=await changeTransfer(ctx,body,"receive",requestId);
     else if(action==="cancelTransfer")data=await changeTransfer(ctx,body,"cancel",requestId);
@@ -53,17 +74,21 @@ Deno.serve(async request=>{
     else if(action==="listPrintJobs")data=await listPrintJobs(ctx,body,requestId);
     else if(action==="preparePrintJob")data=await preparePrintJob(ctx,body,requestId);
     else if(action==="confirmPrintJob")data=await confirmPrintJob(ctx,body,requestId);
+    else if(action==="inspectQrUnit")data=await inspectQrUnit(ctx,body,requestId);
+    else if(action==="inspectQrShortCode")data=await inspectQrShortCode(ctx,body,requestId);
     else if(action==="issueQrUnit")data=await issueQrUnit(ctx,body,requestId);
     else if(action==="issueQrShortCode")data=await issueQrShortCode(ctx,body,requestId);
+    else if(action==="setItemConsumptionPolicy")data=await setItemConsumptionPolicy(ctx,body,requestId);
+    else if(action==="setItemExpiryPolicy")data=await setItemExpiryPolicy(ctx,body,requestId);
     else if(action==="listEmployeeAccess")data=await listEmployeeAccess(ctx,body,requestId);
     else if(action==="setEmployeeAccess")data=await setEmployeeAccess(ctx,body,requestId);
     else if(action==="getPrintProfile")data=await getPrintProfile(ctx,body,requestId);
     else if(action==="savePrintProfile")data=await savePrintProfile(ctx,body,requestId);
     else if(action==="printTestLabel")data=await printTestLabel(ctx,body,requestId);
-    else if(action==="listReplenishment"){if(locationId)await requireFeature(ctx,"replenishment_suggestions",locationId,requestId);data=await listReplenishment(ctx,body,requestId)}
     else if(action==="listManagerAccess")data=await listManagerAccess(ctx,body,requestId);
     else if(action==="setManagerFullAccess")data=await setManagerAccess(ctx,body,requestId);
     else if(action==="listSuppliers")data=await listSuppliers(ctx,body,requestId);
+    else if(action==="listSupplierIntelligence")data=await listSupplierIntelligence(ctx,body,requestId);
     else if(action==="upsertSupplier")data=await upsertSupplier(ctx,body,requestId);
     else if(action==="listSupplierItems")data=await listSupplierItems(ctx,body,requestId);
     else if(action==="upsertSupplierItem")data=await upsertSupplierItem(ctx,body,requestId);
@@ -77,6 +102,7 @@ Deno.serve(async request=>{
     else if(action==="getInventoryCount")data=await getInventoryCount(ctx,body,requestId);
     else if(action==="setInventoryCountLine")data=await setInventoryCountLine(ctx,body,requestId);
     else if(action==="postInventoryCount")data=await postInventoryCount(ctx,body,requestId);
+    else if(action==="receivePurchaseOrderDelivery")data=await receivePurchaseOrderDelivery(ctx,body,requestId);
     else if(action==="receivePurchaseOrderLine")data=await receivePurchaseOrderLine(ctx,body,requestId);
     else fail(400,"unknown_action","Unbekannte Aktion.");
     return json(data,200,origin,requestId);
