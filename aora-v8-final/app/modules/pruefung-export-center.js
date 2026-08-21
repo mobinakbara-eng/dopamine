@@ -22,7 +22,11 @@
     if(!Array.isArray(list))return;
     const existing=list.find(item=>item?.[0]===VIEW);
     const legacy=list.find(item=>item?.[0]===LEGACY_VIEW);
-    if(existing){existing[1]="Prüfung & Exporte";return}
+    if(existing){
+      existing[1]="Prüfung & Exporte";
+      if(legacy&&legacy!==existing)list.splice(list.indexOf(legacy),1);
+      return;
+    }
     if(legacy){legacy[0]=VIEW;legacy[1]="Prüfung & Exporte"}
   }
   retargetNavigation(typeof managerNav!=="undefined"?managerNav:null);
@@ -145,8 +149,11 @@
   async function saveConfig(form){
     const data=new FormData(form),employeeMappings=[];
     for(const employee of datevState.data?.employees||[]){
-      const personnelNumber=String(data.get(`personnel-${employee.id}`)||"").trim();
-      if(personnelNumber)employeeMappings.push({employeeId:String(employee.id),personnelNumber});
+      if(!employee.included)continue;
+      employeeMappings.push({
+        employeeId:String(employee.id),
+        personnelNumber:String(data.get(`personnel-${employee.id}`)||"").trim()
+      });
     }
     await call("save_config",{
       beraterNumber:String(data.get("beraterNumber")||"").trim(),
