@@ -36,4 +36,5 @@ assert(receiptSql.includes("if v_pack.is_stock_unit then"),"receipt RPC must gat
 assert(receiptSql.includes("insert into public.inventory_label_print_jobs"),"receipt RPC must create QR print jobs");
 assert(qr.includes('invRequest("receiveQrUnits"'),"legacy direct QR receipt helper remains isolated for compatibility, not normal navigation");
 
+await import("./inventory-workspace-transfer-source.mjs");
 console.log("inventory workspace navigation contract: ok");
