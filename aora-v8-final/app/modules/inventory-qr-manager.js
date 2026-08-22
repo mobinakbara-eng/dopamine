@@ -33,23 +33,30 @@ function qrPackOptions(packs){
 
 function printQrBatch(batch,itemName){
   const labels=batch?.labels||[];
-  if(!labels.length)return toast("Keine QR-Etiketten vorhanden.","error");
+  if(!labels.length){toast("Keine QR-Etiketten vorhanden.","error");return false}
   const profile=batch.profile||{};
   const width=Number(profile.labelWidthMm||profile.label_width_mm||50)||50;
   const height=Number(profile.labelHeightMm||profile.label_height_mm||30)||30;
   const popup=window.open("","_blank");
-  if(!popup)return toast("Pop-up wurde blockiert. Bitte Pop-ups für Aora erlauben.","error");
+  if(!popup){toast("Pop-up wurde blockiert. Bitte Pop-ups für Aora erlauben.","error");return false}
   const cards=labels.map(label=>`<section class="label"><div class="name">${esc(itemName||"Aora Bestand")}</div><div class="qr">${label.svg||""}</div><div class="code">${esc(label.shortCode||"")}</div></section>`).join("");
   popup.document.open();
   popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Aora QR Etiketten</title><style>@page{margin:0}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif}.label{width:${width}mm;height:${height}mm;page-break-after:always;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:1.5mm}.label:last-child{page-break-after:auto}.name{font-size:8pt;font-weight:700;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qr svg{width:20mm;height:20mm;display:block}.code{font-size:7pt;letter-spacing:.5px;font-weight:700}</style></head><body>${cards}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),150));<\/script></body></html>`);
   popup.document.close();
+  return true;
+}
+
+function showQrPrintConfirmation(dialog,printJobId){
+  const actions=dialog.querySelector("#qr-manager-body .inventory-actions");
+  if(!actions)return;
+  actions.innerHTML=`<div class="inventory-print-confirmation"><strong>Erfolgreich gedruckt?</strong><span>Erst nach deiner Bestätigung werden die QR-Codes aktiviert.</span><div><button class="btn" type="button" data-qr-action="confirm" data-job-id="${esc(printJobId)}">Ja, erfolgreich</button><button class="btn outline" type="button" data-qr-action="later">Noch nicht</button></div></div>`;
 }
 
 async function showPreparedQrBatch(dialog,prepared,itemName){
   dialog._aoraQrBatch=prepared;
   dialog._aoraQrItemName=itemName;
   const body=dialog.querySelector("#qr-manager-body");
-  body.innerHTML=`<div class="inventory-scan-status"><strong>${prepared.labels?.length||0} QR-Etiketten bereit.</strong><p>Jetzt drucken. Erst danach als gedruckt bestätigen. Wenn du QR neu erzeugst, werden unbestätigte alte Codes ungültig.</p></div><div class="inventory-actions" style="margin:14px 0"><button class="btn" type="button" data-qr-action="print">Drucken / PDF</button><button class="btn outline" type="button" data-qr-action="confirm" data-job-id="${prepared.printJobId}">Als gedruckt bestätigen</button></div><div class="inventory-qr-preview">${(prepared.labels||[]).slice(0,12).map(l=>`<div class="inventory-card" style="padding:10px;text-align:center">${l.svg||""}<small>${esc(l.shortCode||"")}</small></div>`).join("")}</div>${(prepared.labels||[]).length>12?`<p class="muted">+ ${(prepared.labels||[]).length-12} weitere Etiketten</p>`:""}`;
+  body.innerHTML=`<div class="inventory-scan-status"><strong>${prepared.labels?.length||0} QR-Etiketten bereit.</strong><p>Jetzt drucken. Wenn du zurück zu Aora wechselst, bestätigst du kurz, ob der Druck erfolgreich war.</p></div><div class="inventory-actions" style="margin:14px 0"><button class="btn" type="button" data-qr-action="print" data-job-id="${prepared.printJobId}">Drucken / PDF</button></div><div class="inventory-qr-preview">${(prepared.labels||[]).slice(0,12).map(l=>`<div class="inventory-card" style="padding:10px;text-align:center">${l.svg||""}<small>${esc(l.shortCode||"")}</small></div>`).join("")}</div>${(prepared.labels||[]).length>12?`<p class="muted">+ ${(prepared.labels||[]).length-12} weitere Etiketten</p>`:""}`;
 }
 
 async function prepareExistingPrintJob(dialog,job){
@@ -118,9 +125,10 @@ async function qrManagerModal(){
     const action=event.target.closest("[data-qr-action]");
     if(!action)return;
     if(action.dataset.qrAction==="print"){
-      printQrBatch({...dialog._aoraQrBatch,profile:dialog._aoraQrProfile},dialog._aoraQrItemName);
+      if(printQrBatch({...dialog._aoraQrBatch,profile:dialog._aoraQrProfile},dialog._aoraQrItemName))showQrPrintConfirmation(dialog,action.dataset.jobId||dialog._aoraQrBatch?.printJobId);
       return;
     }
+    if(action.dataset.qrAction==="later"){dialog.remove();toast("Druckauftrag bleibt für später gespeichert.");return}
     if(action.dataset.qrAction==="confirm"){
       action.disabled=true;
       try{

@@ -10,18 +10,25 @@ async function loadInventoryWorkspaceTransfers(force=false){
   if(!data||data.error||(!force&&data.transferWorkspaceLoaded)||data.transferWorkspaceLoading)return;
   data.transferWorkspaceLoading=true;
   try{
+    const requestedLocationId=String(S.locationId),workspaceKey=inventoryWorkspaceKey("orders");
     const[suggestions,transfers]=await Promise.all([
-      invRequest("listTransferSuggestions",{locationId:S.locationId}).catch(error=>({suggestions:[],error:error.message})),
-      invRequest("listTransfers",{locationId:S.locationId}).catch(error=>({transfers:[],error:error.message}))
+      invRequest("listTransferSuggestions",{locationId:requestedLocationId}).then(result=>({...result,status:(result?.suggestions||[]).length?"transfer_available":"checked_no_transfer_available"})).catch(error=>({suggestions:[],status:inventoryWorkspaceTransferErrorStatus(error),error:error.message})),
+      invRequest("listTransfers",{locationId:requestedLocationId}).then(result=>({...result,status:"checked"})).catch(error=>({transfers:[],status:inventoryWorkspaceTransferErrorStatus(error),error:error.message}))
     ]);
+    if(String(S.locationId)!==requestedLocationId||inventoryWorkspaceKey("orders")!==workspaceKey)return;
     data.transferSuggestions=suggestions;
     data.transfers=transfers;
     data.transferWorkspaceLoaded=true;
-    S.inventoryPageCache[`${invKey()}:overview`]={stock:data.stock,replenishment:data.replenishment,transferSuggestions:suggestions};
+    if(!["check_failed","not_authorized"].includes(suggestions.status))S.inventoryPageCache[`${invKey()}:overview`]={stock:data.stock,replenishment:data.replenishment,transferSuggestions:suggestions};
   }finally{
     data.transferWorkspaceLoading=false;
   }
   if(S.adminView==="inventory"&&S.inventorySection==="orders")renderAdmin();
+}
+
+function inventoryWorkspaceTransferErrorStatus(error){
+  const status=Number(error?.status||error?.statusCode||0),code=String(error?.code||error?.error||"").toLowerCase();
+  return status===401||status===403||/unauthor|forbidden|permission|manager_required/.test(code)?"not_authorized":"check_failed";
 }
 
 function inventoryWorkspaceTransferStatus(status){
@@ -44,6 +51,8 @@ function inventoryWorkspaceTransferRow(t){
 function inventoryWorkspaceTransferSection(data){
   const suggestions=data.transferSuggestions?.suggestions||[],transfers=(data.transfers?.transfers||[]).filter(t=>["draft","dispatched"].includes(t.status));
   if(!data.transferWorkspaceLoaded)return`<section class="inventory-workspace-panel"><div class="inventory-workspace-section-head"><div><span class="caps muted">Transfer vor Einkauf</span><h2>Andere Standorte werden geprüft …</h2><p>Aora kauft erst, wenn kein sicherer Überschuss in einem anderen Laden verfügbar ist.</p></div></div></section>`;
+  const failed=[data.transferSuggestions,data.transfers].find(result=>["check_failed","not_authorized"].includes(result?.status));
+  if(failed){const denied=failed.status==="not_authorized";return`<section class="inventory-workspace-panel inventory-workspace-attention"><div class="inventory-workspace-section-head"><div><span class="caps muted">Transfer vor Einkauf</span><h2>${denied?"Prüfung nicht erlaubt":"Andere Standorte konnten nicht geprüft werden"}</h2><p>${denied?"Für diese Standortprüfung fehlt die Berechtigung. Es wurde keine Kaufempfehlung als sicher angenommen.":"Aora kann noch nicht sicher sagen, ob Ware intern verfügbar ist. Bitte prüfe erneut, bevor du bestellst."}</p></div><button class="btn outline" type="button" data-inventory-transfer-retry>Erneut prüfen</button></div></section>`}
   if(!suggestions.length&&!transfers.length)return"";
   return`<section class="inventory-workspace-panel"><div class="inventory-workspace-section-head"><div><span class="caps muted">Transfer vor Einkauf</span><h2>${suggestions.length?"Erst intern verschieben":"Laufende Transfers"}</h2><p>Aora schützt PAR- und Meldebestand des abgebenden Standorts. Bestand wird erst beim tatsächlichen Versand reduziert.</p></div></div>${suggestions.length?`<div class="inventory-workspace-transfer-list">${suggestions.map(inventoryWorkspaceTransferSuggestion).join("")}</div>`:""}${transfers.length?`<div class="inventory-workspace-transfer-list active">${transfers.map(inventoryWorkspaceTransferRow).join("")}</div>`:""}</section>`;
 }
@@ -61,6 +70,8 @@ inventoryOrdersWorkspacePage=function(){
 };
 
 app.addEventListener("click",async event=>{
+  const retry=event.target.closest?.("[data-inventory-transfer-retry]");
+  if(retry){event.preventDefault();const data=S.inventoryWorkspaceCache[inventoryWorkspaceKey("orders")];if(data){data.transferWorkspaceLoaded=false;delete data.transferSuggestions;delete data.transfers}await loadInventoryWorkspaceTransfers(true);return}
   const button=event.target.closest?.("[data-inventory-transfer-action]");
   if(!button)return;
   event.preventDefault();
@@ -87,20 +98,23 @@ loadInventoryWorkspace=async function(section,force=false){
   const key=inventoryWorkspaceKey("qr");
   if(S.inventoryWorkspaceLoading[key])return S.inventoryWorkspaceLoading[key];
   if(S.inventoryWorkspaceCache[key]&&!force)return;
+  const requestedLocationId=String(S.locationId),requestedSessionToken=String(S.session?.token||"");
   const task=(async()=>{
     try{
       const[jobs,orders,insights]=await Promise.all([
-        invRequest("listPrintJobs",{locationId:S.locationId}),
-        invRequest("listPurchaseOrders",{locationId:S.locationId}).catch(()=>({orders:[]})),
-        invRequest("listInventoryInsights",{locationId:S.locationId}).catch(()=>({summary:{},items:[]}))
+        invRequest("listPrintJobs",{locationId:requestedLocationId}),
+        invRequest("listPurchaseOrders",{locationId:requestedLocationId}).catch(()=>({orders:[]})),
+        invRequest("listInventoryInsights",{locationId:requestedLocationId}).catch(()=>({summary:{},items:[]}))
       ]);
+      if(String(S.locationId)!==requestedLocationId||String(S.session?.token||"")!==requestedSessionToken||inventoryWorkspaceKey("qr")!==key)return;
       S.inventoryWorkspaceCache[key]={jobs,orders,insights,loadedAt:Date.now()};
       if(Array.isArray(orders?.orders))S.inventoryPageCache[`${invKey()}:receiving`]={orders};
       if(S.adminView==="inventory"&&S.inventorySection==="qr")renderAdmin();
     }catch(error){
+      if(String(S.locationId)!==requestedLocationId||String(S.session?.token||"")!==requestedSessionToken||inventoryWorkspaceKey("qr")!==key)return;
       S.inventoryWorkspaceCache[key]={error:error.message,loadedAt:Date.now()};
       if(S.adminView==="inventory"&&S.inventorySection==="qr")renderAdmin();
-    }finally{delete S.inventoryWorkspaceLoading[key]}
+    }finally{if(S.inventoryWorkspaceLoading[key]===task)delete S.inventoryWorkspaceLoading[key]}
   })();
   S.inventoryWorkspaceLoading[key]=task;
   return task;

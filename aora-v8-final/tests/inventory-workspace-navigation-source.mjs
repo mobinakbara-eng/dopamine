@@ -20,9 +20,9 @@ assert(nav.includes("receiveOrderModal(receive.dataset.inventoryReceiveOrder)"),
 assert(nav.includes('S.inventoryPageCache[`${invKey()}:receiving`]'),"receipt modal compatibility cache must be populated");
 assert(nav.includes('S.inventoryPageCache[`${invKey()}:orders`]'),"send-order compatibility cache must be populated");
 
-assert(nav.includes('invRequest("createItem"'),"Bestellen must support product creation");
-assert(nav.includes('invRequest("createPackUnit"'),"product creation must capture real packaging quantity");
-assert(nav.includes('invRequest("upsertSupplierItem"'),"product creation must optionally map to a supplier");
+assert(nav.includes('invRequest("createProductBundle"'),"Bestellen must support atomic product creation");
+assert(nav.includes("packLabel")&&nav.includes("baseQuantity"),"atomic product creation must capture real packaging quantity");
+assert(nav.includes("supplierId:String(f.get(\"supplierId\")||\"\")||null"),"atomic product creation must optionally map to a supplier");
 assert(nav.includes("Neue Eingabe = neue Kategorie"),"category creation must be available in product flow");
 
 assert(!nav.includes('invRequest("receiveQrUnits"'),"normal QR workspace must never invent/book extra goods receipt");
@@ -32,6 +32,11 @@ assert(nav.includes('invRequest("confirmPrintJob"'),"QR print confirmation must 
 assert(nav.includes("erst nach bestätigtem Wareneingang"),"QR UI must explain receipt gating");
 
 assert(receive.includes('invRequest("receivePurchaseOrderDelivery"'),"receipt UI must book through purchase-order receiving");
+assert(receive.includes("receiptPrintChoice(printJobIds)"),"a successful receipt with QR jobs must offer an immediate or deferred print choice");
+assert(receive.includes("Jetzt drucken")&&receive.includes("Später drucken"),"receipt printing choice must use two plain customer-facing actions");
+assert(receive.includes('S.inventorySection="qr"')&&receive.includes('loadInventoryWorkspace("qr",true)'),"printing now must route to the persisted QR job instead of booking stock again");
+assert(qr.includes("Erfolgreich gedruckt?"),"returning from AirPrint/PDF must ask for explicit success confirmation");
+assert(qr.includes('data-qr-action="later"'),"an unconfirmed print must remain available for a later retry");
 assert(receiptSql.includes("if v_pack.is_stock_unit then"),"receipt RPC must gate QR jobs on QR-capable packaging");
 assert(receiptSql.includes("insert into public.inventory_label_print_jobs"),"receipt RPC must create QR print jobs");
 assert(qr.includes('invRequest("receiveQrUnits"'),"legacy direct QR receipt helper remains isolated for compatibility, not normal navigation");

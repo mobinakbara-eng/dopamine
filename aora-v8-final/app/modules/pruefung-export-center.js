@@ -4,7 +4,7 @@
   const VIEW="compliance";
   const SIGNING_VIEW="approvals";
   const FUNCTION_NAME="aora-v8-datev-hours-export";
-  const datevState={loading:false,loadedAt:0,error:"",data:null,period:""};
+  const datevState={loading:false,loadedAt:0,error:"",data:null,period:"",contextKey:"",exportKeys:{}};
 
   function currentPeriod(){
     const value=typeof berlin==="function"?berlin().date:new Date().toISOString().slice(0,10);
@@ -21,14 +21,14 @@
 
   function normalizeNavigation(list){
     if(!Array.isArray(list))return;
-    const signing=list.find(item=>item?.[0]===SIGNING_VIEW);
-    const compliance=list.find(item=>item?.[0]===VIEW);
-    if(signing){
-      signing[1]="Prüfung & Exporte";
-      if(compliance&&compliance!==signing)list.splice(list.indexOf(compliance),1);
-      return;
+    for(let index=list.length-1;index>=0;index-=1)if(list[index]?.[0]===SIGNING_VIEW)list.splice(index,1);
+    let compliance=list.find(item=>item?.[0]===VIEW);
+    if(!compliance){
+      compliance=[VIEW,"Prüfung & Exporte",I.chart];
+      const settingsIndex=list.findIndex(item=>item?.[0]==="settings");
+      list.splice(settingsIndex<0?list.length:settingsIndex,0,compliance);
     }
-    if(compliance){compliance[0]=SIGNING_VIEW;compliance[1]="Prüfung & Exporte"}
+    compliance[1]="Prüfung & Exporte";
   }
   normalizeNavigation(typeof managerNav!=="undefined"?managerNav:null);
   normalizeNavigation(typeof ownerNav!=="undefined"?ownerNav:null);
@@ -44,18 +44,22 @@
   }
 
   async function ensureDatevData(force=false){
-    if(datevState.loading)return;
+    const contextKey=`${String(S.session?.token||"")}:${datevState.period}`;
+    if(datevState.contextKey!==contextKey){datevState.contextKey=contextKey;datevState.loadedAt=0;datevState.data=null;datevState.error=""}
+    if(datevState.loading===contextKey)return;
     if(!force&&datevState.loadedAt&&Date.now()-datevState.loadedAt<12000)return;
-    datevState.loading=true;
+    datevState.loading=contextKey;
     datevState.error="";
     try{
-      datevState.data=await call("status");
+      const result=await call("status");
+      if(`${String(S.session?.token||"")}:${datevState.period}`!==contextKey)return;
+      datevState.data=result;
       datevState.loadedAt=Date.now();
     }catch(error){
-      datevState.error=error?.message||"DATEV-Stundenexport konnte nicht geladen werden.";
+      if(`${String(S.session?.token||"")}:${datevState.period}`===contextKey)datevState.error=error?.message||"DATEV-Stundenexport konnte nicht geladen werden.";
     }finally{
-      datevState.loading=false;
-      if(S.session&&isTargetView())renderAdmin();
+      if(datevState.loading===contextKey)datevState.loading=false;
+      if(`${String(S.session?.token||"")}:${datevState.period}`===contextKey&&S.session&&isTargetView())renderAdmin();
     }
   }
 
@@ -70,13 +74,16 @@
   }
 
   function readinessNotice(){
-    const data=datevState.data,totals=data?.totals||{};
+    const data=datevState.data,totals=data?.totals||{},final=data?.finalReadiness||{};
     if(datevState.error)return`<div class="pruefung-alert error"><strong>DATEV-Ausgabe nicht verfügbar.</strong><span>${html(datevState.error)}</span></div>`;
     if(!data)return'<div class="pruefung-alert"><span>Daten werden geprüft …</span></div>';
     const notes=[];
     if(!data.settings)notes.push("DATEV-Zuordnung einmalig einrichten.");
     if(Number(totals.openEntries)>0)notes.push(`${Number(totals.openEntries)} offene/laufende Buchung${Number(totals.openEntries)===1?"":"en"} zuerst abschließen.`);
     if(Number(totals.missingPersonnelNumbers)>0)notes.push(`${Number(totals.missingPersonnelNumbers)} DATEV-Personalnummer${Number(totals.missingPersonnelNumbers)===1?" fehlt":"n fehlen"}.`);
+    if(Number(final.missingApprovedSnapshots)>0)notes.push(`${Number(final.missingApprovedSnapshots)} bestätigte${Number(final.missingApprovedSnapshots)===1?"r Arbeitszeitnachweis fehlt":" Arbeitszeitnachweise fehlen"}.`);
+    if(Number(final.pendingCorrections)>0)notes.push(`${Number(final.pendingCorrections)} offene Zeitkorrektur${Number(final.pendingCorrections)===1?"":"en"} blockiert den finalen Export.`);
+    if(Number(final.invalidSnapshots)>0||Number(final.openDays)>0)notes.push("Bestätigte Nachweise enthalten offene Tage oder haben die Integritätsprüfung nicht bestanden.");
     if(!Number(totals.minutes)&&!Number(totals.openEntries))notes.push("Im gewählten Monat sind noch keine abgeschlossenen Stunden vorhanden.");
     if(!notes.length)return'<div class="pruefung-alert ok"><strong>Export bereit.</strong><span>Es werden nur abgeschlossene Arbeitsstunden ausgegeben. Fachliche DATEV-Validierung erfolgt erst nach erfolgreichem Testimport in LODAS.</span></div>';
     return`<div class="pruefung-alert"><strong>Vor dem Export</strong><ul>${notes.map(note=>`<li>${html(note)}</li>`).join("")}</ul></div>`;
@@ -110,18 +117,19 @@
   }
 
   function datevCard(){
-    const data=datevState.data,totals=data?.totals||{};
-    const canExport=Boolean(data?.settings)&&Number(totals.minutes)>0&&Number(totals.openEntries)===0&&Number(totals.missingPersonnelNumbers)===0;
+    const data=datevState.data,totals=data?.totals||{},final=data?.finalReadiness||{};
+    const canDraft=Boolean(data?.settings)&&Number(totals.minutes)>0&&Number(totals.openEntries)===0&&Number(totals.missingPersonnelNumbers)===0,canFinal=Boolean(data?.settings)&&Boolean(final.ready);
     return`<article class="dashboard-card datev-hours-card">
       <div class="datev-hours-head"><div><div class="caps">DATEV LODAS</div><h2>Arbeitsstunden exportieren</h2><p>Nur die für den Stundenimport benötigten Monatswerte. Keine internen IDs, Audit-Felder oder technischen Spalten.</p></div>${statusPill()}</div>
       <div class="datev-hours-toolbar">
         <label>Monat<input class="input" id="datev-hours-period" type="month" value="${html(datevState.period)}"></label>
         <div class="datev-hours-total"><span>Arbeitszeit</span><strong>${html(formatHours(totals.minutes||0))}</strong><small>${Number(totals.employees||0)} Mitarbeiter</small></div>
-        <button class="btn" data-datev-hours-action="export" ${canExport?"":"disabled"}>DATEV-Datei (.txt)</button>
+        <button class="btn outline" data-datev-hours-action="export" data-export-mode="draft" ${canDraft?"":"disabled"}>Entwurf prüfen</button>
+        <button class="btn" data-datev-hours-action="export" data-export-mode="final" ${canFinal?"":"disabled"}>Finale DATEV-Datei</button>
       </div>
       ${readinessNotice()}
       <details class="datev-hours-settings" ${data?.settings?"":"open"}><summary>DATEV-Zuordnung</summary>${configForm()}</details>
-      <p class="datev-hours-footnote">LODAS Bewegungsdaten · Stundenbuchung. Lohnart und Personalnummern werden nicht geraten, sondern nach Vorgabe des Steuerberaters hinterlegt. Status: Testimport in DATEV LODAS noch ausstehend.</p>
+      <p class="datev-hours-footnote">Entwurf = aktueller, noch veränderbarer Stand. Final = nur bestätigte und unveränderbare Arbeitszeitnachweise ohne offene Korrekturen. LODAS-Testimport steht weiterhin aus.</p>
     </article>`;
   }
 
@@ -142,18 +150,18 @@
   }
 
   adminView=function(){
-    if(S.adminView===VIEW)S.adminView=SIGNING_VIEW;
-    if(S.adminView===SIGNING_VIEW)return page();
+    if(S.adminView===SIGNING_VIEW)S.adminView=VIEW;
+    if(S.adminView===VIEW)return page();
     return previousAdminView();
   };
 
-  async function downloadExport(){
+  async function downloadExport(mode){
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
     try{
       const response=await fetch(`${CFG.url}/functions/v1/${FUNCTION_NAME}`,{
         method:"POST",
         headers:{"Content-Type":"text/plain;charset=UTF-8"},
-        body:JSON.stringify({action:"export",period:datevState.period,token:S.session?.token}),
+        body:JSON.stringify({action:"export",mode,period:datevState.period,idempotencyKey:datevState.exportKeys[`${datevState.period}:${mode}`]||(datevState.exportKeys[`${datevState.period}:${mode}`]=crypto.randomUUID()),token:S.session?.token}),
         signal:controller.signal
       });
       if(!response.ok){
@@ -164,7 +172,7 @@
         throw error;
       }
       const blob=await response.blob(),disposition=response.headers.get("content-disposition")||"";
-      const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`AORA_DATEV_LODAS_STUNDEN_${datevState.period}.txt`;
+      const filename=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`AORA_DATEV_LODAS_STUNDEN_${mode==="draft"?"ENTWURF_":""}${datevState.period}.txt`;
       const url=URL.createObjectURL(blob),anchor=document.createElement("a");
       anchor.href=url;anchor.download=filename;anchor.hidden=true;document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
       return{filename,checksum:response.headers.get("x-aora-export-checksum"),validation:response.headers.get("x-aora-datev-validation")};
@@ -181,6 +189,7 @@
       employeeMappings.push({employeeId:String(employee.id),personnelNumber:String(data.get(`personnel-${employee.id}`)||"").trim()});
     }
     await call("save_config",{
+      expectedVersion:Number(datevState.data?.settings?.version||0),
       beraterNumber:String(data.get("beraterNumber")||"").trim(),
       mandantNumber:String(data.get("mandantNumber")||"").trim(),
       regularWageType:String(data.get("regularWageType")||"").trim(),
@@ -226,8 +235,8 @@
         await ensureDatevData(true);
       }
       if(action==="export"){
-        const result=await downloadExport();
-        toast(`${result.filename} wurde erstellt. DATEV-Testimport steht noch aus.`,"success");
+        const mode=button.dataset.exportMode==="draft"?"draft":"final",result=await downloadExport(mode);
+        toast(`${result.filename} wurde erstellt${mode==="draft"?" (Entwurf)":""}. DATEV-Testimport steht noch aus.`,"success");
       }
     }catch(error){
       toast(error?.message||"DATEV-Aktion fehlgeschlagen.","error");

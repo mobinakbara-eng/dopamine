@@ -20,7 +20,9 @@ const ALLOWED_HEADS=new Set([
   "agent/aora-zero-cost-release-hardening",
   "agent/aora-manager-task-redesign",
   "agent/aora-task-root-cause",
-  "agent/aora-inventory-production-ready"
+  "agent/aora-inventory-production-ready",
+  "fix/inventory-category-supplier-media",
+  "agent/aora-debug-regression-audit"
 ]);
 const ITERATIONS=210000;
 const encoder=new TextEncoder();

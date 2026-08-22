@@ -6,29 +6,35 @@ const css=fs.readFileSync(new URL('../app/pruefung-export-center.css',import.met
 const edge=fs.readFileSync(new URL('../supabase/functions/aora-v8-datev-hours-export/index.ts',import.meta.url),'utf8');
 const migration=fs.readFileSync(new URL('../supabase/migrations/20260821191000_aora_datev_hours_export_prod.sql',import.meta.url),'utf8');
 const tightenMigration=fs.readFileSync(new URL('../supabase/migrations/20260821211500_tighten_datev_lodas_personnel_number.sql',import.meta.url),'utf8');
+const hardeningMigration=fs.readFileSync(new URL('../supabase/migrations/20260822093000_datev_atomic_config_and_export_evidence.sql',import.meta.url),'utf8');
+const immutableMigration=fs.readFileSync(new URL('../supabase/migrations/20260822094500_immutable_inventory_datev_evidence.sql',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
 
 // Prüfung & Exporte is the single manager entry for DATEV hours and employee signatures.
 assert.match(ui,/Prüfung & Exporte/);
-assert.match(ui,/compliance\)\{compliance\[0\]=SIGNING_VIEW;compliance\[1\]="Prüfung & Exporte"/);
+assert.match(ui,/if\(list\[index\]\?\.\[0\]===SIGNING_VIEW\)list\.splice\(index,1\)/);
+assert.match(ui,/compliance=\[VIEW,"Prüfung & Exporte",I\.chart\]/);
+assert.match(ui,/if\(S\.adminView===SIGNING_VIEW\)S\.adminView=VIEW/);
 assert.match(ui,/Arbeitszeitnachweise & Unterschriften/);
 assert.match(ui,/previousAdminView\(\)/);
 assert.match(css,/data-tab="documents"/);
+assert.match(css,/data-tab="documents"\]\{display:flex!important\}/,"the Arbeitszeit shortcut to Nachweise must stay visible even though Prüfung & Exporte remains the single sidebar entry");
 
 // Compact mode hides unsigned export clutter, but confirmed signed downloads must stay visible.
 assert.match(css,/docsign-button-group\{display:none!important\}/);
 assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\)\{display:flex!important\}/);
 assert.match(css,/docsign-button-group:has\(\[data-signed="true"\]\) \[data-signed="false"\]\{display:none!important\}/);
 
-// DATEV setup is writable by owner and manager accounts; employee/kiosk access stays excluded in context.
-assert.match(edge,/canConfigure:\["owner","manager"\]\.includes\(ctx\.accessRole\)/);
-assert.match(edge,/function requireManager\(ctx:any\)/);
-assert.match(edge,/async function saveConfig\(ctx:any,body:any\)\{\s*requireManager\(ctx\)/);
-assert.doesNotMatch(edge,/requireOwner\(/);
+// Export remains location-scoped for managers, while organization-wide mappings are owner-only.
+assert.match(edge,/canConfigure:ctx\.accessRole==="owner"/);
+assert.match(edge,/function requireOwner\(ctx:any\)/);
+assert.match(edge,/async function saveConfig\(ctx:any,body:any\)\{\s*requireOwner\(ctx\)/);
 assert.match(edge,/if\(!\["owner","manager"\]\.includes\(accessRole\)\)fail\("Export-Berechtigung fehlt\./);
+assert.match(edge,/https:\/\/aora-ipad-staging-final\.vercel\.app/);
 
 // The visible technical export is intentionally only the DATEV hours file.
-assert.match(ui,/DATEV-Datei \(\.txt\)/);
+assert.match(ui,/Finale DATEV-Datei/);
+assert.match(ui,/contextKey=`\$\{String\(S\.session\?\.token/);
 assert.match(ui,/Keine internen IDs, Audit-Felder oder technischen Spalten/);
 assert.doesNotMatch(ui,/CSV Arbeitszeit|Audit JSON|Steuerberater CSV|PDF Prüfprotokoll/);
 
@@ -42,6 +48,15 @@ assert.match(edge,/MAX_EXPORT_BYTES=3\*1024\*1024/);
 assert.match(edge,/datev_hours_open_entries/);
 assert.match(edge,/datev_personnel_number_missing/);
 assert.match(edge,/duplicate_personnel_number/);
+assert.match(edge,/mode==="draft"/);
+assert.match(edge,/finalPayrollSnapshot/);
+assert.match(edge,/datev_pending_corrections/);
+assert.match(edge,/datev_final_snapshot_invalid/);
+assert.match(edge,/source_snapshot_hash/);
+assert.match(edge,/idempotencyKey/);
+assert.match(edge,/evidence:\{\.\.\.sourceEvidence,exportRows\}/);
+assert.match(ui,/Entwurf prüfen/);
+assert.match(ui,/Finale DATEV-Datei/);
 
 // LODAS personnel numbers are constrained to 1..99999 at UI, API and DB layers.
 assert.match(ui,/pattern="\[0-9\]\{1,5\}" maxlength="5"/);
@@ -56,8 +71,7 @@ assert.match(tightenMigration,/between 1 and 99999/);
 // AORA must never claim actual DATEV validation before a successful real test import.
 assert.match(edge,/validationStatus:"not_test_imported"/);
 assert.match(edge,/X-Aora-Datev-Validation":"not-test-imported"/);
-assert.match(ui,/DATEV-Testimport steht noch aus/);
-assert.match(ui,/Testimport in DATEV LODAS noch ausstehend/);
+assert.match(ui,/DATEV-Testimport steht noch aus|LODAS-Testimport steht weiterhin aus/);
 
 // Manager scope includes cross-location work at accessible locations, with employee-location fallback for older entries.
 assert.match(edge,/const explicitLocationId=entryLocationId\(entry\)/);
@@ -71,7 +85,13 @@ assert.match(edge,/const regularWageType=digits\(body\.regularWageType/);
 assert.doesNotMatch(edge,/regularWageType\s*[:=]\s*["']\d+["']/);
 assert.match(ui,/Vom Steuerberater/);
 assert.match(edge,/if\(!rawPersonnel\)return\{employeeId,personnelNumber:null/);
-assert.match(edge,/from\("datev_hours_employee_mappings"\)\.delete\(\)/);
+assert.match(hardeningMigration,/delete from public\.datev_hours_employee_mappings/);
+assert.match(edge,/aora_datev_save_hours_config_atomic/);
+assert.match(hardeningMigration,/for update/);
+assert.match(hardeningMigration,/datev_config_version_conflict/);
+assert.match(hardeningMigration,/revoke all on function public\.aora_datev_save_hours_config_atomic/);
+assert.match(immutableMigration,/datev_hours_export_runs_immutable/);
+assert.match(immutableMigration,/before update or delete/);
 
 // DATEV mapping/evidence is isolated from workforce data and inaccessible directly from browser roles.
 assert.match(migration,/datev_hours_export_settings/);

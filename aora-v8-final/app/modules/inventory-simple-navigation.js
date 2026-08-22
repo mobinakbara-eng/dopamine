@@ -24,7 +24,7 @@ function inventoryWorkspaceSku(){return`AORA-${Date.now().toString(36).toUpperCa
 
 async function loadInventoryWorkspace(section,force=false){
   if(S.adminView!=="inventory"||S.inventorySection!==section||!S.locationId)return;
-  const key=inventoryWorkspaceKey(section);
+  const key=inventoryWorkspaceKey(section),requestedLocationId=String(S.locationId),requestedSessionToken=String(S.session?.token||"");
   if(S.inventoryWorkspaceLoading[key])return S.inventoryWorkspaceLoading[key];
   if(S.inventoryWorkspaceCache[key]&&!force)return;
   const task=(async()=>{
@@ -32,10 +32,10 @@ async function loadInventoryWorkspace(section,force=false){
       let data;
       if(section==="orders"){
         const[orders,suppliers,stock,replenishment]=await Promise.all([
-          invRequest("listPurchaseOrders",{locationId:S.locationId}),
-          invRequest("listSuppliers",{locationId:S.locationId}),
-          invRequest("listStock",{locationId:S.locationId}),
-          invRequest("listReplenishment",{locationId:S.locationId}).catch(()=>({suggestions:[]}))
+          invRequest("listPurchaseOrders",{locationId:requestedLocationId}),
+          invRequest("listSuppliers",{locationId:requestedLocationId}),
+          invRequest("listStock",{locationId:requestedLocationId}),
+          invRequest("listReplenishment",{locationId:requestedLocationId}).catch(()=>({suggestions:[]}))
         ]);
         data={orders,suppliers,stock,replenishment,loadedAt:Date.now()};
         // Existing send/receive modals read these canonical caches.
@@ -43,19 +43,21 @@ async function loadInventoryWorkspace(section,force=false){
         S.inventoryPageCache[`${invKey()}:receiving`]={orders};
       }else{
         const[jobs,orders,insights]=await Promise.all([
-          invRequest("listPrintJobs",{locationId:S.locationId}),
-          invRequest("listPurchaseOrders",{locationId:S.locationId}),
-          invRequest("listInventoryInsights",{locationId:S.locationId}).catch(()=>({summary:{},items:[]}))
+          invRequest("listPrintJobs",{locationId:requestedLocationId}),
+          invRequest("listPurchaseOrders",{locationId:requestedLocationId}),
+          invRequest("listInventoryInsights",{locationId:requestedLocationId}).catch(()=>({summary:{},items:[]}))
         ]);
         data={jobs,orders,insights,loadedAt:Date.now()};
         S.inventoryPageCache[`${invKey()}:receiving`]={orders};
       }
+      if(String(S.locationId)!==requestedLocationId||String(S.session?.token||"")!==requestedSessionToken||inventoryWorkspaceKey(section)!==key)return;
       S.inventoryWorkspaceCache[key]=data;
       if(S.adminView==="inventory"&&S.inventorySection===section)renderAdmin();
     }catch(error){
+      if(String(S.locationId)!==requestedLocationId||String(S.session?.token||"")!==requestedSessionToken||inventoryWorkspaceKey(section)!==key)return;
       S.inventoryWorkspaceCache[key]={error:error.message,loadedAt:Date.now()};
       if(S.adminView==="inventory"&&S.inventorySection===section)renderAdmin();
-    }finally{delete S.inventoryWorkspaceLoading[key]}
+    }finally{if(S.inventoryWorkspaceLoading[key]===task)delete S.inventoryWorkspaceLoading[key]}
   })();
   S.inventoryWorkspaceLoading[key]=task;
   return task;
@@ -95,7 +97,7 @@ function inventoryOrdersWorkspacePage(){
     <div class="inventory-workspace-kpis">
       <div><strong>${items.length}</strong><span>Produkte</span></div><div><strong>${suppliers.length}</strong><span>Lieferanten</span></div><div><strong>${openOrders.length}</strong><span>offene Bestellungen</span></div><div class="${receivable.length?"attention":""}"><strong>${receivable.length}</strong><span>Lieferungen einbuchen</span></div>
     </div>
-    ${suggestions.length?`<section class="inventory-workspace-panel inventory-workspace-attention"><div class="inventory-workspace-section-head"><div><span class="caps muted">Aora Autopilot</span><h2>${suggestions.length} Produkt${suggestions.length===1?"":"e"} nachbestellen</h2></div></div><p>Aora hat den Meldebestand geprüft. Eine neue Bestellung kann die vorgeschlagenen Mengen automatisch übernehmen.</p><button class="btn" type="button" data-inv="new-order">Bestellung vorbereiten</button></section>`:""}
+    ${suggestions.length?`<section class="inventory-workspace-panel inventory-workspace-attention"><div class="inventory-workspace-section-head"><div><span class="caps muted">Aora Autopilot</span><h2>${suggestions.length} Produkt${suggestions.length===1?"":"e"} nachbestellen</h2></div></div><p>Wähle ein Produkt. Aora übernimmt dessen offenen Bedarf und rundet erst danach auf Lieferanten-Packung, Mindestmenge und Bestellschritt.</p><div class="inventory-workspace-transfer-list">${suggestions.map(s=>{const item=items.find(i=>String(i.itemId||i.id)===String(s.item_id||s.itemId))||{},quantity=Number(s.suggestedQuantity??s.suggested_base_quantity??0);return`<article class="inventory-workspace-transfer-card suggested"><div class="inventory-workspace-product-icon material-symbols-rounded" aria-hidden="true">shopping_cart</div><div><strong>${esc(item.name||"Produkt")}</strong><small>${invNumber(quantity)}${invUom(item)?` ${esc(invUom(item))}`:""} werden benötigt.</small></div><button class="btn" type="button" data-inv="new-order" data-order-focus-item="${esc(s.item_id||s.itemId)}" data-order-focus-quantity="${quantity}">Bestellung vorbereiten</button></article>`}).join("")}</div></section>`:""}
     <section class="inventory-workspace-panel"><div class="inventory-workspace-section-head"><div><span class="caps muted">Bestellung → Wareneingang</span><h2>Bestellungen</h2><p>Wenn die Lieferung da ist, hier „Ware angekommen“ wählen. Erst dann wird der Bestand erhöht und QR-Druck wird freigeschaltet.</p></div><button class="btn outline" type="button" data-inv="ordering-profile">Absenderdaten</button></div><div class="inventory-workspace-orders">${orders.length?orders.slice(0,40).map(inventoryWorkspaceOrderCard).join(""):'<div class="inventory-empty">Noch keine Bestellung. Lege zuerst Produkte und einen Lieferanten an.</div>'}</div></section>
     <section class="inventory-workspace-panel"><div class="inventory-workspace-section-head"><div><span class="caps muted">Stammdaten</span><h2>Produkte & Kategorien</h2><p>Ein Produkt enthält Kategorie, Basiseinheit, Meldebestand und seine echte Verpackung. Neue Kategorien entstehen automatisch mit dem Produkt.</p></div><div class="inventory-actions"><button class="btn outline" type="button" data-inv="start-count">Bestand zählen</button><button class="btn" type="button" data-inventory-action="product">+ Produkt</button></div></div>${categories.length?`<div class="inventory-workspace-categories">${categories.map(c=>`<span>${esc(c)}</span>`).join("")}</div>`:""}<div class="inventory-workspace-products">${items.length?items.map(inventoryWorkspaceProductRow).join(""):'<div class="inventory-empty">Noch keine Produkte. Mit „+ Produkt“ legst du Artikel, Kategorie und Kartoninhalt in einem Schritt an.</div>'}</div></section>
     <section class="inventory-workspace-panel"><div class="inventory-workspace-section-head"><div><span class="caps muted">Beschaffung</span><h2>Lieferanten</h2><p>Produkte werden dem Lieferanten mit dessen SKU, Preis, Verpackung und Mindestmenge zugeordnet.</p></div><button class="btn" type="button" data-inv="suppliers">Lieferanten verwalten</button></div><div class="inventory-workspace-suppliers">${suppliers.length?suppliers.map(inventoryWorkspaceSupplierCard).join(""):'<div class="inventory-empty">Noch kein Lieferant hinterlegt.</div>'}</div></section>
@@ -131,18 +133,16 @@ async function inventoryProductModal(){
   const listId=`inventory-category-${crypto.randomUUID().slice(0,8)}`;
   const d=modal(`${modalHeader("Bestellen","Neues Produkt")}<form class="form-grid inventory-product-create" id="inventory-product-create"><div class="field full inventory-smart-note"><strong>Produkt + Verpackung in einem Schritt</strong><span>Die Verpackung bestimmt später Bestellmenge und QR-Etiketten. Ein QR-Druck wird erst nach echtem Wareneingang freigeschaltet.</span></div><div class="field full"><label>Produktname</label><input class="input" name="name" maxlength="160" required placeholder="z. B. Oatly Barista"></div><div class="field"><label>Kategorie</label><input class="input" name="category" list="${listId}" maxlength="100" placeholder="z. B. Milch & Alternativen"><datalist id="${listId}">${categories.map(c=>`<option value="${esc(c)}"></option>`).join("")}</datalist><small>Neue Eingabe = neue Kategorie.</small></div><div class="field"><label>SKU</label><input class="input" name="sku" maxlength="80" placeholder="optional · Aora erzeugt sonst eine"></div><div class="field"><label>Barcode</label><input class="input" name="barcode" maxlength="120" inputmode="numeric" placeholder="optional"></div><div class="field"><label>Basiseinheit</label><select class="select" name="baseUom"><option value="piece">Stück</option><option value="l">Liter</option><option value="ml">ml</option><option value="kg">kg</option><option value="g">g</option><option value="pack">Pack</option><option value="box">Box</option></select></div><div class="field"><label>Meldebestand</label><input class="input" name="reorderPoint" type="number" min="0" step="0.001" value="0"></div><div class="field"><label>Verpackung</label><input class="input" name="packLabel" maxlength="100" required value="Karton"></div><div class="field"><label>Inhalt pro Verpackung</label><input class="input" name="baseQuantity" type="number" min="0.001" step="0.001" required value="1"><small>z. B. 6 = 6 Basiseinheiten pro Karton.</small></div><div class="field full inventory-product-options"><label><input type="checkbox" name="orderUnit" checked> Diese Verpackung ist die Bestelleinheit</label><label><input type="checkbox" name="stockUnit" checked> Pro Verpackung später einen QR-Code erzeugen</label></div><div class="field full"><label>Lieferant zuordnen</label><select class="select" name="supplierId"><option value="">Später zuordnen</option>${suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></div><div class="field"><label>Preis pro Verpackung</label><input class="input" name="unitPrice" type="number" min="0" step="0.01" placeholder="optional"></div><div class="field"><label>Minimum dieses Produkts</label><input class="input" name="minimumOrderQuantity" type="number" min="0.001" step="0.001" value="1"></div><div class="field"><label>Bestellschritt</label><input class="input" name="orderMultiple" type="number" min="0.001" step="0.001" value="1"></div><div class="field"><label>Lieferanten-SKU</label><input class="input" name="supplierSku" maxlength="120" placeholder="optional"></div><div class="field full actions"><button type="button" class="btn outline" data-a="close">Abbrechen</button><button class="btn" type="submit">Produkt anlegen</button></div></form>`);
   const form=d.querySelector("#inventory-product-create");
-  let createdItemId=null,createdPackId=null;
+  const creationKey=crypto.randomUUID(),packCodeSuffix=crypto.randomUUID().slice(0,4).toUpperCase();
   form.addEventListener("submit",async event=>{
     event.preventDefault();if(!form.reportValidity())return;const f=new FormData(form),submit=form.querySelector('button[type="submit"]'),name=String(f.get("name")||"").trim(),sku=String(f.get("sku")||"").trim()||inventoryWorkspaceSku(),baseQuantity=Number(f.get("baseQuantity")),minimum=Number(f.get("minimumOrderQuantity")),multiple=Number(f.get("orderMultiple"));
     if(!(baseQuantity>0))return toast("Inhalt pro Verpackung muss größer als 0 sein.","error");if(!(minimum>0)||!(multiple>0))return toast("Mindestmenge und Bestellschritt müssen größer als 0 sein.","error");
     submit.disabled=true;submit.textContent="Produkt wird angelegt …";
     try{
-      if(!createdItemId){const item=await invRequest("createItem",{locationId:S.locationId,name,sku,barcode:f.get("barcode")||"",baseUom:f.get("baseUom")||"piece",category:f.get("category")||"",reorderPoint:Number(f.get("reorderPoint")||0)});createdItemId=item.itemId}
-      if(!createdPackId){const packLabel=String(f.get("packLabel")||"Karton").trim(),code=(packLabel.replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,28)||"PACK")+"-"+crypto.randomUUID().slice(0,4).toUpperCase();const pack=await invRequest("createPackUnit",{locationId:S.locationId,itemId:createdItemId,code,label:packLabel,baseQuantity,isStockUnit:f.get("stockUnit")!==null,isOrderUnit:f.get("orderUnit")!==null});createdPackId=pack.id}
-      const supplierId=String(f.get("supplierId")||"");
-      if(supplierId){await invRequest("upsertSupplierItem",{locationId:S.locationId,supplierId,itemId:createdItemId,packUnitId:createdPackId,supplierSku:f.get("supplierSku")||"",supplierItemName:name,unitPrice:f.get("unitPrice")||null,currency:"EUR",minimumOrderQuantity:minimum,orderMultiple:multiple})}
+      const packLabel=String(f.get("packLabel")||"Karton").trim(),packCode=(packLabel.replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,28)||"PACK")+"-"+packCodeSuffix;
+      await invRequest("createProductBundle",{locationId:S.locationId,name,sku,barcode:f.get("barcode")||"",baseUom:f.get("baseUom")||"piece",category:f.get("category")||"",reorderPoint:Number(f.get("reorderPoint")||0),packCode,packLabel,baseQuantity,isStockUnit:f.get("stockUnit")!==null,isOrderUnit:f.get("orderUnit")!==null,supplierId:String(f.get("supplierId")||"")||null,supplierSku:f.get("supplierSku")||"",unitPrice:f.get("unitPrice")||null,currency:"EUR",minimumOrderQuantity:minimum,orderMultiple:multiple,idempotencyKey:creationKey});
       d.remove();inventoryWorkspaceInvalidate();S.inventoryPageCache={};toast("Produkt, Kategorie und Verpackung wurden angelegt.");renderAdmin();
-    }catch(error){toast(error.message,"error");submit.disabled=false;submit.textContent=createdItemId&&!createdPackId?"Verpackung erneut speichern":"Produkt anlegen"}
+    }catch(error){toast(error.message,"error");submit.disabled=false;submit.textContent="Erneut versuchen"}
   });
 }
 
@@ -152,7 +152,8 @@ async function inventoryOpenPrintJob(jobId){
   try{dialog._aoraQrProfile=await invRequest("getPrintProfile",{locationId:S.locationId});await prepareExistingPrintJob(dialog,job)}catch(error){dialog.querySelector("#qr-manager-body").innerHTML=`<div class="inventory-empty">${esc(error.message)}</div>`}
   dialog.addEventListener("click",async event=>{
     const action=event.target.closest("[data-qr-action]");if(!action)return;
-    if(action.dataset.qrAction==="print"){printQrBatch({...dialog._aoraQrBatch,profile:dialog._aoraQrProfile},dialog._aoraQrItemName);return}
+    if(action.dataset.qrAction==="print"){if(printQrBatch({...dialog._aoraQrBatch,profile:dialog._aoraQrProfile},dialog._aoraQrItemName))showQrPrintConfirmation(dialog,action.dataset.jobId||dialog._aoraQrBatch?.printJobId);return}
+    if(action.dataset.qrAction==="later"){dialog.remove();toast("Druckauftrag bleibt für später gespeichert.");return}
     if(action.dataset.qrAction==="confirm"){
       action.disabled=true;try{await invRequest("confirmPrintJob",{locationId:S.locationId,printJobId:action.dataset.jobId});dialog.remove();inventoryWorkspaceInvalidate();S.inventoryPageCache={};toast("QR-Etiketten sind aktiv.");renderAdmin()}catch(error){toast(error.message,"error");action.disabled=false}
     }
@@ -188,4 +189,5 @@ app.addEventListener("click",event=>{
   const print=event.target.closest?.("[data-inventory-print-job]");if(print){event.preventDefault();inventoryOpenPrintJob(print.dataset.inventoryPrintJob);return}
   const refresh=event.target.closest?.("[data-inventory-refresh]");if(refresh){event.preventDefault();delete S.inventoryWorkspaceCache[inventoryWorkspaceKey(S.inventorySection)];loadInventoryWorkspace(S.inventorySection,true);return}
   const inventoryAction=event.target.closest?.("[data-inv]");if(inventoryAction&&["new-order","send-order","suppliers","ordering-profile","start-count","qr-rules","expiry-rules","employee-access","expired-review"].includes(inventoryAction.dataset.inv))S.inventoryWorkspaceNeedsRefresh=true;
+  if(inventoryAction?.dataset.inv==="new-order"&&inventoryAction.dataset.orderFocusItem){S.inventoryOrderFocus={itemId:String(inventoryAction.dataset.orderFocusItem),suggestedBaseQuantity:Math.max(0,Number(inventoryAction.dataset.orderFocusQuantity)||0)}}
 },true);
