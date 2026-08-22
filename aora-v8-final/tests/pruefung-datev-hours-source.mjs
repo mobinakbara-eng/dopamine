@@ -18,6 +18,7 @@ assert.match(ui,/if\(S\.adminView===SIGNING_VIEW\)S\.adminView=VIEW/);
 assert.match(ui,/Arbeitszeitnachweise & Unterschriften/);
 assert.match(ui,/previousAdminView\(\)/);
 assert.match(css,/data-tab="documents"/);
+assert.match(css,/data-tab="documents"\]\{display:flex!important\}/,"the Arbeitszeit shortcut to Nachweise must stay visible even though Prüfung & Exporte remains the single sidebar entry");
 
 // Compact mode hides unsigned export clutter, but confirmed signed downloads must stay visible.
 assert.match(css,/docsign-button-group\{display:none!important\}/);
