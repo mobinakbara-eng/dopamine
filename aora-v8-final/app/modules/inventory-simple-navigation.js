@@ -152,7 +152,8 @@ async function inventoryOpenPrintJob(jobId){
   try{dialog._aoraQrProfile=await invRequest("getPrintProfile",{locationId:S.locationId});await prepareExistingPrintJob(dialog,job)}catch(error){dialog.querySelector("#qr-manager-body").innerHTML=`<div class="inventory-empty">${esc(error.message)}</div>`}
   dialog.addEventListener("click",async event=>{
     const action=event.target.closest("[data-qr-action]");if(!action)return;
-    if(action.dataset.qrAction==="print"){printQrBatch({...dialog._aoraQrBatch,profile:dialog._aoraQrProfile},dialog._aoraQrItemName);return}
+    if(action.dataset.qrAction==="print"){if(printQrBatch({...dialog._aoraQrBatch,profile:dialog._aoraQrProfile},dialog._aoraQrItemName))showQrPrintConfirmation(dialog,action.dataset.jobId||dialog._aoraQrBatch?.printJobId);return}
+    if(action.dataset.qrAction==="later"){dialog.remove();toast("Druckauftrag bleibt für später gespeichert.");return}
     if(action.dataset.qrAction==="confirm"){
       action.disabled=true;try{await invRequest("confirmPrintJob",{locationId:S.locationId,printJobId:action.dataset.jobId});dialog.remove();inventoryWorkspaceInvalidate();S.inventoryPageCache={};toast("QR-Etiketten sind aktiv.");renderAdmin()}catch(error){toast(error.message,"error");action.disabled=false}
     }

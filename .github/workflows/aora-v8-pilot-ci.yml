@@ -40,6 +40,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: aora-v8-final/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -120,6 +124,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: aora-v8-final/package-lock.json
       - uses: actions/download-artifact@v4
         with:
           name: aora-staging-${{ github.sha }}
@@ -189,9 +195,9 @@ jobs:
           retention-days: 7
       - name: Enforce CI tenant bootstrap
         run: test "${{ steps.ci_bootstrap.outputs.status }}" = "201"
-      - name: Install Playwright without changing lockfiles
+      - name: Install locked browser dependencies
         run: |
-          npm install --no-save @playwright/test@1.56.1
+          npm ci --ignore-scripts --no-audit
           npx playwright install --with-deps chromium
       - name: Run four-role, invitation replay and offline-resync tests
         run: npx playwright test --project=chromium

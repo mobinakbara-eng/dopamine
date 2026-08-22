@@ -32,6 +32,11 @@ assert(nav.includes('invRequest("confirmPrintJob"'),"QR print confirmation must 
 assert(nav.includes("erst nach bestätigtem Wareneingang"),"QR UI must explain receipt gating");
 
 assert(receive.includes('invRequest("receivePurchaseOrderDelivery"'),"receipt UI must book through purchase-order receiving");
+assert(receive.includes("receiptPrintChoice(printJobIds)"),"a successful receipt with QR jobs must offer an immediate or deferred print choice");
+assert(receive.includes("Jetzt drucken")&&receive.includes("Später drucken"),"receipt printing choice must use two plain customer-facing actions");
+assert(receive.includes('S.inventorySection="qr"')&&receive.includes('loadInventoryWorkspace("qr",true)'),"printing now must route to the persisted QR job instead of booking stock again");
+assert(qr.includes("Erfolgreich gedruckt?"),"returning from AirPrint/PDF must ask for explicit success confirmation");
+assert(qr.includes('data-qr-action="later"'),"an unconfirmed print must remain available for a later retry");
 assert(receiptSql.includes("if v_pack.is_stock_unit then"),"receipt RPC must gate QR jobs on QR-capable packaging");
 assert(receiptSql.includes("insert into public.inventory_label_print_jobs"),"receipt RPC must create QR print jobs");
 assert(qr.includes('invRequest("receiveQrUnits"'),"legacy direct QR receipt helper remains isolated for compatibility, not normal navigation");
