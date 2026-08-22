@@ -21,14 +21,14 @@
 
   function normalizeNavigation(list){
     if(!Array.isArray(list))return;
-    const signing=list.find(item=>item?.[0]===SIGNING_VIEW);
-    const compliance=list.find(item=>item?.[0]===VIEW);
-    if(signing){
-      signing[1]="Prüfung & Exporte";
-      if(compliance&&compliance!==signing)list.splice(list.indexOf(compliance),1);
-      return;
+    for(let index=list.length-1;index>=0;index-=1)if(list[index]?.[0]===SIGNING_VIEW)list.splice(index,1);
+    let compliance=list.find(item=>item?.[0]===VIEW);
+    if(!compliance){
+      compliance=[VIEW,"Prüfung & Exporte",I.chart];
+      const settingsIndex=list.findIndex(item=>item?.[0]==="settings");
+      list.splice(settingsIndex<0?list.length:settingsIndex,0,compliance);
     }
-    if(compliance){compliance[0]=SIGNING_VIEW;compliance[1]="Prüfung & Exporte"}
+    compliance[1]="Prüfung & Exporte";
   }
   normalizeNavigation(typeof managerNav!=="undefined"?managerNav:null);
   normalizeNavigation(typeof ownerNav!=="undefined"?ownerNav:null);
@@ -150,8 +150,8 @@
   }
 
   adminView=function(){
-    if(S.adminView===VIEW)S.adminView=SIGNING_VIEW;
-    if(S.adminView===SIGNING_VIEW)return page();
+    if(S.adminView===SIGNING_VIEW)S.adminView=VIEW;
+    if(S.adminView===VIEW)return page();
     return previousAdminView();
   };
 

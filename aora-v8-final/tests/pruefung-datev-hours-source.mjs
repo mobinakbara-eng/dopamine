@@ -12,7 +12,9 @@ const index=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8')
 
 // Prüfung & Exporte is the single manager entry for DATEV hours and employee signatures.
 assert.match(ui,/Prüfung & Exporte/);
-assert.match(ui,/compliance\)\{compliance\[0\]=SIGNING_VIEW;compliance\[1\]="Prüfung & Exporte"/);
+assert.match(ui,/if\(list\[index\]\?\.\[0\]===SIGNING_VIEW\)list\.splice\(index,1\)/);
+assert.match(ui,/compliance=\[VIEW,"Prüfung & Exporte",I\.chart\]/);
+assert.match(ui,/if\(S\.adminView===SIGNING_VIEW\)S\.adminView=VIEW/);
 assert.match(ui,/Arbeitszeitnachweise & Unterschriften/);
 assert.match(ui,/previousAdminView\(\)/);
 assert.match(css,/data-tab="documents"/);
