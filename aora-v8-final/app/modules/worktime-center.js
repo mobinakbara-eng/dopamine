@@ -68,7 +68,12 @@
     if(!force&&state.loadedAt&&Date.now()-state.loadedAt<12000)return;
     state.loading=true;state.error="";
     try{state.data=await call("overview");state.loadedAt=Date.now()}
-    catch(error){state.error=error?.message||"Arbeitszeitdaten konnten nicht geladen werden."}
+    catch(error){
+      // Keep the error surface stable. Without a retry timestamp managerCenter()
+      // immediately queued another request and continuously replaced the tab UI.
+      state.loadedAt=Date.now();
+      state.error=error?.message||"Arbeitszeitdaten konnten nicht geladen werden.";
+    }
     finally{
       state.loading=false;
       if(S.session&&S.adminView===VIEW)renderAdmin();

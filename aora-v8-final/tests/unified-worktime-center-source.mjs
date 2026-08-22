@@ -19,7 +19,7 @@ const [index,moduleCss,moduleJs,documentBridge,edge,migration,eventMigration]=aw
 execFileSync(process.execPath,["--check",resolve(root,"app/modules/worktime-center.js")],{stdio:"pipe"});
 execFileSync(process.execPath,["--check",resolve(root,"app/modules/worktime-document-bridge.js")],{stdio:"pipe"});
 
-for(const marker of ["worktime-center.css?v=838","modules/worktime-center.js?v=838","modules/worktime-document-bridge.js?v=839"]){
+for(const marker of ["worktime-center.css?v=838","modules/worktime-center.js?v=874","modules/worktime-document-bridge.js?v=839"]){
   assert.ok(index.includes(marker),`missing worktime center asset: ${marker}`);
 }
 assert.ok(index.indexOf("time-correction-clock-hub.js")<index.indexOf("modules/worktime-center.js"),"unified center must load after the legacy correction hub so it can consolidate navigation and views");
@@ -74,6 +74,8 @@ for(const marker of [
   "Mitarbeiter → Manager",
   "Manager → Mitarbeiter"
 ])assert.ok(moduleJs.includes(marker),`missing worktime UX marker: ${marker}`);
+
+assert.match(moduleJs,/catch\(error\)\{[\s\S]*?state\.loadedAt=Date\.now\(\);[\s\S]*?state\.error=/,"failed overview requests must be throttled so the tab UI stays stable instead of entering a render loop");
 
 for(const marker of [
   "add column if not exists approval_target",
