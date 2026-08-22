@@ -1,0 +1,20 @@
+{
+  "name": "aora-local",
+  "interface": {
+    "displayName": "AORA Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "aora-engineering",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

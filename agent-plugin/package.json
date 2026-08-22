@@ -1,0 +1,13 @@
+{
+  "name": "aora-engineering-plugin-tooling",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate-plugin.mjs",
+    "risk": "node scripts/classify-risk.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

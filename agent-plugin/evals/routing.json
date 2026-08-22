@@ -1,0 +1,11 @@
+[
+  {"prompt":"انبار AORA را بررسی کن و سفارش تامین کننده را بهتر کن","expect":["aora-orchestrator","aora-inventory","aora-research-gate","aora-competitor-research"]},
+  {"prompt":"Kiosk وقتی اینترنت برمیگرده دوبار clock in می‌زنه","expect":["aora-bug-hunter","aora-kiosk-offline","aora-security","aora-testing-release"]},
+  {"prompt":"RLS منیجرها را طوری عوض کن که فقط شعبه خودشان را ببینند","expect":["aora-supabase-backend","aora-tenancy-rbac","aora-security","aora-testing-release"]},
+  {"prompt":"یک migration برای stock movements بساز که داده فعلی از بین نره","expect":["aora-database-migration","aora-supabase-backend","aora-tenancy-rbac"]},
+  {"prompt":"UI صفحه Manager خیلی شلوغه، ساده‌تر و روی موبایل درستش کن","expect":["aora-ux-product-review","aora-performance-accessibility","aora-project-context","aora-testing-release"]},
+  {"prompt":"این branch رو با تست‌ها آماده PR کن","expect":["aora-github-release","aora-testing-release"]},
+  {"prompt":"production بعد deploy خطا میده علت رو پیدا کن","expect":["aora-incident-response","aora-vercel-operations","aora-bug-hunter"]},
+  {"prompt":"README نسخه جدید را با رفتار واقعی sync کن","expect":["aora-documentation-sync"]},
+  {"prompt":"برای من یک لوگو طراحی کن","expect":[]}
+]

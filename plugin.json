@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aora-engineering",
+  "version": "0.1.0",
+  "description": "Engineering control plugin for researching, designing, implementing, testing and releasing AORA changes without bypassing security, tenancy or release safeguards.",
+  "author": {
+    "name": "AORA"
+  },
+  "repository": "https://github.com/mobinakbara-eng/dopamine",
+  "keywords": ["aora", "workforce", "engineering", "supabase", "vercel", "quality", "security"]
+}

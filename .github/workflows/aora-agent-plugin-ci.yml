@@ -1,0 +1,37 @@
+name: AORA Agent Plugin Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "plugin.json"
+      - "mcp.json"
+      - ".codex-plugin/**"
+      - ".mcp.json"
+      - ".agents/plugins/**"
+      - "AGENTS.md"
+      - "skills/**"
+      - "agent-plugin/**"
+      - ".github/workflows/aora-agent-plugin-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin-validation:
+    name: Validate portable + OpenAI plugin package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate plugin package
+        run: npm run validate
+      - name: Verify risk classifier
+        run: npm run risk -- ../aora-v8-final/supabase/migrations/example.sql

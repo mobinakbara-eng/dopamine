@@ -1,0 +1,24 @@
+{
+  "name": "aora-engineering",
+  "version": "0.1.0",
+  "description": "Engineering control plugin for researching, designing, implementing, testing and releasing AORA changes without bypassing security, tenancy or release safeguards.",
+  "author": {
+    "name": "AORA"
+  },
+  "repository": "https://github.com/mobinakbara-eng/dopamine",
+  "keywords": ["aora", "workforce", "engineering", "supabase", "vercel", "quality", "security"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "AORA Engineering",
+    "shortDescription": "Build, audit and release AORA safely",
+    "longDescription": "Research, design, implement, test and release changes to the AORA workforce platform while preserving production architecture, tenant isolation, security controls and rollback paths.",
+    "developerName": "AORA",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Inspect AORA first, research current evidence, then propose the safest implementation plan.",
+      "Review this AORA change for regressions, tenant isolation, security and release readiness."
+    ]
+  }
+}
