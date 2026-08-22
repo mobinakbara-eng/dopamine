@@ -11,8 +11,10 @@ on:
       - "aora-v8-final/app/inventory-expiry-sweep.css"
       - "aora-v8-final/app/inventory-simple-navigation.css"
       - "aora-v8-final/app/inventory-workspace-transfer.css"
+      - "aora-v8-final/app/inventory-catalog-media.css"
       - "aora-v8-final/app/modules/inventory-*.js"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-next/**"
+      - "aora-v8-final/supabase/functions/aora-v8-inventory-media/**"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-load-ci-bootstrap/**"
       - "aora-v8-final/supabase/migrations/*inventory*"
       - "aora-v8-final/tests/inventory-*.mjs"
@@ -51,6 +53,7 @@ jobs:
           node --check app/modules/inventory-qr-manager.js
           node --check app/modules/inventory-simple-navigation.js
           node --check app/modules/inventory-workspace-transfer.js
+          node --check app/modules/inventory-catalog-media.js
           node --check app/modules/inventory-employee.js
           node --check tests/inventory-load-100u.mjs
       - name: Inventory source contracts
@@ -63,9 +66,11 @@ jobs:
           node tests/inventory-expired-waste-source.mjs
           node tests/inventory-live-tenant-safety-source.mjs
           node tests/inventory-workspace-navigation-source.mjs
+          node tests/inventory-catalog-media-source.mjs
       - name: Inventory Edge Function type check
         run: |
           deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-next/index.ts
+          deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-media/index.ts
           deno check --node-modules-dir=auto supabase/functions/aora-v8-inventory-load-ci-bootstrap/index.ts
       - name: Reproducible app build
         env:
