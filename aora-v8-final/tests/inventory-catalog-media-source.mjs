@@ -1,3 +1,4 @@
+// Release gate touch: verifies the final catalog/media candidate against all cross-module CI gates.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
