@@ -76,3 +76,32 @@ app.addEventListener("click",async event=>{
     renderAdmin();
   }catch(error){toast(error.message,"error");button.disabled=false}
 },true);
+
+/* QR printing needs receipt permission, not procurement permission. The optional
+ * "waiting for goods receipt" list may require procurement, so keep that read
+ * best-effort and never block a manager who is otherwise allowed to print QR. */
+const _inventoryWorkspaceLoadWithQrPermission=loadInventoryWorkspace;
+loadInventoryWorkspace=async function(section,force=false){
+  if(section!=="qr")return _inventoryWorkspaceLoadWithQrPermission(section,force);
+  if(S.adminView!=="inventory"||S.inventorySection!=="qr"||!S.locationId)return;
+  const key=inventoryWorkspaceKey("qr");
+  if(S.inventoryWorkspaceLoading[key])return S.inventoryWorkspaceLoading[key];
+  if(S.inventoryWorkspaceCache[key]&&!force)return;
+  const task=(async()=>{
+    try{
+      const[jobs,orders,insights]=await Promise.all([
+        invRequest("listPrintJobs",{locationId:S.locationId}),
+        invRequest("listPurchaseOrders",{locationId:S.locationId}).catch(()=>({orders:[]})),
+        invRequest("listInventoryInsights",{locationId:S.locationId}).catch(()=>({summary:{},items:[]}))
+      ]);
+      S.inventoryWorkspaceCache[key]={jobs,orders,insights,loadedAt:Date.now()};
+      if(Array.isArray(orders?.orders))S.inventoryPageCache[`${invKey()}:receiving`]={orders};
+      if(S.adminView==="inventory"&&S.inventorySection==="qr")renderAdmin();
+    }catch(error){
+      S.inventoryWorkspaceCache[key]={error:error.message,loadedAt:Date.now()};
+      if(S.adminView==="inventory"&&S.inventorySection==="qr")renderAdmin();
+    }finally{delete S.inventoryWorkspaceLoading[key]}
+  })();
+  S.inventoryWorkspaceLoading[key]=task;
+  return task;
+};
