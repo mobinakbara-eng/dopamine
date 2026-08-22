@@ -10,6 +10,7 @@ on:
       - "aora-v8-final/app/inventory.css"
       - "aora-v8-final/app/inventory-expiry-sweep.css"
       - "aora-v8-final/app/inventory-simple-navigation.css"
+      - "aora-v8-final/app/inventory-workspace-transfer.css"
       - "aora-v8-final/app/modules/inventory-*.js"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-next/**"
       - "aora-v8-final/supabase/functions/aora-v8-inventory-load-ci-bootstrap/**"
@@ -49,6 +50,7 @@ jobs:
           node --check app/modules/inventory-orders-v2.js
           node --check app/modules/inventory-qr-manager.js
           node --check app/modules/inventory-simple-navigation.js
+          node --check app/modules/inventory-workspace-transfer.js
           node --check app/modules/inventory-employee.js
           node --check tests/inventory-load-100u.mjs
       - name: Inventory source contracts
