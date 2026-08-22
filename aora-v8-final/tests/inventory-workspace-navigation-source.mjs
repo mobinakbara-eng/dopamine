@@ -20,9 +20,9 @@ assert(nav.includes("receiveOrderModal(receive.dataset.inventoryReceiveOrder)"),
 assert(nav.includes('S.inventoryPageCache[`${invKey()}:receiving`]'),"receipt modal compatibility cache must be populated");
 assert(nav.includes('S.inventoryPageCache[`${invKey()}:orders`]'),"send-order compatibility cache must be populated");
 
-assert(nav.includes('invRequest("createItem"'),"Bestellen must support product creation");
-assert(nav.includes('invRequest("createPackUnit"'),"product creation must capture real packaging quantity");
-assert(nav.includes('invRequest("upsertSupplierItem"'),"product creation must optionally map to a supplier");
+assert(nav.includes('invRequest("createProductBundle"'),"Bestellen must support atomic product creation");
+assert(nav.includes("packLabel")&&nav.includes("baseQuantity"),"atomic product creation must capture real packaging quantity");
+assert(nav.includes("supplierId:String(f.get(\"supplierId\")||\"\")||null"),"atomic product creation must optionally map to a supplier");
 assert(nav.includes("Neue Eingabe = neue Kategorie"),"category creation must be available in product flow");
 
 assert(!nav.includes('invRequest("receiveQrUnits"'),"normal QR workspace must never invent/book extra goods receipt");
