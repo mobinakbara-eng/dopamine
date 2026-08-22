@@ -3,7 +3,7 @@ import {ApiError,MAX_BODY_BYTES,allowedOrigin,cors,json,fail,sessionContext,requ
 import {availability} from "./inventory-read-core.ts";
 import {fastOverview,fastStock,fastMovements,fastReplenishment} from "./inventory-fast-read.ts";
 import {listTransfers,listTransferSuggestions,listPurchaseOrders,listPackUnits,listPrintJobs,listEmployeeAccess} from "./inventory-read-orders.ts";
-import {createItem,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
+import {createItem,createProductBundle,recordMovement,createTransfer,createAutopilotTransfer,changeTransfer,createPackUnit} from "./inventory-write-core.ts";
 import {receiveQrUnits,preparePrintJob,confirmPrintJob,inspectQrUnit,inspectQrShortCode,issueQrUnit,setItemConsumptionPolicy,setItemExpiryPolicy,setEmployeeAccess,getPrintProfile,savePrintProfile,printTestLabel} from "./inventory-write-qr.ts";
 import {listManagerAccess,setManagerAccess,listSuppliers,upsertSupplier,listSupplierItems,upsertSupplierItem,getOrderingProfile,saveOrderingProfile} from "./procurement-admin.ts";
 import {listSupplierIntelligence} from "./supplier-intelligence.ts";
@@ -51,6 +51,7 @@ Deno.serve(async request=>{
     else if(action==="listExpiredStockUnits")data=await listExpiredStockUnits(ctx,body,requestId);
     else if(action==="wasteExpiredStockUnit")data=await wasteExpiredStockUnit(ctx,body,requestId);
     else if(action==="createItem")data=await createItem(ctx,body,requestId);
+    else if(action==="createProductBundle")data=await createProductBundle(ctx,body,requestId);
     else if(action==="recordReceipt")data=await recordMovement(ctx,body,"receipt",requestId);
     else if(action==="recordConsumption")data=await recordMovement(ctx,body,"consumption",requestId);
     else if(action==="recordWaste")data=await recordMovement(ctx,body,"waste",requestId);

@@ -21,6 +21,26 @@ export async function createItem(ctx:InventoryContext,body:any,requestId:string)
   return data;
 }
 
+export async function createProductBundle(ctx:InventoryContext,body:any,requestId:string){
+  const locationId=String(body.locationId||"");
+  await requirePermission(ctx,locationId,"adjust",requestId);
+  if(body.supplierId)await requirePermission(ctx,locationId,"procurement",requestId);
+  const supplierId=body.supplierId?asUuid(body.supplierId,"supplier"):null;
+  const price=body.unitPrice==null||body.unitPrice===""?null:Number(body.unitPrice);
+  const{data,error}=await db.rpc("aora_inventory_create_product_bundle",{
+    p_organization_id:ctx.organizationId,p_location_id:locationId,p_sku:String(body.sku||""),p_barcode:String(body.barcode||""),p_name:String(body.name||""),
+    p_base_uom:String(body.baseUom||"piece"),p_category:String(body.category||""),p_reorder_point:Math.max(0,Number(body.reorderPoint||0)),p_pack_code:String(body.packCode||""),p_pack_label:String(body.packLabel||""),
+    p_pack_base_quantity:positive(body.baseQuantity),p_is_stock_unit:Boolean(body.isStockUnit),p_is_order_unit:Boolean(body.isOrderUnit),p_supplier_id:supplierId,p_supplier_sku:String(body.supplierSku||""),
+    p_unit_price:price,p_currency:String(body.currency||"EUR"),p_minimum_order_quantity:positive(body.minimumOrderQuantity??1),p_order_multiple:positive(body.orderMultiple??1),p_actor_id:ctx.subjectId,p_idempotency_key:idem(body.idempotencyKey)
+  });
+  if(error){
+    const message=String(error.message||"");
+    if(message.includes("duplicate"))fail(409,"product_bundle_duplicate","Produkt, Verpackung oder Lieferantenzuordnung existiert bereits.");
+    dbFail(error,"create_product_bundle",requestId);
+  }
+  return data;
+}
+
 export async function recordMovement(ctx:InventoryContext,body:any,kind:string,requestId:string){
   const locationId=String(body.locationId||"");
   const perm=kind==="receipt"?"receipt":kind==="consumption"?"consume":kind==="waste"?"waste":"adjust";

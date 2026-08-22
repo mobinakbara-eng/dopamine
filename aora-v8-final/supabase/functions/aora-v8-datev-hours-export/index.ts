@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import {decimalComma,entryMinutes,monthRange,stableStringify} from "./core.ts";
 
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -13,7 +14,9 @@ const EXACT_ORIGINS=new Set([
   "https://dopamine-git-main-mobins-projects-4f428afa.vercel.app",
   "https://aora-v8-hardening.vercel.app",
   "https://aora-v8-final.vercel.app",
-  "https://aora-workforce.vercel.app"
+  "https://aora-workforce.vercel.app",
+  "https://aora-ipad-staging-public.vercel.app",
+  "https://aora-ipad-staging-final.vercel.app"
 ]);
 const MAX_BODY_BYTES=250000;
 const MAX_EXPORT_BYTES=3*1024*1024;
@@ -65,11 +68,6 @@ function monthValue(value:unknown){
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(result))fail("Abrechnungsmonat ist ungültig.",400,"invalid_period");
   return result;
 }
-function monthRange(period:string){
-  const[year,month]=period.split("-").map(Number);
-  const last=new Date(Date.UTC(year,month,0)).getUTCDate();
-  return{from:`${period}-01`,to:`${period}-${String(last).padStart(2,"0")}`,datev:`01/${String(month).padStart(2,"0")}/${year}`};
-}
 function normalizeState(state:any){
   for(const key of["admins","employees","locations","timeEntries"])if(!Array.isArray(state?.[key]))state[key]=[];
   return state;
@@ -78,30 +76,10 @@ const employeeLocation=(employee:any)=>String(employee?.locationId||employee?.pr
 const entryEmployeeId=(entry:any)=>String(entry?.employeeId??entry?.employee_id??"");
 const entryLocationId=(entry:any)=>String(entry?.locationId??entry?.location_id??"");
 const entryDate=(entry:any)=>String(entry?.date||entry?.startTime||entry?.start_time||"").slice(0,10);
-function clockMinutes(value:unknown){
-  const match=String(value||"").match(/^(\d{1,2}):(\d{2})/);
-  return match?Number(match[1])*60+Number(match[2]):null;
-}
-function entryMinutes(entry:any){
-  const stored=Number(entry?.durationMinutes??entry?.duration_minutes);
-  if(Number.isFinite(stored)&&stored>=0)return Math.round(stored);
-  const startRaw=entry?.start??entry?.startTime??entry?.start_time;
-  const endRaw=entry?.end??entry?.endTime??entry?.end_time;
-  const start=clockMinutes(String(startRaw||"").includes("T")?String(startRaw).slice(11,16):startRaw);
-  let end=clockMinutes(String(endRaw||"").includes("T")?String(endRaw).slice(11,16):endRaw);
-  if(start===null||end===null)return 0;
-  if(end<start)end+=1440;
-  const breakMinutes=Math.max(0,Number(entry?.breakMinutes??entry?.break_minutes??0)||0);
-  return Math.max(0,Math.round(end-start-breakMinutes));
-}
 function entryOpen(entry:any){
   const status=String(entry?.status||"").toLowerCase();
   const end=entry?.end??entry?.endTime??entry?.end_time;
   return["live","paused","open","running"].includes(status)||!end;
-}
-function decimalComma(value:number){
-  if(!Number.isFinite(value))fail("Ungültiger Stundenwert.",422,"invalid_hours_value");
-  return value.toFixed(2).replace(".",",");
 }
 async function sha256(bytes:Uint8Array){
   const digest=await crypto.subtle.digest("SHA-256",bytes);
@@ -128,9 +106,10 @@ async function context(token:string){
     locationIds=(rows||[]).map((row:any)=>String(row.location_id));
     if(!locationIds.length)locationIds=(admin?.locationIds||[admin?.locationId]).filter(Boolean).map(String);
   }
-  return{session,organization,state,accessRole,locationIds};
+  return{session,organization,state,sourceRevision:Number(snapshot.revision),accessRole,locationIds};
 }
 function requireManager(ctx:any){if(!["owner","manager"].includes(ctx.accessRole))fail("Manager-Zugang erforderlich.",403,"manager_required")}
+function requireOwner(ctx:any){if(ctx.accessRole!=="owner")fail("Nur Inhaber dürfen die organisationsweiten DATEV-Zuordnungen ändern.",403,"owner_required")}
 function scopedEmployees(ctx:any,period:string){
   const range=monthRange(period);
   const employeeById=new Map(ctx.state.employees.map((employee:any)=>[String(employee.id),employee]));
@@ -157,9 +136,31 @@ async function mappingRows(ctx:any,employeeIds:string[]){
   return data||[];
 }
 async function settingsRow(ctx:any){
-  const{data,error}=await service.from("datev_hours_export_settings").select("target_system,berater_number,mandant_number,regular_wage_type,updated_at").eq("organization_id",ctx.organization.id).maybeSingle();
+  const{data,error}=await service.from("datev_hours_export_settings").select("target_system,berater_number,mandant_number,regular_wage_type,updated_at,version").eq("organization_id",ctx.organization.id).maybeSingle();
   if(error)throw error;
   return data;
+}
+
+async function finalPayrollSnapshot(ctx:any,period:string){
+  const range=monthRange(period),locationIds=ctx.accessRole==="manager"?ctx.locationIds:[];
+  let query=service.from("timesheet_submissions").select("id,employee_id,location_id,date_from,date_to,status,version,snapshot_hash,signed_hash,payload,approved_at,locked_at").eq("organization_id",ctx.organization.id).eq("date_from",range.from).eq("date_to",range.to).in("status",["approved","locked"]);
+  if(ctx.accessRole==="manager")query=query.in("location_id",locationIds.length?locationIds:["__none__"]);
+  const{data:submissions,error}=await query;
+  if(error)throw error;
+  const employeeIds=[...new Set((submissions||[]).map((row:any)=>String(row.employee_id)))];
+  let correctionQuery=service.from("time_entry_corrections").select("id,employee_id,location_id,previous_value,proposed_value,requested_at").eq("organization_id",ctx.organization.id).eq("status","pending");
+  if(employeeIds.length)correctionQuery=correctionQuery.in("employee_id",employeeIds);else return{range,rows:[],submissions:[],invalidSnapshots:[],openDays:0,pendingCorrections:[]};
+  const{data:corrections,error:correctionError}=await correctionQuery;if(correctionError)throw correctionError;
+  const pendingCorrections=(corrections||[]).filter((row:any)=>{const date=String(row.proposed_value?.date||row.previous_value?.date||"").slice(0,10);return!date||(date>=range.from&&date<=range.to)});
+  const rows:any[]=[],invalidSnapshots:string[]=[];let openDays=0;
+  for(const submission of submissions||[]){
+    const snapshot=submission.payload?.snapshot;
+    if(!snapshot||await sha256(new TextEncoder().encode(stableStringify(snapshot)))!==submission.snapshot_hash){invalidSnapshots.push(String(submission.id));continue}
+    openDays+=Number(snapshot.totals?.openDays||0);
+    const minutes=(snapshot.rows||[]).filter((row:any)=>row.type==="Arbeit").reduce((sum:number,row:any)=>sum+Math.max(0,Number(row.netMinutes)||0),0);
+    rows.push({employeeId:String(submission.employee_id),locationId:String(submission.location_id||snapshot.location?.id||""),minutes,submissionId:String(submission.id),submissionVersion:Number(submission.version||1),snapshotHash:String(submission.snapshot_hash),signedHash:String(submission.signed_hash||"")});
+  }
+  return{range,rows,submissions:submissions||[],invalidSnapshots,openDays,pendingCorrections};
 }
 function hoursSummary(ctx:any,period:string){
   const scoped=scopedEmployees(ctx,period);
@@ -187,10 +188,13 @@ async function status(ctx:any,body:any){
     return{id:String(employee.id),name:clean(employee.name||"Mitarbeiter/in"),locationId:employeeLocation(employee),active:employee.active!==false,personnelNumber:mapping?.personnel_number||null,minutes:totals.minutes,entries:totals.entries,openEntries:totals.openEntries,included:totals.minutes>0||totals.openEntries>0};
   });
   const included=employees.filter((employee:any)=>employee.included);
-  return{period,targetSystem:"datev_lodas",settings,employees,totals:{employees:included.length,minutes:included.reduce((sum:number,employee:any)=>sum+Number(employee.minutes||0),0),openEntries:included.reduce((sum:number,employee:any)=>sum+Number(employee.openEntries||0),0),missingPersonnelNumbers:included.filter((employee:any)=>!employee.personnelNumber).length},canConfigure:["owner","manager"].includes(ctx.accessRole),validationStatus:"not_test_imported"};
+  const finalSnapshot=await finalPayrollSnapshot(ctx,period),finalIds=new Set(finalSnapshot.rows.map((row:any)=>row.employeeId)),includedIds=new Set(included.map((employee:any)=>String(employee.id))),missingFinal=[...includedIds].filter(id=>!finalIds.has(id));
+  const finalMappingRows=await mappingRows(ctx,finalSnapshot.rows.map((row:any)=>row.employeeId)),finalMappingIds=new Set(finalMappingRows.map((row:any)=>String(row.employee_id)));
+  const finalReadiness={ready:finalSnapshot.rows.length>0&&!missingFinal.length&&!finalSnapshot.invalidSnapshots.length&&!finalSnapshot.openDays&&!finalSnapshot.pendingCorrections.length&&finalSnapshot.rows.every((row:any)=>finalMappingIds.has(row.employeeId)),employees:finalSnapshot.rows.length,minutes:finalSnapshot.rows.reduce((sum:number,row:any)=>sum+row.minutes,0),missingApprovedSnapshots:missingFinal.length,invalidSnapshots:finalSnapshot.invalidSnapshots.length,openDays:finalSnapshot.openDays,pendingCorrections:finalSnapshot.pendingCorrections.length,missingPersonnelNumbers:finalSnapshot.rows.filter((row:any)=>!finalMappingIds.has(row.employeeId)).length};
+  return{period,targetSystem:"datev_lodas",settings,employees,totals:{employees:included.length,minutes:included.reduce((sum:number,employee:any)=>sum+Number(employee.minutes||0),0),openEntries:included.reduce((sum:number,employee:any)=>sum+Number(employee.openEntries||0),0),missingPersonnelNumbers:included.filter((employee:any)=>!employee.personnelNumber).length},finalReadiness,canConfigure:ctx.accessRole==="owner",validationStatus:"not_test_imported"};
 }
 async function saveConfig(ctx:any,body:any){
-  requireManager(ctx);
+  requireOwner(ctx);
   const period=monthValue(body.period);
   const beraterNumber=digits(body.beraterNumber,4,7,"Beraternummer");
   const mandantNumber=digits(body.mandantNumber,1,5,"Mandantennummer");
@@ -209,44 +213,50 @@ async function saveConfig(ctx:any,body:any){
     seenPersonnel.add(personnelNumber);
     return{employeeId,personnelNumber};
   });
-  const now=new Date().toISOString();
-  const{error:settingError}=await service.from("datev_hours_export_settings").upsert({organization_id:ctx.organization.id,target_system:"datev_lodas",berater_number:beraterNumber,mandant_number:mandantNumber,regular_wage_type:regularWageType,updated_by:String(ctx.session.subject_id),updated_at:now},{onConflict:"organization_id"});
-  if(settingError)throw settingError;
-  for(const mapping of mappings){
-    if(!mapping.personnelNumber){
-      const{error}=await service.from("datev_hours_employee_mappings").delete().eq("organization_id",ctx.organization.id).eq("employee_id",mapping.employeeId);
-      if(error)throw error;
-      continue;
-    }
-    const{error}=await service.from("datev_hours_employee_mappings").upsert({organization_id:ctx.organization.id,employee_id:mapping.employeeId,personnel_number:mapping.personnelNumber,updated_by:String(ctx.session.subject_id),updated_at:now},{onConflict:"organization_id,employee_id"});
-    if(error){
-      if(String((error as any).code)==="23505")fail("Eine DATEV-Personalnummer darf nur einem Mitarbeiter zugeordnet sein.",409,"duplicate_personnel_number");
-      throw error;
-    }
-  }
+  const{error}=await service.rpc("aora_datev_save_hours_config_atomic",{p_organization_id:ctx.organization.id,p_expected_version:Number(body.expectedVersion||0),p_berater_number:beraterNumber,p_mandant_number:mandantNumber,p_regular_wage_type:regularWageType,p_mappings:mappings,p_actor_id:String(ctx.session.subject_id)});
+  if(error){const message=String(error.message||"");if(message.includes("version_conflict"))fail("Die DATEV-Zuordnung wurde inzwischen geändert. Bitte aktualisieren.",409,"datev_config_version_conflict");if(message.includes("duplicate_datev_personnel_number"))fail("Eine DATEV-Personalnummer darf nur einem Mitarbeiter zugeordnet sein.",409,"duplicate_personnel_number");throw error}
   return status(ctx,{period});
 }
 async function createExport(ctx:any,body:any,origin:string|null){
   const period=monthValue(body.period);
+  const mode=String(body.mode||"final");
+  if(!["draft","final"].includes(mode))fail("Exportmodus ist ungültig.",400,"invalid_export_mode");
+  const idempotencyKey=clean(body.idempotencyKey);
+  if(!/^[A-Za-z0-9._:-]{8,160}$/.test(idempotencyKey))fail("Export-ID fehlt.",400,"export_idempotency_missing");
   const settings=await settingsRow(ctx);
   if(!settings)fail("DATEV-Zuordnung ist noch nicht eingerichtet.",409,"datev_hours_settings_missing");
-  const{scoped,summary}=hoursSummary(ctx,period);
-  const includedEmployees=scoped.employees.filter((employee:any)=>{const totals=summary.get(String(employee.id));return totals&&(totals.minutes>0||totals.openEntries>0)});
-  if(!includedEmployees.length)fail("Für diesen Monat wurden keine Arbeitsstunden gefunden.",409,"datev_hours_empty");
-  const open=includedEmployees.filter((employee:any)=>Number(summary.get(String(employee.id))?.openEntries||0)>0);
-  if(open.length)fail("Offene oder laufende Arbeitszeitbuchungen müssen vor dem DATEV-Export abgeschlossen werden.",409,"datev_hours_open_entries",open.map((employee:any)=>clean(employee.name)));
-  const mappings=await mappingRows(ctx,includedEmployees.map((employee:any)=>String(employee.id)));
+  let sourceRows:any[]=[],sourceEvidence:any={},sourceRevision:number|null=ctx.sourceRevision;
+  if(mode==="draft"){
+    const{scoped,summary}=hoursSummary(ctx,period),included=scoped.employees.filter((employee:any)=>{const totals=summary.get(String(employee.id));return totals&&(totals.minutes>0||totals.openEntries>0)});
+    if(!included.length)fail("Für diesen Monat wurden keine Arbeitsstunden gefunden.",409,"datev_hours_empty");
+    const open=included.filter((employee:any)=>Number(summary.get(String(employee.id))?.openEntries||0)>0);
+    if(open.length)fail("Offene oder laufende Arbeitszeitbuchungen müssen vor dem DATEV-Entwurf abgeschlossen werden.",409,"datev_hours_open_entries",open.map((employee:any)=>clean(employee.name)));
+    sourceRows=included.map((employee:any)=>({employeeId:String(employee.id),minutes:Number(summary.get(String(employee.id))?.minutes||0)})).filter(row=>row.minutes>0);
+    sourceEvidence={workspaceRevision:ctx.sourceRevision,warning:"mutable_draft_not_payroll_final"};
+  }else{
+    const finalSnapshot=await finalPayrollSnapshot(ctx,period);
+    if(!finalSnapshot.rows.length)fail("Für diesen Monat fehlen bestätigte Arbeitszeitnachweise.",409,"datev_final_snapshots_missing");
+    const current=hoursSummary(ctx,period),requiredEmployeeIds=current.scoped.employees.filter((employee:any)=>{const totals=current.summary.get(String(employee.id));return totals&&(totals.minutes>0||totals.openEntries>0)}).map((employee:any)=>String(employee.id)),finalEmployeeIds=new Set(finalSnapshot.rows.map((row:any)=>row.employeeId)),missingApproved=requiredEmployeeIds.filter((id:string)=>!finalEmployeeIds.has(id));
+    if(missingApproved.length)fail("Für alle Mitarbeiter mit Monatsstunden wird ein bestätigter Arbeitszeitnachweis benötigt.",409,"datev_final_snapshots_incomplete",missingApproved);
+    if(finalSnapshot.invalidSnapshots.length)fail("Mindestens ein bestätigter Arbeitszeitnachweis hat die Integritätsprüfung nicht bestanden.",409,"datev_final_snapshot_invalid",finalSnapshot.invalidSnapshots);
+    if(finalSnapshot.openDays)fail("Bestätigte Arbeitszeitnachweise enthalten noch offene Tage.",409,"datev_final_open_days");
+    if(finalSnapshot.pendingCorrections.length)fail("Offene Zeitkorrekturen müssen vor dem finalen Export entschieden werden.",409,"datev_pending_corrections",finalSnapshot.pendingCorrections.map((row:any)=>String(row.id)));
+    sourceRows=finalSnapshot.rows.filter((row:any)=>row.minutes>0);
+    sourceRevision=null;
+    sourceEvidence={submissionIds:finalSnapshot.rows.map((row:any)=>row.submissionId),submissionVersions:finalSnapshot.rows.map((row:any)=>({id:row.submissionId,version:row.submissionVersion})),snapshotHashes:finalSnapshot.rows.map((row:any)=>row.snapshotHash),signedHashes:finalSnapshot.rows.map((row:any)=>row.signedHash)};
+  }
+  if(!sourceRows.length)fail("Für diesen Monat wurden keine abgeschlossenen Arbeitsstunden gefunden.",409,"datev_hours_empty");
+  const mappings=await mappingRows(ctx,sourceRows.map((row:any)=>row.employeeId));
   const mappingMap=new Map(mappings.map((row:any)=>[String(row.employee_id),datevPersonnelNumber(row.personnel_number)]));
-  const missing=includedEmployees.filter((employee:any)=>!mappingMap.get(String(employee.id)));
-  if(missing.length)fail("Für alle Mitarbeiter mit Stunden wird eine DATEV-Personalnummer benötigt.",409,"datev_personnel_number_missing",missing.map((employee:any)=>({id:String(employee.id),name:clean(employee.name)})));
+  const missing=sourceRows.filter((row:any)=>!mappingMap.get(row.employeeId));
+  if(missing.length)fail("Für alle Mitarbeiter mit Stunden wird eine DATEV-Personalnummer benötigt.",409,"datev_personnel_number_missing",missing.map((row:any)=>({id:row.employeeId})));
   const used=new Set<string>();
-  for(const employee of includedEmployees){
-    const personnel=mappingMap.get(String(employee.id))!;
+  for(const sourceRow of sourceRows){
+    const personnel=mappingMap.get(sourceRow.employeeId)!;
     if(used.has(personnel))fail(`Personalnummer ${personnel} ist mehrfach zugeordnet.`,409,"duplicate_personnel_number");
     used.add(personnel);
   }
-  const rows=includedEmployees.map((employee:any)=>({personnel:mappingMap.get(String(employee.id))!,minutes:Number(summary.get(String(employee.id))?.minutes||0)})).filter(row=>row.minutes>0).sort((a,b)=>a.personnel.localeCompare(b.personnel,"de",{numeric:true})).map(row=>`3;${scoped.range.datev};${decimalComma(row.minutes/60)};01;${settings.regular_wage_type};${row.personnel};`);
-  if(!rows.length)fail("Für diesen Monat wurden keine abgeschlossenen Arbeitsstunden gefunden.",409,"datev_hours_empty");
+  const range=monthRange(period),exportRows=sourceRows.map((row:any)=>({personnel:mappingMap.get(row.employeeId)!,minutes:row.minutes})).sort((a,b)=>a.personnel.localeCompare(b.personnel,"de",{numeric:true})),rows=exportRows.map(row=>`3;${range.datev};${decimalComma(row.minutes/60)};01;${settings.regular_wage_type};${row.personnel};`);
   const file=[
     "[Allgemein]",
     "Ziel=LODAS",
@@ -265,10 +275,11 @@ async function createExport(ctx:any,body:any,origin:string|null){
   const bytes=new TextEncoder().encode(file);
   if(bytes.length>MAX_EXPORT_BYTES)fail("DATEV-Stundenexport überschreitet 3 MB.",413,"datev_hours_too_large");
   const checksum=await sha256(bytes);
-  const totalMinutes=includedEmployees.reduce((sum:number,employee:any)=>sum+Number(summary.get(String(employee.id))?.minutes||0),0);
-  const{error:logError}=await service.from("datev_hours_export_runs").insert({organization_id:ctx.organization.id,period,target_system:"datev_lodas",row_count:rows.length,total_minutes:totalMinutes,checksum_sha256:checksum,created_by:String(ctx.session.subject_id),metadata:{kind:"regular_hours_only",bookingKey:"01",wageType:settings.regular_wage_type,scope:ctx.accessRole,managerLocationIds:ctx.accessRole==="manager"?ctx.locationIds:[],validationStatus:"not_test_imported"}});
-  if(logError)throw logError;
-  const filename=`AORA_DATEV_LODAS_STUNDEN_${period}.txt`;
+  const sourceSnapshotHash=await sha256(new TextEncoder().encode(stableStringify({period,mode,sourceRows,sourceEvidence,configVersion:Number(settings.version||1)}))),totalMinutes=sourceRows.reduce((sum:number,row:any)=>sum+row.minutes,0);
+  const{data:existing}=await service.from("datev_hours_export_runs").select("checksum_sha256,source_snapshot_hash").eq("organization_id",ctx.organization.id).eq("idempotency_key",idempotencyKey).maybeSingle();
+  if(existing&&(existing.checksum_sha256!==checksum||existing.source_snapshot_hash!==sourceSnapshotHash))fail("Dieser Exportauftrag gehört zu einem anderen Datenstand.",409,"datev_export_idempotency_conflict");
+  if(!existing){const{error:logError}=await service.from("datev_hours_export_runs").insert({organization_id:ctx.organization.id,period,target_system:"datev_lodas",row_count:rows.length,total_minutes:totalMinutes,checksum_sha256:checksum,created_by:String(ctx.session.subject_id),export_mode:mode,source_revision:sourceRevision,source_snapshot_hash:sourceSnapshotHash,config_version:Number(settings.version||1),idempotency_key:idempotencyKey,evidence:{...sourceEvidence,exportRows},metadata:{kind:"regular_hours_only",bookingKey:"01",wageType:settings.regular_wage_type,scope:ctx.accessRole,managerLocationIds:ctx.accessRole==="manager"?ctx.locationIds:[],validationStatus:"not_test_imported"}});if(logError)throw logError}
+  const filename=`AORA_DATEV_LODAS_STUNDEN_${mode==="draft"?"ENTWURF_":""}${period}.txt`;
   return new Response(bytes,{status:200,headers:{...cors(origin),"Content-Type":"text/plain; charset=us-ascii","Content-Disposition":`attachment; filename=${filename}`,"X-Aora-Export-Checksum":checksum,"X-Aora-Export-Period":period,"X-Aora-Datev-Validation":"not-test-imported"}});
 }
 
